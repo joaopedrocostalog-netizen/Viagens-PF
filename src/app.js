@@ -231,11 +231,19 @@ function renderCtes(d){
  renderGrid('Pedidos de frete e CT-e',rows,cols,state,'ctes','Consulta de campos disponíveis em GET /listarPedidosFrete');
 }
 function renderClientes(d,s){
- let rows=searchRows(aggregateClients(d.viagens,d.pedidos));const p=paginate(rows);
- return '<div class="kpis">'+kpi(state.mode==='live'?'CLIENTES COM PEDIDOS':'CLIENTES COM VIAGENS',number(rows.length),'No período selecionado')+kpi(state.mode==='live'?'FRETES VINCULADOS':'RECEITA IDENTIFICADA',money(s.revenue),state.mode==='live'?'Por viagem identificada':'Com campo de receita','money')+kpi(state.mode==='live'?'ABASTECIMENTO RV':'CUSTO IDENTIFICADO',money(s.cost),state.mode==='live'?'Custo parcial, sem rateio por cliente':'Com campo de custo','money')+kpi('RESULTADO VALIDÁVEL',money(s.profit),'Apenas se todos os valores existirem','money')+'</div>'+
- '<div class="table-tools"><h2>Rentabilidade por cliente</h2><div class="right-tools">'+button('csv',icon('download')+' Exportar','btn-sm')+'</div></div>'+
- tableHtml(['Cliente','Viagens','Receita','Custo','Resultado','Margem'],p.slice.map(v=>{const valid=state.mode!=='live'&&v.receitaN===v.viagens&&v.custoN===v.viagens;const luc=valid?v.receita-v.custo:null;return '<tr><td><strong>'+esc(v.cliente)+'</strong></td><td>'+number(v.viagens)+'</td><td>'+(v.receitaN?money(v.receita):'—')+'</td><td>'+(v.custoN?money(v.custo):'—')+'</td><td>'+money(luc)+'</td><td>'+pct(valid&&v.receita?luc/v.receita*100:null)+'</td></tr>';}))+paging(p)+
- '<p class="help">'+(state.mode==='live'?'O total_frete representa valores de pedidos, não faturamento confirmado. Custos por cliente e lucro dependem de outros custos e rateios, ainda não disponíveis.':'O resultado financeiro de um cliente fica indisponível quando uma ou mais viagens não possuem receita ou custo. Nenhum valor ausente é tratado como zero.')+'</p>';
+ const rows=searchRows(aggregateClients(d.viagens,d.pedidos)).map(v=>{
+  const known=v.receitaN>0&&v.receitaN===v.viagens&&v.custoN===v.viagens&&state.mode!=='live';
+  return {...v,ticket:v.receitaN?v.receita/v.receitaN:null,lucro:known?v.receita-v.custo:null,
+   margem:known&&v.receita?(v.receita-v.custo)/v.receita*100:null};
+ });
+ const cols=[{key:'cliente',label:'Cliente'},{key:'viagens',label:'Viagens'},{key:'pedidos',label:'Pedidos'},
+  {key:'receita',label:state.mode==='live'?'Fretes informados':'Receita',format:'money'},
+  {key:'ticket',label:'Ticket médio',format:'money'},
+  {key:'custo',label:state.mode==='live'?'Custo indisponível':'Custo',format:'money'},
+  {key:'lucro',label:'Lucro válido',format:'money'}];
+ if(state.mode==='live')rows.forEach(x=>x.custo=null);
+ return '<div class="info-strip">Total de fretes por cliente não comprova valor recebido. Custos completos, lucro e margem não são deduzidos do abastecimento; exigem outras fontes.</div>'+
+ renderGrid('Resumo operacional por cliente',rows,cols,state,'clientes','Ticket médio calculado sobre pedidos com valor informado.');
 }
 function mdfeSituation(m,d){if(m.ambiguous)return 'Vínculo ambíguo';if(!m.viagemId)return 'Sem vínculo informado';if(!d.allViagens.some(v=>v.id===m.viagemId))return 'Viagem não encontrada';return 'Vinculado';}
 function renderMdfes(d,s){
