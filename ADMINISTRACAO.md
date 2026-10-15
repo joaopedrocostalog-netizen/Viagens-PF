@@ -72,3 +72,34 @@ O administrador não consegue bloquear a própria conta nem remover o último ad
 As rotas GET/POST /api/users e PATCH /api/users/:username exigem sessão administrativa válida; os demais perfis recebem HTTP 403. Nenhuma listagem inclui hash ou senha. Para o Operacional, o backend exclui custos, fretes, valores a receber, tributos e outras informações financeiras **antes** de responder, inclusive quando utiliza cache.
 
 A conta inicial ainda não foi provisionada no servidor real. Os testes automatizados verificam bootstrap, permissões, criação de usuários, senhas provisórias, bloqueios e revogações usando apenas dados simulados. Antes de produção, valide o backend, backups do arquivo privado, o HTTPS e os resultados retornados pelo DSS.
+
+## Como entrar no mesmo computador (Windows), sem GitHub Pages
+
+Após criar a conta admin, permaneça dentro da pasta do projeto Viagens-PF e abra um **novo PowerShell**:
+
+    $env:PORTAL_USERS_FILE = (Join-Path (Get-Location) "private\portal-users.json")
+    node api/server.mjs
+
+O servidor deve mostrar "Portal COSTALOG API na porta 3001" e continuar ligado. Não feche a janela do PowerShell.
+
+Para testar se o backend encontrou o arquivo de usuários, abra no navegador:
+
+    http://localhost:3001/api/health
+
+A resposta deve incluir "status":"ok" e "accounts":true. O campo "configured" pode ser false enquanto o DSS não estiver configurado, mas isso **não impede o login administrativo**.
+
+Abra o portal no mesmo computador:
+
+    http://localhost:3001/
+
+Clique em Entrar; o endereço da API deverá ser preenchido automaticamente como http://localhost:3001. Faça login com usuário admin e a senha definida no bootstrap. Este modo local funciona sem configurar HTTPS/CORS e é adequado para testes no próprio computador. Para acessar de outros computadores, publique a aplicação atrás de proxy HTTPS e controle de rede.
+
+Se aparecer "Failed to fetch", confirme:
+- O PowerShell do backend continua aberto e não mostrou erro?
+- A porta 3001 está disponível?
+- Você iniciou o servidor no mesmo diretório onde criou private/portal-users.json?
+- Se usar .env criado a partir do exemplo, confira o caminho PORTAL_USERS_FILE: no Windows, evite deixar /app/private/portal-users.json, que é um caminho destinado ao Docker.
+- Se a API apresentar "accounts":false, a variável PORTAL_USERS_FILE não aponta para o arquivo correto.
+- Se o backend não iniciar e informar "arquivo inexistente", corrija o caminho ou crie a conta pelo bootstrap. Não crie nem divulgue uma senha padrão.
+
+Se depois de entrar aparecer uma mensagem de erro do DSS, o administrador ainda poderá abrir Administração e criar funcionários; as consultas reais de viagens e fretes exigem configuração separada do DSS.
