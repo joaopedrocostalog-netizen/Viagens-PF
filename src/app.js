@@ -1,3 +1,4 @@
+import {normalizeOverview,costByClient} from './dss-mapping.mjs';
 /* COSTALOG | Viagens e Fretes. Sem credenciais no frontend. */
 const root = document.getElementById('app');
 const fmtBRL = new Intl.NumberFormat('pt-BR', {style:'currency',currency:'BRL',maximumFractionDigits:0});
@@ -78,23 +79,15 @@ function normalizeMdfe(v,i){
  const n=str(pick(v,['numeroMDFe','nroMDFe','nrMDFe','numero','id']));
  return {id:n||String(i+1),numero:n||'—',data:toDay(pick(v,['dataEmissao','dtEmissao','data'])),viagemId:str(pick(v,['idViagem','numeroViagem','nroViagem','nrViagem','viagemId','viagem']))||null,placa:str(pick(v,['placaVeiculo','placa','placaTracao'])),status:str(pick(v,['situacao','status']))||'Não informado'};
 }
-function normalizePayload(raw){
- const payload=raw.data||raw;const viagens=extractList(payload.viagens).map(normalizeViagem);
- const pedidos=extractList(payload.pedidos).map(normalizeDoc);
- const ctesApi=extractList(payload.ctes).map((v,i)=>({...normalizeDoc(v,i),isCte:true}));
- const inferred=pedidos.filter(x=>x.isCte);
- const ctes=ctesApi.length?ctesApi:inferred;
- const mdfes=extractList(payload.mdfes).map(normalizeMdfe);
- return {viagens,pedidos,ctes,mdfes,sources:{...(payload.sources||{viagens:true,pedidos:true,mdfes:Array.isArray(payload.mdfes)}),ctes:!!(ctesApi.length||inferred.length||payload.sources?.ctes)}};
-}
+function normalizePayload(raw){return normalizeOverview(raw);}
 function inRange(v){return !v||((!state.from||v>=state.from)&&(!state.to||v<=state.to));}
 function scoped(){const d=state.dataset;return {viagens:d.viagens.filter(x=>inRange(x.data)),allViagens:d.viagens,ctes:d.ctes.filter(x=>inRange(x.data)),pedidos:d.pedidos.filter(x=>inRange(x.data)),mdfes:d.mdfes.filter(x=>inRange(x.data)),sources:d.sources};}
 function totals(data){
  const trips=data.viagens;const ctes=data.ctes;
  const revenueKnown=trips.filter(v=>Number.isFinite(v.receita));
- const costsKnown=trips.filter(v=>Number.isFinite(v.custo));
- const revenue=revenueKnown.reduce((s,x)=>s+x.receita,0), cost=costsKnown.reduce((s,x)=>s+x.custo,0);
- const completeMoney=trips.length>0&&revenueKnown.length===trips.length&&costsKnown.length===trips.length;
+ const costsKnown=trips.filter(v=>Number.isFinite(state.mode==='live'?v.abastecimento:v.custo));
+ const revenue=revenueKnown.reduce((s,x)=>s+x.receita,0), cost=costsKnown.reduce((s,x)=>s+(state.mode==='live'?x.abastecimento:x.custo),0);
+ const completeMoney=state.mode!=='live'&&trips.length>0&&revenueKnown.length===trips.length&&costsKnown.length===trips.length;
  const orphan=data.sources.ctes?ctes.filter(c=>!c.viagemId||!data.allViagens.some(t=>t.id===c.viagemId)):null;
  const linked=data.mdfes.filter(m=>m.viagemId&&data.allViagens.some(t=>t.id===m.viagemId));
  const mismatched=data.sources.mdfes?data.mdfes.filter(m=>m.viagemId&&!data.allViagens.some(t=>t.id===m.viagemId)):null;
@@ -141,26 +134,26 @@ function renderPainel(d,s){
  return '<div class="section-title"><h2>Resultados do período</h2><span>'+dateBR(state.from)+' a '+dateBR(state.to)+'</span></div>'+
  '<div class="kpis">'+
  kpi('VIAGENS REGISTRADAS',number(d.viagens.length),'Viagens no período')+
- kpi('RECEITA DE VIAGENS',money(s.revenue),'Com valor informado','money')+
- kpi('CUSTO DAS VIAGENS',money(s.cost),'Com valor informado','money')+
- kpi('RESULTADO OPERACIONAL',money(s.profit),'Margem: '+s.margin,'money '+(s.profit>=0&&s.profit!==null?'positive':''))+
- kpi('CT-e SEM VIAGEM',orphanCount,'CT-e identificados: '+cteCount,'alert')+
+ kpi(state.mode==='live'?'FRETES VINCULADOS':'RECEITA DE VIAGENS',money(s.revenue),state.mode==='live'?'Soma de total_frete nos pedidos':'Com valor informado','money')+
+ kpi(state.mode==='live'?'ABASTECIMENTO':'CUSTO DAS VIAGENS',money(s.cost),state.mode==='live'?'Valor parcial informado nas RVs':'Com valor informado','money')+
+ kpi('RESULTADO OPERACIONAL',money(s.profit),state.mode==='live'?'Custo total não fornecido pelo DSS':'Margem: '+s.margin,'money '+(s.profit>=0&&s.profit!==null?'positive':''))+
+ kpi('CT-e SEM VÍNCULO',orphanCount,'CT-e identificados: '+cteCount,'alert')+
  kpi('MDF-e COM VÍNCULO INVÁLIDO',mdfeCount,'Com viagem inválida','alert')+
  '</div>'+
- '<div class="charts"><div class="card"><div class="card-head"><h3>Receita x custo por mês</h3><span>Ano '+esc(String(year))+'</span></div>'+chartSvg(d.viagens)+'<div class="chart-legend"><span><i class="legend-bullet" style="background:#e22231"></i>Receita</span><span><i class="legend-bullet" style="background:#777782"></i>Custo</span></div></div>'+
- '<div class="card"><div class="card-head"><h3>Receita por cliente</h3><span>Ranking do período</span></div>'+barRanking(d.viagens)+'</div></div>'+
+ '<div class="charts"><div class="card"><div class="card-head"><h3>'+(state.mode==='live'?'Fretes x abastecimento por mês':'Receita x custo por mês')+'</h3><span>Ano '+esc(String(year))+'</span></div>'+chartSvg(d.viagens)+'<div class="chart-legend"><span><i class="legend-bullet" style="background:#e22231"></i>Receita</span><span><i class="legend-bullet" style="background:#777782"></i>Custo</span></div></div>'+
+ '<div class="card"><div class="card-head"><h3>'+(state.mode==='live'?'Fretes por cliente':'Receita por cliente')+'</h3><span>Ranking do período</span></div>'+barRanking(d)+'</div></div>'+
  '<div class="bottom-panels"><div class="card"><div class="card-head"><h3>Viagens recentes</h3>'+button('go-viagens','Ver todas','btn-sm btn-ghost')+'</div>'+tableHtml(['Viagem','Data','Cliente','Placa','Situação'],d.viagens.slice().sort((a,b)=>b.data.localeCompare(a.data)).slice(0,5).map(v=>'<tr><td><button class="row-link" data-detail="viagens:'+attr(v.id)+'">'+esc(v.numero)+'</button></td><td>'+dateBR(v.data)+'</td><td>'+esc(v.cliente)+'</td><td>'+esc(v.placa||'—')+'</td><td>'+statusPill(v.status)+'</td></tr>'))+'</div>'+
  '<div class="card"><div class="card-head"><h3>Conciliação de documentos</h3><span>Alertas</span></div><div class="warn-list">'+
  '<div class="warn-row"><div><strong>CT-e sem viagem vinculada</strong><small>Requer identificação real do CT-e na API</small></div><b>'+orphanCount+'</b></div>'+
  '<div class="warn-row"><div><strong>MDF-e com viagem inexistente</strong><small>Vínculo explícito não localizado</small></div><b>'+mdfeCount+'</b></div>'+
- '<div class="warn-row"><div><strong>Viagens sem custo informado</strong><small>Não são consideradas no lucro consolidado</small></div><b>'+number(d.viagens.filter(x=>x.custo===null).length)+'</b></div>'+
+ '<div class="warn-row"><div><strong>'+(state.mode==='live'?'Viagens sem valor de abastecimento':'Viagens sem custo informado')+'</strong><small>Sem custo operacional total não é possível calcular lucro</small></div><b>'+number(d.viagens.filter(x=>state.mode==='live'?x.abastecimento===null:x.custo===null).length)+'</b></div>'+
  '</div></div></div>';
 }
 function chartSvg(trips){
  const months=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
  const aggregate=months.map((_,i)=>{const m=String(year)+'-'+String(i+1).padStart(2,'0');const t=trips.filter(x=>x.data.startsWith(m));return [t.reduce((s,x)=>s+(x.receita||0),0),t.reduce((s,x)=>s+(x.custo||0),0)];});
  const hasRevenue=trips.some(x=>Number.isFinite(x.receita)),hasCost=trips.some(x=>Number.isFinite(x.custo));
- if(!hasRevenue&&!hasCost)return '<div class="empty"><b>Sem dados para o gráfico</b>A API ainda não forneceu receita e custo.</div>';
+ if(!hasRevenue&&!hasCost)return '<div class="empty"><b>Sem dados para o gráfico</b>A API ainda não forneceu valores financeiros utilizáveis.</div>';
  const max=Math.max(1,...aggregate.flat())*1.1;const W=760,H=250,left=48,top=20,h=180,w=680;
  const xy=(i,val)=>(left+(i*w/11)).toFixed(1)+','+(top+h-(val/max*h)).toFixed(1);
  const grid=[0,1,2,3,4].map(i=>{let y=top+i*h/4;return '<line x1="'+left+'" y1="'+y+'" x2="'+(left+w)+'" y2="'+y+'" stroke="#303034" stroke-dasharray="3 5"/><text x="0" y="'+(y+4)+'" fill="#98989f" font-size="11">'+esc(fmtNum.format(Math.round(max*(1-i/4))))+'</text>';}).join('');
@@ -168,13 +161,14 @@ function chartSvg(trips){
  const line=(idx,color)=>'<polyline points="'+aggregate.map((v,i)=>xy(i,v[idx])).join(' ')+'" fill="none" stroke="'+color+'" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>'+aggregate.map((v,i)=>v[idx]>0?'<circle cx="'+(left+i*w/11)+'" cy="'+(top+h-v[idx]/max*h)+'" r="4" fill="'+color+'"/>':'').join('');
  return '<div class="chart"><svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Comparação mensal de receita e custo">'+grid+labels+(hasRevenue?line(0,'#e22231'):'')+(hasCost?line(1,'#777782'):'')+'</svg></div>';
 }
-function aggregateClients(trips){
+function aggregateClients(trips,orders){
+ if(state.mode==='live')return costByClient(trips,orders||[]);
  const acc=new Map();
  for(const v of trips){const k=v.cliente||'Não informado';const a=acc.get(k)||{cliente:k,viagens:0,receita:0,custo:0,receitaN:0,custoN:0};a.viagens++;if(Number.isFinite(v.receita)){a.receita+=v.receita;a.receitaN++;}if(Number.isFinite(v.custo)){a.custo+=v.custo;a.custoN++;}acc.set(k,a);}
  return [...acc.values()].sort((a,b)=>b.receita-a.receita);
 }
-function barRanking(trips){
- const data=aggregateClients(trips).slice(0,6);
+function barRanking(d){
+ const data=aggregateClients(d.viagens,d.pedidos).slice(0,6);
  if(!data.length)return '<div class="empty">Nenhum cliente no período.</div>';
  const top=Math.max(1,...data.map(x=>x.receita));
  return '<div class="bar-list">'+data.map(x=>'<div class="bar-item"><span class="bar-name" title="'+attr(x.cliente)+'">'+esc(x.cliente)+'</span><div class="bar-track"><div class="bar-fill" style="width:'+((x.receita/top)*100).toFixed(1)+'%"></div></div><span class="bar-num">'+(x.receitaN?money(x.receita):'—')+'</span></div>').join('')+'</div>';
@@ -193,21 +187,21 @@ function renderCtes(d){
  const combined=[...d.ctes.map(x=>({...x,category:'CT-e'})),...d.pedidos.filter(p=>!p.isCte).map(x=>({...x,category:'Pedido de frete'}))];
  let rows=searchRows(combined);if(state.filter==='vinculado')rows=rows.filter(x=>x.viagemId);if(state.filter==='pendente')rows=rows.filter(x=>!x.viagemId);rows.sort((a,b)=>b.data.localeCompare(a.data));const p=paginate(rows);
  return '<div class="table-tools"><h2>Pedidos de frete e CT-e</h2><div class="right-tools"><span class="status">'+number(rows.length)+' registros</span>'+button('csv',icon('download')+' Exportar','btn-sm')+'</div></div>'+
- '<div class="info-strip">Pedidos de frete só são identificados como CT-e quando a fonte disponibiliza um número ou chave de CT-e. A ausência desse campo não significa que o CT-e não exista.</div>'+
+ '<div class="info-strip">GET /listarPedidosFrete: nro_cte identifica CT-e quando preenchido; rv_viagem referencia a viagem por rv_id ou nro_rv, se único. CT-e não localizado pode corresponder a viagem fora do período.</div>'+
  tableHtml(['Documento','Tipo','Emissão','Cliente','Viagem vinculada','Valor','Situação'],p.slice.map(v=>'<tr><td><button class="row-link" data-detail="ctes:'+attr(v.id)+'">'+esc(v.numero)+'</button></td><td>'+esc(v.category)+'</td><td>'+dateBR(v.data)+'</td><td>'+esc(v.cliente)+'</td><td>'+(v.viagemId?esc(v.viagemId):'<span class="pill red">Não vinculada</span>')+'</td><td>'+money(v.valor)+'</td><td>'+statusPill(v.status)+'</td></tr>'))+paging(p);
 }
 function renderClientes(d,s){
- let rows=searchRows(aggregateClients(d.viagens));const p=paginate(rows);
- return '<div class="kpis">'+kpi('CLIENTES COM VIAGENS',number(rows.length),'No período selecionado')+kpi('RECEITA IDENTIFICADA',money(s.revenue),'Com campo de receita','money')+kpi('CUSTO IDENTIFICADO',money(s.cost),'Com campo de custo','money')+kpi('RESULTADO VALIDÁVEL',money(s.profit),'Apenas se todos os valores existirem','money')+'</div>'+
+ let rows=searchRows(aggregateClients(d.viagens,d.pedidos));const p=paginate(rows);
+ return '<div class="kpis">'+kpi(state.mode==='live'?'CLIENTES COM PEDIDOS':'CLIENTES COM VIAGENS',number(rows.length),'No período selecionado')+kpi(state.mode==='live'?'FRETES VINCULADOS':'RECEITA IDENTIFICADA',money(s.revenue),state.mode==='live'?'Por viagem identificada':'Com campo de receita','money')+kpi(state.mode==='live'?'ABASTECIMENTO RV':'CUSTO IDENTIFICADO',money(s.cost),state.mode==='live'?'Custo parcial, sem rateio por cliente':'Com campo de custo','money')+kpi('RESULTADO VALIDÁVEL',money(s.profit),'Apenas se todos os valores existirem','money')+'</div>'+
  '<div class="table-tools"><h2>Rentabilidade por cliente</h2><div class="right-tools">'+button('csv',icon('download')+' Exportar','btn-sm')+'</div></div>'+
- tableHtml(['Cliente','Viagens','Receita','Custo','Resultado','Margem'],p.slice.map(v=>{const valid=v.receitaN===v.viagens&&v.custoN===v.viagens;const luc=valid?v.receita-v.custo:null;return '<tr><td><strong>'+esc(v.cliente)+'</strong></td><td>'+number(v.viagens)+'</td><td>'+(v.receitaN?money(v.receita):'—')+'</td><td>'+(v.custoN?money(v.custo):'—')+'</td><td>'+money(luc)+'</td><td>'+pct(valid&&v.receita?luc/v.receita*100:null)+'</td></tr>';}))+paging(p)+
- '<p class="help">O resultado financeiro de um cliente fica indisponível quando uma ou mais viagens não possuem receita ou custo. Nenhum valor ausente é tratado como zero.</p>';
+ tableHtml(['Cliente','Viagens','Receita','Custo','Resultado','Margem'],p.slice.map(v=>{const valid=state.mode!=='live'&&v.receitaN===v.viagens&&v.custoN===v.viagens;const luc=valid?v.receita-v.custo:null;return '<tr><td><strong>'+esc(v.cliente)+'</strong></td><td>'+number(v.viagens)+'</td><td>'+(v.receitaN?money(v.receita):'—')+'</td><td>'+(v.custoN?money(v.custo):'—')+'</td><td>'+money(luc)+'</td><td>'+pct(valid&&v.receita?luc/v.receita*100:null)+'</td></tr>';}))+paging(p)+
+ '<p class="help">'+(state.mode==='live'?'O total_frete representa valores de pedidos, não faturamento confirmado. Custos por cliente e lucro dependem de outros custos e rateios, ainda não disponíveis.':'O resultado financeiro de um cliente fica indisponível quando uma ou mais viagens não possuem receita ou custo. Nenhum valor ausente é tratado como zero.')+'</p>';
 }
-function mdfeSituation(m,d){if(!m.viagemId)return 'Sem vínculo informado';if(!d.allViagens.some(v=>v.id===m.viagemId))return 'Viagem não encontrada';return 'Vinculado';}
+function mdfeSituation(m,d){if(m.ambiguous)return 'Vínculo ambíguo';if(!m.viagemId)return 'Sem vínculo informado';if(!d.allViagens.some(v=>v.id===m.viagemId))return 'Viagem não encontrada';return 'Vinculado';}
 function renderMdfes(d,s){
  let rows=searchRows(d.mdfes);if(state.filter==='vinculado')rows=rows.filter(m=>mdfeSituation(m,d)==='Vinculado');if(state.filter==='pendente')rows=rows.filter(m=>mdfeSituation(m,d)!=='Vinculado');rows.sort((a,b)=>b.data.localeCompare(a.data));const p=paginate(rows);
  return '<div class="table-tools"><h2>Conciliação de MDF-e</h2><div class="right-tools"><label class="btn btn-sm" for="csvMDFE">'+icon('download')+' Importar CSV de MDF-e</label><input id="csvMDFE" type="file" accept=".csv,text/csv" hidden>'+button('csv',icon('download')+' Exportar','btn-sm')+'</div></div>'+
- '<div class="info-strip">O cruzamento é feito por identificador explícito de viagem. Correspondência apenas por placa ou data não é confirmação suficiente. Caso a API de MDF-e ainda não exista, importe um CSV com as colunas: numero,data,viagemId,placa,status.</div>'+
+ '<div class="info-strip">'+(d.sources.mdfeReferences?'nro_mdf traz referências nos registros do DSS, não o status fiscal do MDF-e. Para validar, conecte API de MDF-e ou importe CSV.':'Conciliação por ID de viagem. Placa e data não comprovam vínculo.')+' CSV: numero,data,viagemId,placa,status.</div>'+
  tableHtml(['Nº MDF-e','Emissão','Viagem','Placa','Situação fiscal','Conciliação'],p.slice.map(v=>'<tr><td><button class="row-link" data-detail="mdfes:'+attr(v.id)+'">'+esc(v.numero)+'</button></td><td>'+dateBR(v.data)+'</td><td>'+esc(v.viagemId||'—')+'</td><td>'+esc(v.placa||'—')+'</td><td>'+statusPill(v.status)+'</td><td>'+statusPill(mdfeSituation(v,d))+'</td></tr>'))+paging(p);
 }
 function renderRelatorios(d,s){
@@ -217,15 +211,15 @@ function renderRelatorios(d,s){
 }
 function renderIntegracoes(){
  return '<div class="section-title"><h2>Integração com o DSS</h2><span>Configuração técnica</span></div>'+
- '<div class="integration-box"><strong>1. Fontes planejadas</strong><p><code>listarViagens</code> e <code>listarPedidosFrete</code> são as operações informadas para a integração. O caminho HTTP, método, parâmetros, autenticação e campos de resposta precisam ser conferidos no Swagger da instalação.</p><a href="https://costalog.dssinformatica.com.br/wsdss/docs?urls.primaryName=APIs+Gerais" rel="noopener noreferrer" target="_blank">Abrir documentação fornecida do DSS ↗</a></div>'+
+ '<div class="integration-box"><strong>1. Fontes mapeadas</strong><p><code>GET /listarViagens</code> e <code>GET /listarPedidosFrete</code>: <code>data_inicio</code> e <code>data_fim</code> em dd/mm/aaaa. Ambos usam array <code>registros</code>. Ainda é necessário confirmar endereço base e autenticação do DSS.</p><a href="https://costalog.dssinformatica.com.br/wsdss/docs?urls.primaryName=APIs+Gerais" rel="noopener noreferrer" target="_blank">Abrir documentação fornecida do DSS ↗</a></div>'+
  '<div class="integration-box"><strong>2. Backend seguro</strong><p>As consultas saem do backend <code>api/server.mjs</code>. Configure o endereço, as rotas e credenciais exclusivamente nas variáveis do servidor; nunca no JavaScript público ou no GitHub. O endpoint interno esperado pelo portal é <code>GET /api/overview</code>.</p></div>'+
- '<div class="integration-box"><strong>3. CT-e e MDF-e</strong><p>Os pedidos de frete não são automaticamente CT-e. Para encontrar CT-e sem viagem, a API precisa retornar número/chave de CT-e e o identificador de viagem. O cruzamento com MDF-e exige uma fonte específica do portal ou a importação de CSV.</p></div>'+
+ '<div class="integration-box"><strong>3. CT-e e MDF-e</strong><p><code>nro_cte</code> identifica CT-e; <code>rv_viagem</code> vincula às viagens; <code>nro_mdf</code> fornece referências de MDF-e. <code>total_frete</code> é valor de pedido e <code>valor_total_abastecido</code> representa somente despesa parcial.</p></div>'+
  '<div class="integration-box"><strong>4. Publicação no site da empresa</strong><p>A interface é estática e pode ser incorporada por iframe ou rota interna. O backend deve ficar protegido por autenticação e HTTPS, preferencialmente no mesmo domínio da empresa ou atrás do proxy corporativo. GitHub Pages, isoladamente, não executa o backend do DSS.</p></div>';
 }
 function renderDrawer(d){
  const [kind,id]=state.selected.split(':');const item=kind==='viagens'?d.viagens.find(x=>x.id===id):kind==='ctes'?[...d.ctes,...d.pedidos].find(x=>x.id===id):d.mdfes.find(x=>x.id===id);
  if(!item){state.selected=null;return '';}
- const rows=Object.entries(item).filter(([k])=>!['id','isCte'].includes(k)).map(([k,v])=>'<div class="detail-line"><span>'+esc(({numero:'Número',data:'Data',cliente:'Cliente',placa:'Placa',origem:'Origem',destino:'Destino',receita:'Receita',custo:'Custo',status:'Situação',viagemId:'Viagem',valor:'Valor',chave:'Chave CT-e'}[k]||k))+'</span><b>'+(['receita','custo','valor'].includes(k)?money(v):k==='data'?dateBR(v):esc(v===null||v===''?'—':v))+'</b></div>').join('');
+ const rows=Object.entries(item).filter(([k])=>!['id','isCte'].includes(k)).map(([k,v])=>'<div class="detail-line"><span>'+esc(({numero:'Número',data:'Data',cliente:'Cliente',abastecimento:'Abastecimento (R$)',nroMdf:'MDF-e informado',rvReferencia:'RV referenciada',pedidoNumero:'Pedido de frete',cteNumero:'Número CT-e',placa:'Placa',origem:'Origem',destino:'Destino',receita:'Receita',custo:'Custo',status:'Situação',viagemId:'Viagem',valor:'Valor',chave:'Chave CT-e'}[k]||k))+'</span><b>'+(['receita','custo','valor'].includes(k)?money(v):k==='data'?dateBR(v):esc(v===null||v===''?'—':v))+'</b></div>').join('');
  let related='';
  if(kind==='viagens'){const cs=d.ctes.filter(c=>c.viagemId===id),ms=d.mdfes.filter(m=>m.viagemId===id);related='<h3 class="drawer-section">Documentos relacionados</h3><p class="help">CT-e identificados: '+cs.map(x=>esc(x.numero)).join(', ')+(cs.length?'':'nenhum')+'</p><p class="help">MDF-e vinculados: '+ms.map(x=>esc(x.numero)).join(', ')+(ms.length?'':'nenhum')+'</p>';}
  return '<div class="overlay" data-action="close-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Detalhes do registro"><div class="drawer-top"><h2>Detalhes · '+esc(item.numero)+'</h2>'+button('close',icon('close'),'btn-sm')+'</div>'+rows+related+'</aside></div>';
@@ -241,7 +235,7 @@ function exportCsv(which){
  const d=scoped();let rows=[],name='relatorio';
  if(which==='viagens'){name='viagens';rows=[['Viagem','Data','Cliente','Placa','Origem','Destino','Receita','Custo','Situacao'],...d.viagens.map(v=>[v.numero,v.data,v.cliente,v.placa,v.origem,v.destino,v.receita,v.custo,v.status])];}
  else if(which==='ctes'){name='pedidos_cte';rows=[['Documento','Tipo','Data','Cliente','Viagem','Valor','Situacao'],...[...d.ctes.map(x=>({...x,tipo:'CT-e'})),...d.pedidos.filter(x=>!x.isCte).map(x=>({...x,tipo:'Pedido de frete'}))].map(v=>[v.numero,v.tipo,v.data,v.cliente,v.viagemId,v.valor,v.status])];}
- else if(which==='clientes'){name='clientes';rows=[['Cliente','Viagens','Receita','Custo'],...aggregateClients(d.viagens).map(v=>[v.cliente,v.viagens,v.receitaN===v.viagens?v.receita:'',v.custoN===v.viagens?v.custo:''])];}
+ else if(which==='clientes'){name='clientes';rows=[['Cliente','Viagens','Receita','Custo'],...aggregateClients(d.viagens,d.pedidos).map(v=>[v.cliente,v.viagens,v.receitaN===v.viagens?v.receita:'',v.custoN===v.viagens?v.custo:''])];}
  else if(which==='mdfes'){name='mdfe';rows=[['MDF-e','Data','Viagem','Placa','Situacao','Conciliacao'],...d.mdfes.map(v=>[v.numero,v.data,v.viagemId,v.placa,v.status,mdfeSituation(v,d)])];}
  else{return exportCsv('viagens');}
  const blob=new Blob(['\uFEFF'+rows.map(r=>r.map(csvCell).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8;'});
