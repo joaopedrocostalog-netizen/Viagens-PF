@@ -39,6 +39,16 @@ test('Login individual, projeção por perfil, revogação e bloqueio de status 
  t.after(()=>child.kill('SIGTERM'));
  await waitHealth(port);
  const base='http://127.0.0.1:'+port;
+ // Interface e API compartilham a mesma origem no modo local, sem CORS.
+ const index=await fetch(base+'/');assert.equal(index.status,200);
+ assert((await index.text()).includes('COSTALOG'));
+ const js=await fetch(base+'/src/app.js');assert.equal(js.status,200);
+ assert((await js.text()).includes("renderConnect"));
+ const privateFiles=['/.env','/private/portal-users.json','/api/server.mjs'];
+ for(const path of privateFiles){
+  const result=await fetch(base+path);
+  assert.equal(result.status,404,'Servidor nunca pode servir '+path);
+ }
  const login=async username=>{
   const r=await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password:'senha-forte-2026!'})});
   assert.equal(r.status,200);
