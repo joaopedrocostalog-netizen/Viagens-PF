@@ -67,7 +67,12 @@ async function queryDss(name,from,to){
  let body;
  if(c.method==='POST'){headers['Content-Type']='application/json';body=(c.body||'{}').replaceAll('{{from}}',from).replaceAll('{{to}}',to);JSON.parse(body);}
  const r=await fetch(url,{method:c.method,headers,body,signal:AbortSignal.timeout(timeout),redirect:'error'});
- if(!r.ok)throw Error('Consulta '+name+' retornou HTTP '+r.status);
+ if(!r.ok){
+  if(r.status===401)throw Error('DSS recusou o usuário ou senha (HTTP 401). Confira DSS_USERNAME e DSS_PASSWORD no servidor privado.');
+  if(r.status===403)throw Error('DSS negou acesso à operação (HTTP 403). Confira permissões e o módulo tms_integr_prog_pg_motorista.');
+  if(r.status===404)throw Error('Rota '+name+' não encontrada no DSS (HTTP 404). Confira DSS_BASE_URL e DSS_'+name.toUpperCase()+'_PATH.');
+  throw Error('Consulta '+name+' retornou HTTP '+r.status);
+ }
  let v;try{v=await r.json();}catch{throw Error('Resposta '+name+' não é JSON');}
  if(v&&typeof v.status==='number'&&v.status!==200)throw Error('DSS '+name+' recusou a consulta (status '+v.status+'): '+String(v.mensagemErro||'verifique permissões e credenciais').slice(0,180));
  const list=listFrom(getPath(v,c.dataPath));
@@ -87,6 +92,7 @@ const server=http.createServer(async(req,res)=>{
  if(url.pathname!=='/api/overview')return reply(res,404,{error:'Rota não encontrada'},origin);
  if(!authorized(req))return reply(res,401,{error:'Acesso ao portal não autorizado'},origin);
  if(!base)return reply(res,503,{error:'DSS_BASE_URL não configurado no servidor privado.'},origin);
+ if(!dssCredentialsReady())return reply(res,503,{error:'Basic Auth do DSS não configurado no backend. Informe DSS_USERNAME e DSS_PASSWORD no arquivo .env privado.'},origin);
  const from=url.searchParams.get('from')||'',to=url.searchParams.get('to')||'';
  if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)return reply(res,400,{error:'Intervalo de datas inválido'},origin);
  try{
