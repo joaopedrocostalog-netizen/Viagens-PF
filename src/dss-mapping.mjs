@@ -115,8 +115,8 @@ export function normalizeOverview(raw){
  const hasMdfeApi=!!payload.sources?.mdfes;
  const mdfes=hasMdfeApi?validArray(payload.mdfes).map(mapMdfe):referencesMdfe(viagens,pedidos);
  return {viagens,pedidos,ctes,mdfes,sources:{
-  viagens:true,pedidos:true,ctes:true,mdfes:hasMdfeApi,mdfeReferences:!hasMdfeApi,
-  ...payload.sources
+  ...payload.sources,
+  viagens:true,pedidos:true,ctes:true,mdfes:hasMdfeApi,mdfeReferences:!hasMdfeApi
  }};
 }
 export function costByClient(viagens,pedidos){
