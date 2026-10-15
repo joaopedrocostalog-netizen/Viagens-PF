@@ -113,7 +113,7 @@ function totals(data){
 }
 const navItems=[['painel','home','Painel geral'],['viagens','truck','Viagens / RV'],['ctes','doc','Pedidos / CT-e'],['entregas','doc','Entregas'],['pendencias','shield','Pendências'],['rotas','chart','Rotas'],['veiculos','truck','Frota'],['motoristas','home','Motoristas'],['containers','doc','Containers'],['mdfes','shield','MDF-e'],['relatorios','doc','Relatórios'],['faturamento','doc','Faturamento'],['clientes','chart','Clientes / Fretes'],['analises','chart','Análises financeiras'],['administracao','cog','Administração'],['integracoes','cog','Integração DSS']];
 const tabs=[['painel','Painel'],['viagens','Viagens'],['ctes','Pedidos / CT-e'],['entregas','Entregas'],['pendencias','Pendências'],['rotas','Rotas'],['veiculos','Frota'],['motoristas','Motoristas'],['containers','Containers'],['mdfes','MDF-e'],['relatorios','Relatórios'],['faturamento','Faturamento'],['clientes','Clientes'],['analises','Análises financeiras'],['administracao','Administração'],['integracoes','Integração']];
-function button(action,label,extra){return '<button class="btn '+(extra||'')+'" data-action="'+action+'">'+label+'</button>';}
+function button(action,label,extra){return '<button type="button" class="btn '+(extra||'')+'" data-action="'+action+'">'+label+'</button>';}
 function render(){
  state.view=safeView(state.role,state.view);
  const d=scoped(),stats=totals(d);
