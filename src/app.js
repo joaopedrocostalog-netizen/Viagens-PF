@@ -117,7 +117,9 @@ function button(action,label,extra){return '<button class="btn '+(extra||'')+'" 
 function render(){
  state.view=safeView(state.role,state.view);
  const d=scoped(),stats=totals(d);
- const nav=navItems.filter(x=>permittedView(state.role,x[0])).map(x=>'<button class="side-link '+(state.view===x[0]?'active':'')+'" data-nav="'+x[0]+'">'+icon(x[1])+esc(x[2])+'</button>').join('');
+ const groupFor=x=>['faturamento','clientes','analises'].includes(x)?'FINANCEIRO':['administracao','integracoes'].includes(x)?'ACESSO RESTRITO':'OPERACIONAL';
+ const visibleNav=navItems.filter(x=>permittedView(state.role,x[0]));
+ const nav=visibleNav.map((x,i)=>(i===0||groupFor(x[0])!==groupFor(visibleNav[i-1][0])?'<div class="side-section-label">'+groupFor(x[0])+'</div>':'')+'<button class="side-link '+(state.view===x[0]?'active':'')+'" data-nav="'+x[0]+'">'+icon(x[1])+esc(x[2])+'</button>').join('');
  const buttons=tabs.filter(x=>permittedView(state.role,x[0])).map(x=>'<button class="tab '+(state.view===x[0]?'active':'')+'" role="tab" aria-selected="'+(state.view===x[0])+'" data-nav="'+x[0]+'">'+esc(x[1])+'</button>').join('');
  const message=state.mode==='live'?'<div class="info-strip '+(state.error?'error':'live')+'"><strong>Dados do DSS:</strong> '+(state.error?'A última sincronização falhou. Mantidos os últimos dados reais carregados; podem estar desatualizados. '+esc(state.error):'Consulta concluída. Os campos não disponibilizados pela API são exibidos como “—”.')+'</div>':'<div class="info-strip'+(state.error?' error':'')+'"><strong>DADOS DEMONSTRATIVOS:</strong> números fictícios usados apenas para visualizar o portal. Nenhuma informação real da COSTALOG está sendo exibida.'+(state.error?'<div>'+esc(state.error)+'</div>':'')+'</div>';
  root.innerHTML='<div class="layout">'+
@@ -285,7 +287,8 @@ function renderIntegracoes(){
 function renderDrawer(d){
  const [kind,id]=state.selected.split(':');const item=kind==='viagens'?d.viagens.find(x=>x.id===id):kind==='ctes'?[...d.ctes,...d.pedidos].find(x=>x.id===id):d.mdfes.find(x=>x.id===id);
  if(!item){state.selected=null;return '';}
- const rows=Object.entries(item).filter(([k])=>!['id','isCte'].includes(k)).map(([k,v])=>'<div class="detail-line"><span>'+esc(({numero:'Número',data:'Data',cliente:'Cliente',abastecimento:'Abastecimento (R$)',nroMdf:'MDF-e informado',rvReferencia:'RV referenciada',pedidoNumero:'Pedido de frete',cteNumero:'Número CT-e',placa:'Placa',origem:'Origem',destino:'Destino',receita:'Receita',custo:'Custo',status:'Situação',viagemId:'Viagem',valor:'Valor',chave:'Chave CT-e'}[k]||k))+'</span><b>'+(['receita','custo','valor'].includes(k)?money(v):k==='data'?dateBR(v):esc(v===null||v===''?'—':v))+'</b></div>').join('');
+ const secureKeys=new Set(['custo','receita','abastecimento','custoAbastecimentoKm','adiantamento','proventos','liquido','valor','valorReceber','valorAverbacao','valorIcmsIss','freteSemIcms','valorMercadorias','numeroFatura','liberadoFaturamento','statusPagamentoSaldo','dataPagamentoSaldo','contratoVf']);
+ const rows=Object.entries(item).filter(([k])=>!['id','isCte'].includes(k)&&(state.permissions.financeiro||!secureKeys.has(k))).map(([k,v])=>'<div class="detail-line"><span>'+esc(({numero:'Número',data:'Data',cliente:'Cliente',abastecimento:'Abastecimento (R$)',nroMdf:'MDF-e informado',rvReferencia:'RV referenciada',pedidoNumero:'Pedido de frete',cteNumero:'Número CT-e',placa:'Placa',origem:'Origem',destino:'Destino',receita:'Receita',custo:'Custo',status:'Situação',viagemId:'Viagem',valor:'Valor',chave:'Chave CT-e'}[k]||k))+'</span><b>'+(['receita','custo','valor'].includes(k)?money(v):k==='data'?dateBR(v):esc(v===null||v===''?'—':v))+'</b></div>').join('');
  let related='';
  if(kind==='viagens'){const cs=d.ctes.filter(c=>c.viagemId===id),ms=d.mdfes.filter(m=>m.viagemId===id);related='<h3 class="drawer-section">Documentos relacionados</h3><p class="help">CT-e identificados: '+cs.map(x=>esc(x.numero)).join(', ')+(cs.length?'':'nenhum')+'</p><p class="help">MDF-e vinculados: '+ms.map(x=>esc(x.numero)).join(', ')+(ms.length?'':'nenhum')+'</p>';}
  return '<div class="overlay" data-action="close-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Detalhes do registro"><div class="drawer-top"><h2>Detalhes · '+esc(item.numero)+'</h2>'+button('close',icon('close'),'btn-sm')+'</div>'+rows+related+'</aside></div>';
@@ -319,10 +322,11 @@ async function portalLogin(){
  }catch(err){alert('Login não autorizado: '+err.message);}
 }
 function clearSession(){
+ identityEpoch++;
  const token=state.token,url=state.apiUrl;
  if(token&&url)fetch(url.replace(/\/$/,'')+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+token},credentials:'omit'}).catch(()=>{});
  state.token='';state.user=null;state.role='operacional';state.permissions={operacional:true,financeiro:false,admin:false};
- state.mode='demo';state.dataset=demo;state.view='painel';state.prevDataset=null;state.selected=null;state.lastSync=null;state.apiDiagnostics=null;
+ state.mode='demo';state.dataset=demo;state.view='painel';state.prevDataset=null;state.loading=false;state.selected=null;state.lastSync=null;state.apiDiagnostics=null;
 }
 function csvCell(s){const v=str(s);return '"'+v.replace(/"/g,'""')+'"';}
 function exportCsv(which){
@@ -337,6 +341,7 @@ function exportCsv(which){
 }
 function parseCsv(content){const text=content.replace(/^\uFEFF/,'').replace(/\r/g,'');const rows=text.split('\n').filter(x=>x.trim());if(rows.length<2)return [];const sep=rows[0].includes(';')?';':',';function parseLine(l){const out=[];let token='',quoted=false;for(let i=0;i<l.length;i++){const c=l[i];if(c==='"'&&l[i+1]==='"'&&quoted){token+='"';i++;}else if(c==='"'){quoted=!quoted;}else if(c===sep&&!quoted){out.push(token);token='';}else token+=c;}out.push(token);return out;}const headers=parseLine(rows.shift()).map(normalKey);return rows.map((l,i)=>{const fields=parseLine(l);const v={};headers.forEach((h,j)=>v[h]=fields[j]||'');return normalizeMdfe(v,i);}).filter(x=>x.numero!=='—');}
 async function loadData(){
+ const epoch=identityEpoch;
  if(!state.token){state.connect=true;state.loading=false;state.error='Para carregar os dados do DSS, informe o token de acesso do portal na janela Conectar API.';render();return;}
  state.loading=true;state.connect=false;state.error='';render();
  try{
@@ -344,16 +349,18 @@ async function loadData(){
   const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),45000);
   let response;try{response=await fetch(url,{headers:state.token?{'Authorization':'Bearer '+state.token}:{},credentials:'omit',signal:controller.signal});}finally{clearTimeout(timer);}
   if(!response.ok){let message='HTTP '+response.status;try{const b=await response.json();message=b.error||message;}catch{}
-   if(response.status===401){state.token='';state.connect=true;message='Token de acesso ao portal inválido ou ausente. Digite o token de acesso do portal (não a senha Basic Auth do DSS).';}
+   if(response.status===401){clearSession();state.connect=true;message='Sessão encerrada ou expirada. Entre novamente com seu usuário e sua senha do portal.';}
    else if(response.status===503){message='O backend precisa ser configurado no servidor privado: '+message;}
    throw new Error(message);}
   const data=await response.json();
+  if(epoch!==identityEpoch)return;
   if(!data||!data.data)throw new Error('Formato de resposta desconhecido');
   state.dataset=normalizePayload(data);state.mode='live';state.error='';state.page=1;state.lastSync=data.updatedAt||new Date().toISOString();state.prevDataset=null;
  }catch(err){
+  if(epoch!==identityEpoch && state.token)return;
   const alreadyLive=state.mode==='live';if(!alreadyLive){state.mode='demo';state.dataset=demo;}
   state.error='API indisponível: '+(err.name==='AbortError'?'tempo limite de 45 segundos':err.message)+(alreadyLive?'. Dados anteriores mantidos.':'. Exibindo somente dados fictícios.');
- }finally{state.loading=false;render();}
+ }finally{if(epoch===identityEpoch || !state.token){state.loading=false;render();}}
 }
 
 function exportAdvanced(type,format){
@@ -376,6 +383,7 @@ function exportAdvanced(type,format){
  }
 }
 let refreshTimer=null;
+let identityEpoch=0;
 function activateRefresh(){
  if(refreshTimer)clearInterval(refreshTimer);
  if(state.autoRefresh>0)refreshTimer=setInterval(()=>{
@@ -404,7 +412,7 @@ root.addEventListener('click',e=>{
  const sort=e.target.closest('[data-sort]');if(sort){const k=sort.dataset.sort;state.sortDir=state.sortKey===k&&state.sortDir==='asc'?'desc':'asc';state.sortKey=k;state.page=1;render();return;}
  const report=e.target.closest('[data-report-select]');if(report){state.reportSelected=report.dataset.reportSelect;state.reportMulti=false;render();return;}
  const priority=e.target.closest('[data-alert-priority]');if(priority){state.alertPriority=priority.dataset.alertPriority;state.page=1;render();return;}
- const exp=e.target.closest('[data-export]');if(exp){exportCsv(exp.dataset.export);return;}
+ const exp=e.target.closest('[data-export]');if(exp){try{exportAdvanced(exp.dataset.export,'csv');}catch(err){alert(err.message);}return;}
  const act=e.target.closest('[data-action]');if(!act)return;
  const action=act.dataset.action;
  if(action==='close-overlay'&&e.target!==act)return;
