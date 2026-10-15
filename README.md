@@ -128,3 +128,75 @@ Uma forma de rodar a API em servidor Linux/Windows com Docker é configurar .env
     docker compose up -d --build
 
 O compose.yaml expõe a porta apenas no loopback (127.0.0.1:3001), não diretamente na internet. A empresa precisa configurar um proxy reverso HTTPS autenticado para a URL usada na tela "Conectar API". Nunca hospede o arquivo .env no GitHub Pages.
+
+
+## Permissões de acesso e separação de viagens e faturamento
+
+O portal agora tem uma separação real entre módulos **Operacional** e **Financeiro**. A segurança não depende de esconder abas: a API sanitiza os dados antes de transmiti-los.
+
+| Perfil | O que pode consultar |
+|---|---|
+| operacional | Painel operacional, RVs, pedidos/CT-e sem valores, entregas, pendências operacionais, rotas, frota, motoristas, containers, referências MDF-e e relatórios operacionais |
+| financeiro | Tudo de operacional **e** faturamento, valores de frete, custos parciais, análises de clientes, relatórios financeiros |
+| administrador | Tudo de operacional e financeiro **e** administração/diagnósticos e integração |
+
+- Campos como total_frete, valor_receber, valor_total_abastecido, adiantamentos, proventos, tributos, valores de averbação e números de fatura **não saem da API** para usuários operacionais. O servidor usa lista explícita de campos operacionais permitidos.
+- Os perfis de faturamento são restritos também em **Excel/CSV/PDF**. Links, menus ou requisições adulteradas não podem contornar o filtro de dados no servidor.
+- Senhas de funcionários não são as senhas Basic Auth do DSS. Cada conta utiliza uma senha individual protegida com scrypt e sal. A sessão expira após 8 horas e é apagada no logout. Desativar uma conta ou alterar sua senha invalida a sessão existente.
+- O antigo token PORTAL_ACCESS_TOKEN funciona apenas para compatibilidade quando **PORTAL_USERS_FILE não estiver configurado**. Para ter separação real de acesso, configure o arquivo de usuários e não distribua um token administrador compartilhado.
+- O código está em api/auth.mjs e api/access.mjs, o gerenciador de contas em api/users.mjs e a interface em src/app.js / src/access-ui.mjs.
+
+### Criando as contas (somente no servidor privado)
+
+Configure PORTAL_USERS_FILE para apontar para um arquivo **fora da pasta publicada no site**, nunca dentro do GitHub Pages.
+
+Exemplo num servidor Linux com Node.js instalado, na pasta do projeto:
+
+    mkdir -p private
+    export PORTAL_USERS_FILE=./private/portal-users.json
+    node api/users.mjs add gerente administrador
+    node api/users.mjs add financeiro01 financeiro
+    node api/users.mjs add operacional01 operacional
+    node api/users.mjs list
+
+Os comandos add pedem uma senha de **no mínimo 12 caracteres** no terminal sem mostrá-la. O comando list não mostra senhas nem hashes.
+
+No Windows PowerShell, a configuração do caminho é:
+
+    New-Item -ItemType Directory -Force private
+    $env:PORTAL_USERS_FILE=".\private\portal-users.json"
+    node api/users.mjs add gerente administrador
+    node api/users.mjs add operacional01 operacional
+
+Para alterar a função de alguém, bloquear uma conta ou redefinir a senha:
+
+    node api/users.mjs role operacional01 financeiro
+    node api/users.mjs disable operacional01
+    node api/users.mjs enable operacional01
+    node api/users.mjs password operacional01
+
+Depois, no servidor privado que executará a API, ajuste o arquivo .env:
+
+    PORTAL_USERS_FILE=/app/private/portal-users.json
+
+A configuração acima corresponde ao caminho de dentro do Docker em compose.yaml. O arquivo privado de usuários é montado **somente para leitura** em /app/private/portal-users.json. Para execução direta, sem Docker, use o caminho real do arquivo nesse servidor.
+
+Configure também DSS_USERNAME e DSS_PASSWORD exclusivamente no servidor, e crie um proxy HTTPS com acesso corporativo. Se o usuário Node dentro do contêiner não tiver permissão de leitura no arquivo, ajuste a propriedade/permissões do arquivo no host, sem torná-lo público.
+
+    docker compose up -d --build
+
+O contêiner não precisa escrever o arquivo de usuários: criação, desativação e atualização das contas são realizadas pelo CLI no servidor. Faça backup protegido do arquivo privado e mantenha senhas sob responsabilidade da TI.
+
+### Como funciona para o funcionário
+
+1. Abre a página do portal.
+2. Clica em Entrar e informa o endereço HTTPS do backend corporativo, seu usuário e a senha individual.
+3. O portal identifica o perfil atribuído no servidor e apresenta somente as abas autorizadas.
+4. Usuários operacionais não recebem valores financeiros nem em respostas diretas do endpoint /api/overview.
+5. Ao clicar em Sair, a sessão é revogada e os dados anteriores são removidos da interface.
+
+**Importante:** o GitHub Pages continua público como hospedagem do código estático e mostra apenas **dados fictícios** quando não há login. Os registros reais devem ser acessados somente por login autenticado via servidor da empresa. Para um portal integralmente privado, hospede também o frontend na rede corporativa, atrás de SSO/reverse proxy. O modo legado com token compartilhado não deve ser usado para conceder acesso a funcionários.
+
+### Testes de proteção
+
+Os testes automatizados validam projeções distintas de resposta DSS para operacional/financeiro; acesso negado a diagnósticos administrativos; isolamento do cache entre perfis; logout; bloqueio imediato de usuário; abas visíveis por perfil; exportação que não inclui campos financeiros para um funcionário operacional.
