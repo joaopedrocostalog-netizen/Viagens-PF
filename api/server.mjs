@@ -10,6 +10,29 @@ const port=Number(env.PORT||3001);
 const base=env.DSS_BASE_URL||'';
 const origins=(env.PORTAL_ALLOWED_ORIGINS||'').split(',').map(s=>s.trim()).filter(Boolean);
 const timeout=Math.max(1000,Number(env.DSS_TIMEOUT_MS||20000));
+const cacheMaxAge=Math.min(3600000,Math.max(0,Number(env.API_CACHE_SECONDS??60)*1000));
+const CACHE=new Map(),CACHE_LIMIT=24;
+const rateTable=new Map();
+const rateLimit=Math.max(10,Number(env.PORTAL_REQUESTS_PER_MINUTE||120));
+let apiStats={success:0,failed:0,cached:0,lastSuccess:null,lastFailure:null};
+function allowedRate(req){
+ const remote=req.socket.remoteAddress||'unknown';
+ const now=Date.now(),row=rateTable.get(remote);
+ if(!row||now-row.start>=60000){rateTable.set(remote,{start:now,count:1});return true;}
+ row.count++;return row.count<=rateLimit;
+}
+function cacheGet(key){
+ if(!cacheMaxAge)return null;
+ const entry=CACHE.get(key);
+ if(!entry)return null;
+ if(Date.now()-entry.time>cacheMaxAge){CACHE.delete(key);return null;}
+ return entry.data;
+}
+function cachePut(key,data){
+ if(!cacheMaxAge)return;
+ if(CACHE.size>=CACHE_LIMIT)CACHE.delete(CACHE.keys().next().value);
+ CACHE.set(key,{time:Date.now(),data});
+}
 function config(name){
  const k='DSS_'+name.toUpperCase();
  return {path:env[k+'_PATH']||({DSS_VIAGENS:'/listarViagens',DSS_PEDIDOS:'/listarPedidosFrete'}[k]||''),method:(env[k+'_METHOD']||'GET').toUpperCase(),from:env[k+'_QUERY_FROM']||(name==='viagens'||name==='pedidos'?'data_inicio':''),to:env[k+'_QUERY_TO']||(name==='viagens'||name==='pedidos'?'data_fim':''),body:env[k+'_BODY_TEMPLATE']||'',dataPath:env[k+'_DATA_PATH']||(name==='viagens'||name==='pedidos'?'registros':'')};
@@ -89,18 +112,32 @@ const server=http.createServer(async(req,res)=>{
  let url;try{url=new URL(req.url,'http://localhost');}catch{return reply(res,400,{error:'Requisição inválida'},origin);}
  if(req.method!=='GET')return reply(res,405,{error:'Método não permitido'},origin);
  if(url.pathname==='/api/health')return reply(res,200,{status:'ok',configured:!!(base&&cfg.viagens.path&&cfg.pedidos.path&&env.PORTAL_ACCESS_TOKEN&&dssCredentialsReady())},origin);
+ if(url.pathname==='/api/status'){
+  if(!authorized(req))return reply(res,401,{error:'Não autorizado'},origin);
+  return reply(res,200,{status:'ok',configured:!!(base&&dssCredentialsReady()),lastSuccess:apiStats.lastSuccess,lastFailure:apiStats.lastFailure,counters:{...apiStats},cacheEntries:CACHE.size,cacheSeconds:cacheMaxAge/1000},origin);
+ }
  if(url.pathname!=='/api/overview')return reply(res,404,{error:'Rota não encontrada'},origin);
  if(!authorized(req))return reply(res,401,{error:'Acesso ao portal não autorizado'},origin);
+ if(!allowedRate(req))return reply(res,429,{error:'Limite de consultas atingido. Aguarde um minuto e tente novamente.'},origin);
  if(!base)return reply(res,503,{error:'DSS_BASE_URL não configurado no servidor privado.'},origin);
  if(!dssCredentialsReady())return reply(res,503,{error:'Basic Auth do DSS não configurado no backend. Informe DSS_USERNAME e DSS_PASSWORD no arquivo .env privado.'},origin);
  const from=url.searchParams.get('from')||'',to=url.searchParams.get('to')||'';
  if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)return reply(res,400,{error:'Intervalo de datas inválido'},origin);
+ const cacheKey=from+'|'+to;
+ const cached=cacheGet(cacheKey);
+ if(cached){apiStats.cached++;return reply(res,200,{...cached,cacheHit:true},origin);}
+ const started=Date.now();
  try{
   const result=await Promise.all(Object.keys(cfg).map(async name=>[name,await queryDss(name,from,to)]));
   const data=Object.fromEntries(result);
-  return reply(res,200,{mode:'live',updatedAt:new Date().toISOString(),data:{viagens:data.viagens||[],pedidos:data.pedidos||[],ctes:data.ctes||[],mdfes:data.mdfes||[],sources:{viagens:true,pedidos:true,ctes:!!cfg.ctes.path,mdfes:!!cfg.mdfes.path}}},origin);
+  const payload={mode:'live',updatedAt:new Date().toISOString(),cacheHit:false,data:{viagens:data.viagens||[],pedidos:data.pedidos||[],ctes:data.ctes||[],mdfes:data.mdfes||[],sources:{viagens:true,pedidos:true,ctes:!!cfg.ctes.path,mdfes:!!cfg.mdfes.path}}};
+  cachePut(cacheKey,payload);
+  apiStats.success++;apiStats.lastSuccess=payload.updatedAt;
+  console.info('[DSS] consulta concluída','período',from,to,'duração(ms)',Date.now()-started,'RVs',payload.data.viagens.length,'PFs',payload.data.pedidos.length);
+  return reply(res,200,payload,origin);
  }catch(err){
-  console.error('[DSS]',err.name,err.message); // Nunca imprimir tokens/payloads DSS.
+  apiStats.failed++;apiStats.lastFailure=new Date().toISOString();
+  console.error('[DSS]',err.name,err.message); // Não imprimir tokens, CPFs ou payloads DSS.
   return reply(res,502,{error:'Falha na consulta ao DSS: '+(err.name==='TimeoutError'?'tempo limite':err.message)},origin);
  }
 });
