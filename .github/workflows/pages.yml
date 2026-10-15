@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Validar sintaxe JavaScript
         run: node --check src/app.js && node --check src/dss-mapping.mjs && node --check api/server.mjs && node --test tests/*.test.mjs
       - name: Configurar GitHub Pages
