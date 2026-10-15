@@ -1,3 +1,4 @@
+import {permittedView,reportTypesFor,secureReport,safeView} from './access-ui.mjs';
 import {extractRows,REPORT_TYPES} from './operational.mjs';
 import {downloadXlsx,downloadFile,printReport} from './reporting.mjs';
 import {renderAdvanced,operationalFilters,renderInsightsStrip,renderReportHub,renderGrid,ADVANCED_VIEWS} from './advanced-ui.mjs';
@@ -45,7 +46,7 @@ const state = {
  apiUrl:localStorage.getItem('costalog_api_url')||'',token:'',importCount:0,
  customer:'',vehicle:'',serviceType:'',sortKey:'',sortDir:'desc',alertPriority:'todos',
  hiddenColumns:readPrefs('costalog_visible_columns',{}),presets:readPrefs('costalog_filter_presets',{}),
- reportSelected:'viagens',reportMulti:false,autoRefresh:0,lastSync:null,prevDataset:null,lateDays:2,apiDiagnostics:null
+ reportSelected:'viagens',reportMulti:false,autoRefresh:0,lastSync:null,prevDataset:null,lateDays:2,apiDiagnostics:null,role:'operacional',user:null,permissions:{operacional:true,financeiro:false,admin:false}
 };
 const icons={
  home:'<path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-7h6v7"/>',
@@ -110,18 +111,19 @@ function totals(data){
  const mismatched=data.sources.mdfes?data.mdfes.filter(m=>m.viagemId&&!data.allViagens.some(t=>t.id===m.viagemId)):null;
  return {revenue:revenueKnown.length?revenue:null,cost:costsKnown.length?cost:null,profit:completeMoney?revenue-cost:null,margin:completeMoney&&revenue?pct((revenue-cost)/revenue*100):'—',orphan,mismatched,linked,completeMoney,revenueCount:revenueKnown.length,costCount:costsKnown.length};
 }
-const navItems=[['painel','home','Painel geral'],['viagens','truck','Viagens / RV'],['ctes','doc','Pedidos / CT-e'],['faturamento','doc','Entrega / faturamento'],['pendencias','shield','Pendências'],['clientes','chart','Clientes / fretes'],['rotas','chart','Rotas'],['veiculos','truck','Frota'],['motoristas','home','Motoristas'],['containers','doc','Containers'],['mdfes','shield','MDF-e'],['analises','chart','Análises operacionais'],['relatorios','doc','Relatórios'],['administracao','cog','Administração'],['integracoes','cog','Integração DSS']];
-const tabs=[['painel','Painel'],['viagens','Viagens'],['ctes','Pedidos / CT-e'],['faturamento','Faturamento'],['pendencias','Pendências'],['clientes','Clientes'],['rotas','Rotas'],['veiculos','Frota'],['motoristas','Motoristas'],['containers','Containers'],['mdfes','MDF-e'],['analises','Análises'],['relatorios','Relatórios'],['administracao','Administração'],['integracoes','Integração']];
+const navItems=[['painel','home','Painel geral'],['viagens','truck','Viagens / RV'],['ctes','doc','Pedidos / CT-e'],['entregas','doc','Entregas'],['faturamento','doc','Faturamento'],['pendencias','shield','Pendências'],['clientes','chart','Clientes / fretes'],['rotas','chart','Rotas'],['veiculos','truck','Frota'],['motoristas','home','Motoristas'],['containers','doc','Containers'],['mdfes','shield','MDF-e'],['analises','chart','Análises operacionais'],['relatorios','doc','Relatórios'],['administracao','cog','Administração'],['integracoes','cog','Integração DSS']];
+const tabs=[['painel','Painel'],['viagens','Viagens'],['ctes','Pedidos / CT-e'],['entregas','Entregas'],['faturamento','Faturamento'],['pendencias','Pendências'],['clientes','Clientes'],['rotas','Rotas'],['veiculos','Frota'],['motoristas','Motoristas'],['containers','Containers'],['mdfes','MDF-e'],['analises','Análises'],['relatorios','Relatórios'],['administracao','Administração'],['integracoes','Integração']];
 function button(action,label,extra){return '<button class="btn '+(extra||'')+'" data-action="'+action+'">'+label+'</button>';}
 function render(){
+ state.view=safeView(state.role,state.view);
  const d=scoped(),stats=totals(d);
- const nav=navItems.map(x=>'<button class="side-link '+(state.view===x[0]?'active':'')+'" data-nav="'+x[0]+'">'+icon(x[1])+esc(x[2])+'</button>').join('');
- const buttons=tabs.map(x=>'<button class="tab '+(state.view===x[0]?'active':'')+'" role="tab" aria-selected="'+(state.view===x[0])+'" data-nav="'+x[0]+'">'+esc(x[1])+'</button>').join('');
+ const nav=navItems.filter(x=>permittedView(state.role,x[0])).map(x=>'<button class="side-link '+(state.view===x[0]?'active':'')+'" data-nav="'+x[0]+'">'+icon(x[1])+esc(x[2])+'</button>').join('');
+ const buttons=tabs.filter(x=>permittedView(state.role,x[0])).map(x=>'<button class="tab '+(state.view===x[0]?'active':'')+'" role="tab" aria-selected="'+(state.view===x[0])+'" data-nav="'+x[0]+'">'+esc(x[1])+'</button>').join('');
  const message=state.mode==='live'?'<div class="info-strip '+(state.error?'error':'live')+'"><strong>Dados do DSS:</strong> '+(state.error?'A última sincronização falhou. Mantidos os últimos dados reais carregados; podem estar desatualizados. '+esc(state.error):'Consulta concluída. Os campos não disponibilizados pela API são exibidos como “—”.')+'</div>':'<div class="info-strip'+(state.error?' error':'')+'"><strong>DADOS DEMONSTRATIVOS:</strong> números fictícios usados apenas para visualizar o portal. Nenhuma informação real da COSTALOG está sendo exibida.'+(state.error?'<div>'+esc(state.error)+'</div>':'')+'</div>';
  root.innerHTML='<div class="layout">'+
   (state.menu?'<button class="floating-close" data-action="menu" aria-label="Fechar menu"></button>':'')+
   '<aside class="sidebar '+(state.menu?'open':'')+'"><div class="brand"><img class="brand-logo" src="./logo-costalog-sem-fundo-1024x876.png" alt="Logotipo COSTALOG" width="48" height="46"><div><div class="brand-name">COSTALOG</div><div class="brand-sub">A LOGÍSTICA IDEAL</div></div></div><div class="side-title">GESTÃO DE FROTA</div><nav class="side-nav">'+nav+'</nav><div class="side-bottom"><strong>VIAGENS & FRETES</strong>Inteligência operacional e financeira<br>Portal interno COSTALOG</div></aside>'+
-  '<main class="main"><header class="topbar"><div class="filter-row"><button class="btn btn-ghost btn-sm mobile-menu" data-action="menu" aria-label="Abrir menu">'+icon('menu')+'</button><strong>Viagens & Fretes</strong></div><div class="topbar-right"><span class="status '+(state.mode==='live'?'online':'')+'">'+(state.mode==='live'?'DSS conectado':'Modo demonstração')+'</span>'+button('connect','Conectar API','btn-ghost btn-sm')+button('refresh',icon('reload')+' Atualizar','btn-sm')+'</div></header>'+
+  '<main class="main"><header class="topbar"><div class="filter-row"><button class="btn btn-ghost btn-sm mobile-menu" data-action="menu" aria-label="Abrir menu">'+icon('menu')+'</button><strong>Viagens & Fretes</strong></div><div class="topbar-right"><span class="status '+(state.mode==='live'?'online':'')+'">'+(state.mode==='live'?'DSS conectado':'Modo demonstração')+'</span>'+(state.user?'<span class="status online">'+esc(state.user.displayName||state.user.username)+' · '+esc(state.role)+'</span>'+button('logout','Sair','btn-ghost btn-sm'):button('connect','Entrar','btn-ghost btn-sm'))+button('refresh',icon('reload')+' Atualizar','btn-sm')+'</div></header>'+
   '<div class="content"><div class="heading"><div><h1>Controle de Viagens e Fretes</h1><p>Viagens, pedidos de frete, CT-e, MDF-e e análise de rentabilidade.</p></div><div class="heading-actions">'+button('csv',icon('download')+' Exportar CSV','btn-ghost')+button('print','Imprimir relatório','btn-ghost')+'</div></div><div class="tabbar" role="tablist">'+buttons+'</div>'+
   message+operationalFilters(d,state)+renderFilters()+(state.loading?'<div class="info-strip">Consultando a API do DSS...</div>':'')+renderView(d,stats)+
   '<p class="footer-note">COSTALOG · Painel de viagens e fretes. Valores financeiros dependem do mapeamento correto dos campos de origem.</p></div></main></div>'+
@@ -136,7 +138,7 @@ function renderFilters(){
 }
 function kpi(label,value,sub,cl){return '<article class="kpi"><div class="kpi-label">'+label+'</div><div class="kpi-value '+(cl||'')+'">'+value+'</div><div class="kpi-sub">'+sub+'</div></article>';}
 function renderView(d,s){
- if(state.view==='painel')return renderPainel(d,s)+renderInsightsStrip(d,state);
+ if(state.view==='painel')return (state.permissions.financeiro?renderPainel(d,s):renderOperationalPanel(d))+renderInsightsStrip(d,state);
  if(state.view==='viagens')return renderViagens(d,s);
  if(state.view==='ctes')return renderCtes(d);
  if(state.view==='clientes')return renderClientes(d,s);
@@ -144,6 +146,22 @@ function renderView(d,s){
  if(state.view==='relatorios')return renderReportHub(d,state);
  if(ADVANCED_VIEWS.includes(state.view))return renderAdvanced(state.view,d,state);
  return renderIntegracoes();
+}
+function renderOperationalPanel(d){
+ const values=buildInsights(d);
+ const active=values.totals.ongoing,complete=values.totals.completed;
+ return '<div class="section-title"><h2>Operação de viagens e entregas</h2><span>Somente dados operacionais</span></div>'+
+ '<div class="kpis">'+kpi('VIAGENS NO PERÍODO',number(d.viagens.length),'Registros RV')+
+ kpi('EM ANDAMENTO',number(active),'Conforme situação DSS')+
+ kpi('CONCLUÍDAS',number(complete),'Conforme situação DSS')+
+ kpi('PEDIDOS DE FRETE',number(d.pedidos.length),'Sem valores financeiros')+
+ kpi('CT-e IDENTIFICADOS',number(d.ctes.length),'Apenas números de documento')+
+ kpi('ENTREGAS SEM COMPROVANTE',number(values.totals.missingDelivery),'Requer conferência')+'</div>'+
+ '<div class="charts"><div class="card"><div class="card-head"><h3>Visão operacional por mês</h3></div>'+
+ '<div class="table-wrap"><table><thead><tr><th>Mês</th><th>Viagens</th><th>Pedidos</th><th>CT-e</th><th>KM registrados</th></tr></thead><tbody>'+
+ values.months.filter(x=>x.trips||x.orders).map(x=>'<tr><td>'+esc(x.month)+'</td><td>'+number(x.trips)+'</td><td>'+number(x.orders)+'</td><td>'+number(x.ctes)+'</td><td>'+number(x.km)+'</td></tr>').join('')+
+ '</tbody></table></div></div><div class="card"><div class="card-head"><h3>Acesso permitido</h3></div><p class="help">Consultas de viagens, veículos, motoristas, entregas, containers e referências de documentos. Os campos de custos, fretes, faturamento e tributos não são enviados pelo servidor para este perfil.</p>'+
+ '<div class="overview-shortcuts"><button class="btn" data-nav="viagens">Ver viagens</button><button class="btn" data-nav="entregas">Ver entregas</button></div></div></div>';
 }
 function renderPainel(d,s){
  const cteCount=d.sources.ctes?number(d.ctes.length):'—';
@@ -209,7 +227,7 @@ function renderViagens(d,s){
   {key:'receita',label:state.mode==='live'?'Fretes vinculados':'Receita',format:'money'},
   {key:state.mode==='live'?'abastecimento':'custo',label:state.mode==='live'?'Abastecimento (parcial)':'Custo',format:'money'},
   {key:'status',label:'Situação'}];
- return renderGrid('Viagens cadastradas',rows,cols,state,'viagens','Clique no número da RV para consultar a ficha completa e os documentos relacionados.');
+ return renderGrid('Viagens cadastradas',rows,state.permissions.financeiro?cols:cols.filter(x=>!['receita','abastecimento','custo','custoAbastecimentoKm'].includes(x.key)),state,'viagens','Clique no número da RV para consultar a ficha completa e os documentos relacionados.');
 }
 function renderCtes(d){
  const combined=[...d.ctes.map(x=>({...x,category:'CT-e'})),...d.pedidos.filter(p=>!p.isCte).map(x=>({...x,category:'Pedido de frete'}))];
@@ -228,7 +246,7 @@ function renderCtes(d){
   {key:'valorIcmsIss',label:'ICMS/ISS',format:'money'},{key:'valorAverbacao',label:'Averbação',format:'money'},
   {key:'status',label:'Situação'}];
  return '<div class="info-strip">CT-e é identificado quando nro_cte possui número válido. “Sem RV” significa vínculo não localizado na consulta, não prova que a RV inexista. Situações fiscais completas exigem outras fontes.</div>'+
- renderGrid('Pedidos de frete e CT-e',rows,cols,state,'ctes','Consulta de campos disponíveis em GET /listarPedidosFrete');
+ renderGrid('Pedidos de frete e CT-e',rows,state.permissions.financeiro?cols:cols.filter(x=>!['valor','valorReceber','liberadoFaturamento','numeroFatura','valorIcmsIss','valorAverbacao'].includes(x.key)),state,'ctes','Consulta de campos disponíveis em GET /listarPedidosFrete');
 }
 function renderClientes(d,s){
  const rows=searchRows(aggregateClients(d.viagens,d.pedidos)).map(v=>{
@@ -273,10 +291,38 @@ function renderDrawer(d){
  return '<div class="overlay" data-action="close-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Detalhes do registro"><div class="drawer-top"><h2>Detalhes · '+esc(item.numero)+'</h2>'+button('close',icon('close'),'btn-sm')+'</div>'+rows+related+'</aside></div>';
 }
 function renderConnect(){
- return '<div class="overlay" data-action="close-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Conectar API DSS"><div class="drawer-top"><h2>Conectar ao backend</h2>'+button('close',icon('close'),'btn-sm')+'</div><p class="help">Informe a URL do backend privado da COSTALOG e o token de acesso ao portal. Este token permanece apenas na memória desta aba e não é salvo no navegador nem no GitHub.</p>'+
- '<div class="filter"><label for="apiUrl">Endereço da API do portal</label><input id="apiUrl" class="control full" type="url" placeholder="https://portal.suaempresa.com.br" value="'+attr(state.apiUrl)+'"></div>'+
- '<div class="filter" style="margin-top:17px"><label for="apiToken">Token de acesso ao portal</label><input id="apiToken" class="control full" type="password" autocomplete="off" placeholder="Token definido no backend" value=""></div>'+
- '<div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">'+button('test-connect','Conectar e consultar','btn-red')+button('demo','Voltar à demonstração','btn-ghost')+'</div><p class="help">A chave de autenticação do DSS é diferente da senha de acesso ao portal e deve existir apenas no servidor.</p></aside></div>';
+ return '<div class="overlay" data-action="close-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Acessar portal COSTALOG">'+
+ '<div class="drawer-top"><h2>Entrar no portal COSTALOG</h2>'+button('close',icon('close'),'btn-sm')+'</div>'+
+ '<p class="help">Cada funcionário utiliza sua própria conta e vê apenas os módulos autorizados. O usuário e a senha do DSS ficam somente no servidor privado.</p>'+
+ '<form id="loginForm"><div class="filter"><label for="apiUrl">Endereço do backend corporativo (HTTPS)</label><input id="apiUrl" class="control full" type="url" required placeholder="https://portal-api.costalog.com.br" value="'+attr(state.apiUrl)+'"></div>'+
+ '<div class="filter" style="margin-top:17px"><label for="loginUser">Usuário do portal</label><input id="loginUser" class="control full" autocomplete="username" required placeholder="usuario.funcionario"></div>'+
+ '<div class="filter" style="margin-top:17px"><label for="loginPassword">Senha do portal</label><input id="loginPassword" class="control full" type="password" autocomplete="current-password" required placeholder="Sua senha individual"></div>'+
+ '<div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap"><button class="btn btn-red" type="submit">Entrar com segurança</button>'+button('demo','Fechar / demonstração operacional','btn-ghost')+'</div></form>'+
+ '<p class="help">Não informe aqui a senha Basic Auth do DSS: o acesso ao DSS é feito exclusivamente pelo servidor da empresa.</p></aside></div>';
+}
+async function portalLogin(){
+ const url=document.getElementById('apiUrl')?.value.trim().replace(/\/$/,'')||'';
+ const username=document.getElementById('loginUser')?.value.trim()||'';
+ const password=document.getElementById('loginPassword')?.value||'';
+ if(!/^https:\/\//i.test(url)&&!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(url)){alert('Use HTTPS ou localhost para desenvolvimento.');return;}
+ try{
+  const res=await fetch(url+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'omit',body:JSON.stringify({username,password})});
+  const data=await res.json();
+  if(!res.ok)throw Error(data.error||'Não foi possível autenticar.');
+  if(!data.token||!['operacional','financeiro','administrador'].includes(data.user?.role))throw Error('Resposta inválida do servidor de autenticação.');
+  clearSession();
+  state.apiUrl=url;localStorage.setItem('costalog_api_url',url);
+  state.token=data.token;state.user=data.user;state.role=data.user.role;state.permissions=data.permissions;
+  state.view='painel';state.connect=false;state.error='';state.dataset={viagens:[],pedidos:[],ctes:[],mdfes:[],sources:{}};
+  state.mode='live';render();
+  await loadData();
+ }catch(err){alert('Login não autorizado: '+err.message);}
+}
+function clearSession(){
+ const token=state.token,url=state.apiUrl;
+ if(token&&url)fetch(url.replace(/\/$/,'')+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+token},credentials:'omit'}).catch(()=>{});
+ state.token='';state.user=null;state.role='operacional';state.permissions={operacional:true,financeiro:false,admin:false};
+ state.mode='demo';state.dataset=demo;state.view='painel';state.prevDataset=null;state.selected=null;state.lastSync=null;state.apiDiagnostics=null;
 }
 function csvCell(s){const v=str(s);return '"'+v.replace(/"/g,'""')+'"';}
 function exportCsv(which){
@@ -317,7 +363,8 @@ function exportAdvanced(type,format){
   pedidos:searchRecords(raw.pedidos,state.search),
   ctes:searchRecords(raw.ctes,state.search),
   mdfes:searchRecords(raw.mdfes,state.search)};
- const models=(full?REPORT_TYPES:[type]).map(t=>extractRows(t,d));
+ const allowed=reportTypesFor(state.role);if(!allowed.includes(type))throw Error('Acesso negado ao relatório.');
+ const models=(full?allowed:[type]).map(t=>secureReport(extractRows(t,d),t,state.role));
  const suffix=(state.mode==='live'?'DSS':'DEMO')+'_'+state.from+'_'+state.to;
  if(format==='xlsx')downloadXlsx(models,{mode:state.mode,from:state.from,to:state.to},'COSTALOG_'+(full?'COMPLETO':type)+'_'+suffix+'.xlsx');
  if(format==='pdf')printReport(models,{mode:state.mode,from:state.from,to:state.to});
@@ -352,7 +399,7 @@ async function comparePeriods(){
  }catch(err){alert('Não foi possível obter o período anterior: '+err.message);}
 }
 root.addEventListener('click',e=>{
- const nav=e.target.closest('[data-nav]');if(nav){state.view=nav.dataset.nav;state.search='';state.filter='todos';state.sortKey='';state.page=1;state.menu=false;state.selected=null;render();return;}
+ const nav=e.target.closest('[data-nav]');if(nav){if(!permittedView(state.role,nav.dataset.nav))return;state.view=nav.dataset.nav;state.search='';state.filter='todos';state.sortKey='';state.page=1;state.menu=false;state.selected=null;render();return;}
  const detail=e.target.closest('[data-detail]');if(detail){state.selected=detail.dataset.detail;render();return;}
  const sort=e.target.closest('[data-sort]');if(sort){const k=sort.dataset.sort;state.sortDir=state.sortKey===k&&state.sortDir==='asc'?'desc':'asc';state.sortKey=k;state.page=1;render();return;}
  const report=e.target.closest('[data-report-select]');if(report){state.reportSelected=report.dataset.reportSelect;state.reportMulti=false;render();return;}
@@ -366,6 +413,7 @@ root.addEventListener('click',e=>{
  if(action==='refresh')loadData();
  if(action==='compare-periods')comparePeriods();
  if(action==='api-diagnostics'){
+  if(!state.permissions.admin){alert('Acesso restrito a administradores.');return;}
   if(!state.apiUrl||!state.token){alert('Conecte o backend e informe o token do portal antes de consultar os diagnósticos.');return;}
   fetch(state.apiUrl.replace(/\/$/,'')+'/api/status',{headers:{Authorization:'Bearer '+state.token}})
    .then(async res=>{if(!res.ok)throw Error('HTTP '+res.status);return res.json();})
@@ -379,17 +427,15 @@ root.addEventListener('click',e=>{
  if(action==='clear-settings'){if(confirm('Limpar filtros salvos e preferências de colunas?')){localStorage.removeItem('costalog_filter_presets');localStorage.removeItem('costalog_visible_columns');state.presets={};state.hiddenColumns={};state.autoRefresh=0;activateRefresh();render();}}
  if(action==='connect'){state.connect=true;state.selected=null;render();}
  if(action==='go-viagens'){state.view='viagens';state.page=1;render();}
- if(action==='csv')exportCsv(state.view==='painel'?'viagens':state.view);
- if(action==='print')window.print();
+ if(action==='csv'){try{exportAdvanced(state.view==='ctes'?'pedidos':state.view==='mdfes'?'mdfes':state.permissions.financeiro&&state.view==='clientes'?'clientes':'viagens','csv');}catch(err){alert(err.message);}}
+ if(action==='print'){try{const type=state.view==='ctes'?'pedidos':state.view==='mdfes'?'mdfes':'viagens';exportAdvanced(type,'pdf');}catch(err){alert(err.message);}}
  if(action==='prev'){state.page--;render();}
  if(action==='next'){state.page++;render();}
- if(action==='demo'){state.mode='demo';state.dataset=demo;state.connect=false;state.error='';render();}
- if(action==='test-connect'){
-   const u=document.getElementById('apiUrl').value.trim();
-   if(u&&!/^https:\/\//i.test(u)&&!/^http:\/\/localhost(?::\d+)?$/i.test(u)){alert('Informe uma URL HTTPS, ou localhost para testes.');return;}
-   state.apiUrl=u;state.token=document.getElementById('apiToken').value.trim();localStorage.setItem('costalog_api_url',u);loadData();
- }
+ if(action==='demo'){clearSession();state.connect=false;render();}
+ if(action==='logout'){clearSession();render();}
+ if(action==='test-connect'){portalLogin();}
 });
+root.addEventListener('submit',e=>{if(e.target?.id==='loginForm'){e.preventDefault();portalLogin();}});
 root.addEventListener('change',e=>{
  if(e.target.id==='from'){state.from=e.target.value;state.page=1;if(state.mode==='live')loadData();else render();}
  if(e.target.id==='to'){state.to=e.target.value;state.page=1;if(state.mode==='live')loadData();else render();}
