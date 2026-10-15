@@ -181,14 +181,14 @@ function paging(p){return '<div class="pagination"><span>'+number(p.total)+' reg
 function renderViagens(d,s){
  let rows=searchRows(d.viagens);if(state.filter==='vinculado')rows=rows.filter(v=>d.ctes.some(c=>c.viagemId===v.id)||d.mdfes.some(m=>m.viagemId===v.id));if(state.filter==='pendente')rows=rows.filter(v=>!d.ctes.some(c=>c.viagemId===v.id)&&!d.mdfes.some(m=>m.viagemId===v.id));rows.sort((a,b)=>b.data.localeCompare(a.data));const p=paginate(rows);
  return '<div class="table-tools"><h2>Viagens cadastradas</h2><div class="right-tools"><span class="status">'+number(rows.length)+' viagens</span>'+button('csv',icon('download')+' Exportar','btn-sm')+'</div></div>'+
- tableHtml(['Nº Viagem','Data','Cliente','Placa','Origem / Destino','Receita','Custo','Resultado','Situação'],p.slice.map(v=>'<tr><td><button class="row-link" data-detail="viagens:'+attr(v.id)+'">'+esc(v.numero)+'</button></td><td>'+dateBR(v.data)+'</td><td>'+esc(v.cliente)+'</td><td>'+esc(v.placa||'—')+'</td><td>'+esc((v.origem||'—')+' → '+(v.destino||'—'))+'</td><td>'+money(v.receita)+'</td><td>'+money(v.custo)+'</td><td>'+money(Number.isFinite(v.receita)&&Number.isFinite(v.custo)?v.receita-v.custo:null)+'</td><td>'+statusPill(v.status)+'</td></tr>'))+paging(p);
+ tableHtml(['Nº RV','Início','Cliente','Placa','MDF-e','Origem / Destino','Fretes vinculados','Abastecimento / custo','Resultado','Situação'],p.slice.map(v=>'<tr><td><button class="row-link" data-detail="viagens:'+attr(v.id)+'">'+esc(v.numero)+'</button></td><td>'+dateBR(v.data)+'</td><td>'+esc(v.cliente)+'</td><td>'+esc(v.placa||'—')+'</td><td>'+esc(v.nroMdf||'—')+'</td><td>'+esc((v.origem||'—')+' → '+(v.destino||'—'))+'</td><td>'+money(v.receita)+'</td><td>'+money(state.mode==='live'?v.abastecimento:v.custo)+'</td><td>'+money(Number.isFinite(v.receita)&&Number.isFinite(v.custo)?v.receita-v.custo:null)+'</td><td>'+statusPill(v.status)+'</td></tr>'))+paging(p);
 }
 function renderCtes(d){
  const combined=[...d.ctes.map(x=>({...x,category:'CT-e'})),...d.pedidos.filter(p=>!p.isCte).map(x=>({...x,category:'Pedido de frete'}))];
  let rows=searchRows(combined);if(state.filter==='vinculado')rows=rows.filter(x=>x.viagemId);if(state.filter==='pendente')rows=rows.filter(x=>!x.viagemId);rows.sort((a,b)=>b.data.localeCompare(a.data));const p=paginate(rows);
  return '<div class="table-tools"><h2>Pedidos de frete e CT-e</h2><div class="right-tools"><span class="status">'+number(rows.length)+' registros</span>'+button('csv',icon('download')+' Exportar','btn-sm')+'</div></div>'+
  '<div class="info-strip">GET /listarPedidosFrete: nro_cte identifica CT-e quando preenchido; rv_viagem referencia a viagem por rv_id ou nro_rv, se único. CT-e não localizado pode corresponder a viagem fora do período.</div>'+
- tableHtml(['Documento','Tipo','Emissão','Cliente','Viagem vinculada','Valor','Situação'],p.slice.map(v=>'<tr><td><button class="row-link" data-detail="ctes:'+attr(v.id)+'">'+esc(v.numero)+'</button></td><td>'+esc(v.category)+'</td><td>'+dateBR(v.data)+'</td><td>'+esc(v.cliente)+'</td><td>'+(v.viagemId?esc(v.viagemId):'<span class="pill red">Não vinculada</span>')+'</td><td>'+money(v.valor)+'</td><td>'+statusPill(v.status)+'</td></tr>'))+paging(p);
+ tableHtml(['Documento','Pedido PF','Tipo','Emissão','Cliente','RV','MDF-e','Valor frete','Situação'],p.slice.map(v=>'<tr><td><button class="row-link" data-detail="ctes:'+attr(v.id)+'">'+esc(v.numero)+'</button></td><td>'+esc(v.pedidoNumero||'—')+'</td><td>'+esc(v.category)+'</td><td>'+dateBR(v.data)+'</td><td>'+esc(v.cliente)+'</td><td>'+(v.viagemId?esc(v.viagemId):'<span class="pill red">Não localizada</span>')+'</td><td>'+esc(v.nroMdf||'—')+'</td><td>'+money(v.valor)+'</td><td>'+statusPill(v.status)+'</td></tr>'))+paging(p);
 }
 function renderClientes(d,s){
  let rows=searchRows(aggregateClients(d.viagens,d.pedidos));const p=paginate(rows);
@@ -233,8 +233,8 @@ function renderConnect(){
 function csvCell(s){const v=str(s);return '"'+v.replace(/"/g,'""')+'"';}
 function exportCsv(which){
  const d=scoped();let rows=[],name='relatorio';
- if(which==='viagens'){name='viagens';rows=[['Viagem','Data','Cliente','Placa','Origem','Destino','Receita','Custo','Situacao'],...d.viagens.map(v=>[v.numero,v.data,v.cliente,v.placa,v.origem,v.destino,v.receita,v.custo,v.status])];}
- else if(which==='ctes'){name='pedidos_cte';rows=[['Documento','Tipo','Data','Cliente','Viagem','Valor','Situacao'],...[...d.ctes.map(x=>({...x,tipo:'CT-e'})),...d.pedidos.filter(x=>!x.isCte).map(x=>({...x,tipo:'Pedido de frete'}))].map(v=>[v.numero,v.tipo,v.data,v.cliente,v.viagemId,v.valor,v.status])];}
+ if(which==='viagens'){name='viagens';rows=[['RV','Data','Cliente','Placa','MDF-e','Origem','Destino','Fretes','Abastecimento ou custo','Situacao'],...d.viagens.map(v=>[v.numero,v.data,v.cliente,v.placa,v.nroMdf,v.origem,v.destino,v.receita,state.mode==='live'?v.abastecimento:v.custo,v.status])];}
+ else if(which==='ctes'){name='pedidos_cte';rows=[['Documento','Pedido PF','Tipo','Data','Cliente','RV','MDF-e','Valor','Situacao'],...[...d.ctes.map(x=>({...x,tipo:'CT-e'})),...d.pedidos.filter(x=>!x.isCte).map(x=>({...x,tipo:'Pedido de frete'}))].map(v=>[v.numero,v.pedidoNumero,v.tipo,v.data,v.cliente,v.viagemId,v.nroMdf,v.valor,v.status])];}
  else if(which==='clientes'){name='clientes';rows=[['Cliente','Viagens','Receita','Custo'],...aggregateClients(d.viagens,d.pedidos).map(v=>[v.cliente,v.viagens,v.receitaN===v.viagens?v.receita:'',v.custoN===v.viagens?v.custo:''])];}
  else if(which==='mdfes'){name='mdfe';rows=[['MDF-e','Data','Viagem','Placa','Situacao','Conciliacao'],...d.mdfes.map(v=>[v.numero,v.data,v.viagemId,v.placa,v.status,mdfeSituation(v,d)])];}
  else{return exportCsv('viagens');}
@@ -280,8 +280,8 @@ root.addEventListener('click',e=>{
  }
 });
 root.addEventListener('change',e=>{
- if(e.target.id==='from'){state.from=e.target.value;state.page=1;render();}
- if(e.target.id==='to'){state.to=e.target.value;state.page=1;render();}
+ if(e.target.id==='from'){state.from=e.target.value;state.page=1;if(state.mode==='live')loadData();else render();}
+ if(e.target.id==='to'){state.to=e.target.value;state.page=1;if(state.mode==='live')loadData();else render();}
  if(e.target.id==='statusFilter'){state.filter=e.target.value;state.page=1;render();}
  if(e.target.id==='csvMDFE'){
   const file=e.target.files&&e.target.files[0];if(!file)return;
