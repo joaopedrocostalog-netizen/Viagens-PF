@@ -204,3 +204,12 @@ Os testes automatizados validam projeções distintas de resposta DSS para opera
 ## Criar o primeiro administrador e liberar funcionários pelo site
 
 Veja [ADMINISTRACAO.md](ADMINISTRACAO.md), com comandos para Linux/Windows e Docker. O painel Administração agora permite cadastrar funcionários como Operacional, Financeiro ou Administrador, alterar perfil, bloquear/reativar contas e redefinir senhas. Novos funcionários precisam trocar a senha provisória no primeiro login. A primeira conta admin só é criada **no servidor privado** após a TI escolher uma senha; não há senha padrão e nenhuma conta real é provisionada pelo GitHub Pages.
+
+## Teste rápido no mesmo PC (Windows)
+
+Para evitar problemas de CORS/rede ao abrir o GitHub Pages enquanto o backend está apenas no PC, execute o backend diretamente na pasta completa do projeto:
+
+    $env:PORTAL_USERS_FILE = (Join-Path (Get-Location) "private\portal-users.json")
+    node api/server.mjs
+
+Depois abra http://localhost:3001/ — neste endereço o frontend e a API usam a mesma origem, e o formulário de login preenche o endereço do servidor local automaticamente. Teste http://localhost:3001/api/health e verifique "accounts":true. Nunca compartilhe os arquivos .env e private/portal-users.json; o servidor serve apenas uma lista explícita de arquivos estáticos públicos. Para acessar de outros dispositivos, implante o portal com HTTPS e o backend privado.
