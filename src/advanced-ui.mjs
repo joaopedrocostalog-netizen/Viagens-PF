@@ -1,3 +1,4 @@
+import {reportTypesFor} from './access-ui.mjs';
 import {buildInsights,sortRecords,searchRecords,extractRows,REPORT_TYPES,groupRows} from './operational.mjs';
 const h=v=>String(v===null||v===undefined?'':v).replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
 const b=v=>v===true?'Sim':v===false?'Não':'—';
@@ -7,7 +8,7 @@ const dt=v=>String(v||'').match(/^\d{4}-\d{2}-\d{2}/)?v.slice(8,10)+'/'+v.slice(
 const chip=(label,color='gray')=>'<span class="pill '+color+'">'+h(label)+'</span>';
 const tt=(label,value,sub='')=>'<article class="kpi"><div class="kpi-label">'+h(label)+'</div><div class="kpi-value">'+h(value)+'</div><div class="kpi-sub">'+h(sub)+'</div></article>';
 const opts=(arr,value)=>arr.map(v=>'<option value="'+h(v)+'" '+(String(v)===String(value)?'selected':'')+'>'+h(v)+'</option>').join('');
-export const ADVANCED_VIEWS=['pendencias','rotas','veiculos','motoristas','containers','faturamento','analises','administracao'];
+export const ADVANCED_VIEWS=['pendencias','rotas','veiculos','motoristas','containers','entregas','faturamento','analises','administracao'];
 export const EXPORT_LABELS={viagens:'Relatório de viagens',pedidos:'Pedidos e CT-e',ctes:'Somente CT-e',clientes:'Por cliente',rotas:'Por rota',veiculos:'Frota',motoristas:'Motoristas',containers:'Containers',mdfes:'Referências MDF-e',pendencias:'Pendências',mensal:'Resumo mensal'};
 export function operationalFilters(d,s){
  const clients=[...new Set([...(d.viagens||[]).map(x=>x.cliente),...(d.pedidos||[]).map(x=>x.cliente)].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
@@ -76,9 +77,15 @@ export function renderAdvanced(view,d,s){
    '<div class="filter-row">'+['todos','high','warning','info'].map(x=>'<button class="btn btn-sm '+(s.alertPriority===x?'btn-red':'')+'" data-alert-priority="'+x+'">'+({todos:'Todos',high:'Alta',warning:'A verificar',info:'Informativa'}[x])+'</button>').join('')+'</div>'+
    rowTable('Central de pendências',searchRecords(i.alerts.filter(x=>s.alertPriority==='todos'||!s.alertPriority||x.level===s.alertPriority),s.search),alertCols,s,'pendencias','DSS · somente leitura');
  }
- if(view==='rotas')return '<div class="kpis">'+tt('ROTAS DISTINTAS',num(i.routes.length))+tt('KM TOTAL IDENTIFICADO',num(i.totals.actual.sum),'Não informado não equivale a zero')+tt('KM PREVISTO',num(i.totals.planned.sum))+tt('DESVIO GLOBAL',Number.isFinite(i.totals.kmDifference)?num(i.totals.kmDifference):'—')+'</div>'+rowTable('Rotas mais utilizadas',searchRecords(i.routes,s.search),routesCols,s,'rotas','Origem → destino, agrupamento por registro RV');
- if(view==='veiculos')return '<div class="kpis">'+tt('VEÍCULOS IDENTIFICADOS',num(i.totals.uniqueVehicles))+tt('VIAGENS',num(i.totals.trips))+tt('QUILOMETRAGEM',num(i.totals.actual.sum))+tt('ABASTECIMENTO',brl(i.totals.fuel.known?i.totals.fuel.sum:null))+'</div>'+rowTable('Indicadores por veículo',searchRecords(i.vehicles,s.search),vehiclesCols,s,'veiculos','Placa da viagem RV; sem considerar reboques sem placas');
- if(view==='motoristas')return '<div class="kpis">'+tt('GRUPOS DE MOTORISTAS',num(i.drivers.length),'Dados por ID/nome no PF')+tt('PEDIDOS DE FRETE',num(i.totals.orders))+tt('CT-e IDENTIFICADOS',num(i.totals.ctes))+'</div>'+rowTable('Pedidos por motorista',searchRecords(i.drivers,s.search),driversCols,s,'motoristas','listarPedidosFrete • motoristas sem ID serão exibidos conforme nome cadastrado');
+ if(view==='entregas'){
+  const rows=searchRecords(d.pedidos||[],s.search).filter(x=>(!s.customer||x.cliente===s.customer)&&(!s.vehicle||x.placa===s.vehicle));
+  const cols=[{key:'pedidoNumero',label:'Pedido'},{key:'cteNumero',label:'CT-e'},{key:'data',label:'Emissão',format:'date'},{key:'cliente',label:'Cliente'},{key:'motoristaNome',label:'Motorista'},{key:'placa',label:'Placa'},{key:'entregaConcluida',label:'Entrega concluída',format:'bool'},{key:'comprovanteEntrega',label:'Comprovante',format:'bool'},{key:'ocorrencia',label:'Ocorrência'},{key:'status',label:'Situação'}];
+  return '<div class="kpis">'+tt('PEDIDOS',num(rows.length))+tt('ENTREGAS CONCLUÍDAS',num(rows.filter(x=>x.entregaConcluida===true).length))+tt('SEM COMPROVANTE',num(rows.filter(x=>x.entregaConcluida===true&&x.comprovanteEntrega===false).length))+'</div>'+
+   rowTable('Acompanhamento de entregas',rows,cols,s,'entregas','Indicadores operacionais, sem dados de faturamento.');
+ }
+ if(view==='rotas')return '<div class="kpis">'+tt('ROTAS DISTINTAS',num(i.routes.length))+tt('KM TOTAL IDENTIFICADO',num(i.totals.actual.sum),'Não informado não equivale a zero')+tt('KM PREVISTO',num(i.totals.planned.sum))+tt('DESVIO GLOBAL',Number.isFinite(i.totals.kmDifference)?num(i.totals.kmDifference):'—')+'</div>'+rowTable('Rotas mais utilizadas',searchRecords(i.routes,s.search),s.permissions?.financeiro?routesCols:routesCols.filter(x=>!['fuel','freight'].includes(x.key)),s,'rotas','Origem → destino, agrupamento por registro RV');
+ if(view==='veiculos')return '<div class="kpis">'+tt('VEÍCULOS IDENTIFICADOS',num(i.totals.uniqueVehicles))+tt('VIAGENS',num(i.totals.trips))+tt('QUILOMETRAGEM',num(i.totals.actual.sum))+(s.permissions?.financeiro?tt('ABASTECIMENTO',brl(i.totals.fuel.known?i.totals.fuel.sum:null)):'')+'</div>'+rowTable('Indicadores por veículo',searchRecords(i.vehicles,s.search),s.permissions?.financeiro?vehiclesCols:vehiclesCols.filter(x=>!['fuel','freight'].includes(x.key)),s,'veiculos','Placa da viagem RV; sem considerar reboques sem placas');
+ if(view==='motoristas')return '<div class="kpis">'+tt('GRUPOS DE MOTORISTAS',num(i.drivers.length),'Dados por ID/nome no PF')+tt('PEDIDOS DE FRETE',num(i.totals.orders))+tt('CT-e IDENTIFICADOS',num(i.totals.ctes))+'</div>'+rowTable('Pedidos por motorista',searchRecords(i.drivers,s.search),s.permissions?.financeiro?driversCols:driversCols.filter(x=>x.key!=='freight'),s,'motoristas','listarPedidosFrete • motoristas sem ID serão exibidos conforme nome cadastrado');
  if(view==='containers')return '<div class="kpis">'+tt('CONTAINERS IDENTIFICADOS',num(i.containers.length),'RVs + pedidos; número distinto')+'</div>'+rowTable('Histórico resumido de containers',searchRecords(i.containers,s.search),containerCols,s,'containers','Somente registros operacionais retornados pelo DSS, não rastreamento');
  if(view==='faturamento'){
   const rows=searchRecords(d.pedidos||[],s.search).filter(x=>(!s.customer||x.cliente===s.customer)&&(!s.vehicle||x.placa===s.vehicle));
@@ -116,28 +123,29 @@ export function renderInsightsStrip(data,s){
  tt('ENTREGA SEM COMPROVANTE',num(i.totals.missingDelivery))+'</div>'+
  '<div class="overview-shortcuts"><button class="btn" data-nav="pendencias">Ver pendências ('+num(i.alerts.length)+')</button>'+
  '<button class="btn" data-nav="analises">Análise mensal</button><button class="btn" data-action="compare-periods">Comparar período anterior</button></div>'+
- (s.prevDataset?renderComparison(data,s.prevDataset):'')+
+ (s.prevDataset?renderComparison(data,s.prevDataset,!!s.permissions?.financeiro):'')+
  '</section>';
 }
-export function renderComparison(current,previous){
+export function renderComparison(current,previous,showFinancial=false){
  const a=buildInsights(current),b0=buildInsights(previous);
- const rows=[['Viagens',a.totals.trips,b0.totals.trips],['Pedidos',a.totals.orders,b0.totals.orders],['CT-e',a.totals.ctes,b0.totals.ctes],['Fretes informados',a.totals.freight.sum,b0.totals.freight.sum],['Abastecimento',a.totals.fuel.sum,b0.totals.fuel.sum]];
+ const rows=[['Viagens',a.totals.trips,b0.totals.trips],['Pedidos',a.totals.orders,b0.totals.orders],['CT-e',a.totals.ctes,b0.totals.ctes],...(showFinancial?[['Fretes informados',a.totals.freight.sum,b0.totals.freight.sum],['Abastecimento',a.totals.fuel.sum,b0.totals.fuel.sum]]:[])];
  return '<div class="card"><div class="card-head"><h3>Comparação com período anterior da mesma duração</h3></div><div class="table-wrap"><table><thead><tr><th>Indicador</th><th>Atual</th><th>Anterior</th><th>Variação</th></tr></thead><tbody>'+rows.map(([name,n,m],i)=>{
   const val=i>=3?brl:num;
   return '<tr><td>'+h(name)+'</td><td>'+h(val(n))+'</td><td>'+h(val(m))+'</td><td>'+h(m===0?'—':(100*(n-m)/m).toFixed(1).replace('.',',')+'%')+'</td></tr>';
  }).join('')+'</tbody></table></div></div>';
 }
 export function renderReportHub(data,s){
- const selected=s.reportSelected||'viagens';
+ const allowed=reportTypesFor(s.role);
+ const selected=allowed.includes(s.reportSelected)?s.reportSelected:allowed[0];
  const multi=s.reportMulti===true;
  return '<section class="card"><div class="card-head"><h3>Central de relatórios COSTALOG</h3><span>Excel real (.xlsx), CSV e impressão/PDF</span></div>'+
  '<div class="filter-row">'+
- '<label class="filter grow"><span>Tipo do relatório</span><select id="reportSelected" class="control full">'+REPORT_TYPES.map(t=>'<option value="'+t+'" '+(selected===t?'selected':'')+'>'+h(EXPORT_LABELS[t])+'</option>').join('')+'</select></label>'+
+ '<label class="filter grow"><span>Tipo do relatório</span><select id="reportSelected" class="control full">'+allowed.map(t=>'<option value="'+t+'" '+(selected===t?'selected':'')+'>'+h(EXPORT_LABELS[t])+'</option>').join('')+'</select></label>'+
  '<label class="filter"><span>Escopo Excel</span><select id="reportMulti" class="control"><option value="single" '+(!multi?'selected':'')+'>Uma aba</option><option value="all" '+(multi?'selected':'')+'>Todas as abas</option></select></label>'+
  '</div><div class="filter-row" style="margin-top:14px">'+
  '<button class="btn btn-red" data-action="xlsx-export">Baixar Excel (.xlsx)</button>'+
  '<button class="btn" data-action="csv-advanced">Baixar CSV</button>'+
  '<button class="btn" data-action="pdf-report">Imprimir / Salvar PDF</button></div>'+
  '<p class="help">PDF é gerado pelo recurso de impressão do navegador (Salvar como PDF). Dados exportados correspondem ao período e aos filtros que estiverem selecionados. CSV e Excel incluem apenas informações disponibilizadas ou calculáveis pelo DSS. Evite exportar dados sensíveis em dispositivos compartilhados.</p></section>'+
- '<div class="section-title"><h2>Relatórios disponíveis</h2></div><div class="report-grid">'+REPORT_TYPES.map(t=>'<button class="report-card" data-report-select="'+t+'"><strong>'+h(EXPORT_LABELS[t])+'</strong><small>Exportar / analisar</small></button>').join('')+'</div>';
+ '<div class="section-title"><h2>Relatórios disponíveis</h2></div><div class="report-grid">'+allowed.map(t=>'<button class="report-card" data-report-select="'+t+'"><strong>'+h(EXPORT_LABELS[t])+'</strong><small>Exportar / analisar</small></button>').join('')+'</div>';
 }
