@@ -122,7 +122,7 @@ export function renderInsightsStrip(data,s){
  tt('PEDIDOS DE FRETE',num(i.totals.orders))+tt('CT-e COM NÚMERO',num(i.totals.ctes))+tt('SEM NÚMERO CT-e',num(i.totals.withoutCT))+
  tt('ENTREGA SEM COMPROVANTE',num(i.totals.missingDelivery))+'</div>'+
  '<div class="overview-shortcuts"><button class="btn" data-nav="pendencias">Ver pendências ('+num(i.alerts.length)+')</button>'+
- '<button class="btn" data-nav="analises">Análise mensal</button><button class="btn" data-action="compare-periods">Comparar período anterior</button></div>'+
+ '<button class="btn" data-nav="analises">Análise mensal</button>'+(s.demoOnly?'':'<button class="btn" data-action="compare-periods">Comparar período anterior</button>')+'</div>'+
  (s.prevDataset?renderComparison(data,s.prevDataset,!!s.permissions?.financeiro):'')+
  '</section>';
 }
