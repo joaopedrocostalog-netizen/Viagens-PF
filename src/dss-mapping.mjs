@@ -103,9 +103,9 @@ export function normalizeOverview(raw){
  const payload=raw?.data||raw||{};
  const viagens=uniqueBy(validArray(payload.viagens).map(mapViagem),v=>v.id);
  const pedidos=uniqueBy(validArray(payload.pedidos).map(mapPedido),p=>p.id);
- reconcile(viagens,pedidos);
  const ctesSeparate=validArray(payload.ctes).map((v,i)=>({...mapPedido(v,i),isCte:true}));
- reconcile(viagens,ctesSeparate);
+ const uniqueCtes=ctesSeparate.filter(c=>!pedidos.some(p=>p.cteNumero&&c.cteNumero&&docKey(p.cteNumero)===docKey(c.cteNumero)));
+ reconcile(viagens,[...pedidos,...uniqueCtes]);
  // Evitar duplicidade se o CT-e também constar em listarPedidosFrete.
  const seenCte=new Set();
  const ctes=[...pedidos.filter(p=>p.isCte),...ctesSeparate].filter(p=>{
