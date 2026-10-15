@@ -53,3 +53,22 @@
 .side-link.active{box-shadow:inset 3px 0 0 #fff3}
 .topbar-right .status.online{max-width:260px;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:680px){.topbar-right .status.online{display:none}}
+
+/* Administração de contas - COSTALOG */
+.admin-user-columns{display:grid;grid-template-columns:minmax(260px,320px) minmax(0,1fr);gap:20px;align-items:start}
+.admin-user-create{display:flex;flex-direction:column;gap:10px;background:#171719;border:1px solid #33333a;border-radius:12px;padding:18px}
+.admin-user-create h3{margin:0 0 8px;color:#fff;font-size:16px}
+.admin-user-create label,.admin-password-overlay label{font-weight:650;color:#ceced3;font-size:12px;margin-top:6px}
+.admin-user-create .control{width:100%;min-height:38px}
+.admin-user-table{min-width:0}
+.admin-user-table .table-wrap{overflow-x:auto}
+.admin-user-table table{width:100%;font-size:12px}
+.admin-user-table .admin-role-change{min-width:160px;max-width:250px;font-size:12px}
+.admin-row-actions{display:flex;flex-wrap:wrap;gap:6px}
+.admin-row-actions button{white-space:nowrap}
+.admin-error{color:#ff8291;border:1px solid #8a1e30;background:#28191d;border-radius:8px;padding:12px;margin-bottom:12px}
+.admin-password-overlay .drawer form{display:flex;flex-direction:column;gap:12px}
+.admin-password-overlay .drawer form button{align-self:start;margin-top:12px}
+#resetPortalUserPassword{display:grid;gap:12px}
+#resetPortalUserPassword button{justify-self:start}
+@media(max-width:950px){.admin-user-columns{grid-template-columns:1fr}}
