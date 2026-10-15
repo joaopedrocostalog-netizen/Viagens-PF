@@ -5,7 +5,10 @@
  */
 import http from 'node:http';
 import {timingSafeEqual} from 'node:crypto';
+import {configuredUsers,login,authenticate,logout} from './auth.mjs';
+import {projectOverview,permissionsFor} from './access.mjs';
 const env=process.env;
+const useAccounts=configuredUsers();
 const port=Number(env.PORT||3001);
 const base=env.DSS_BASE_URL||'';
 const origins=(env.PORTAL_ALLOWED_ORIGINS||'').split(',').map(s=>s.trim()).filter(Boolean);
@@ -61,14 +64,34 @@ function dssAuthHeaders(){
 }
 function reply(res,code,body,origin){
  const str=JSON.stringify(body),h={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(str),'X-Content-Type-Options':'nosniff'};
- if(origin&&origins.includes(origin)){h['Access-Control-Allow-Origin']=origin;h['Vary']='Origin';h['Access-Control-Allow-Headers']='Authorization, Content-Type';h['Access-Control-Allow-Methods']='GET, OPTIONS';}
+ if(origin&&origins.includes(origin)){h['Access-Control-Allow-Origin']=origin;h['Vary']='Origin';h['Access-Control-Allow-Headers']='Authorization, Content-Type';h['Access-Control-Allow-Methods']='GET, POST, OPTIONS';}
  res.writeHead(code,h);res.end(str);
 }
-function authorized(req){
+function legacyAuthorized(req){
  const s=env.PORTAL_ACCESS_TOKEN;
  if(!s)return false;
  const a=Buffer.from(s),b=Buffer.from((req.headers.authorization||'').replace(/^Bearer\s+/i,''));
  return a.length===b.length&&timingSafeEqual(a,b);
+}
+function bearer(req){return (req.headers.authorization||'').replace(/^Bearer\s+/i,'');}
+function identify(req){
+ if(useAccounts)return authenticate(bearer(req));
+ if(legacyAuthorized(req))return {username:'legado-admin',displayName:'Administrador',role:'administrador',permissions:permissionsFor('administrador')};
+ return null;
+}
+async function bodyJSON(req){
+ const parts=[];let size=0;
+ for await(const chunk of req){
+  size+=chunk.length;if(size>8192)throw Error('Corpo da requisição excede 8 KB.');
+  parts.push(chunk);
+ }
+ return JSON.parse(Buffer.concat(parts).toString('utf8'));
+}
+const loginAttempts=new Map();
+function canTryLogin(req){
+ const ip=req.socket.remoteAddress||'none',now=Date.now(),record=loginAttempts.get(ip);
+ if(!record||now-record.start>600000){loginAttempts.set(ip,{start:now,n:1});return true;}
+ record.n++;return record.n<=12;
 }
 function getPath(value,path){return path?path.split('.').filter(Boolean).reduce((x,k)=>x?.[k],value):value;}
 function listFrom(v){
@@ -107,17 +130,39 @@ const server=http.createServer(async(req,res)=>{
  const origin=req.headers.origin||'';
  if(req.method==='OPTIONS'){
   if(origin&&!origins.includes(origin))return reply(res,403,{error:'Origem não permitida'});
-  res.writeHead(204,origin?{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, OPTIONS','Vary':'Origin'}:{});res.end();return;
+  res.writeHead(204,origin?{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, POST, OPTIONS','Vary':'Origin'}:{});res.end();return;
  }
  let url;try{url=new URL(req.url,'http://localhost');}catch{return reply(res,400,{error:'Requisição inválida'},origin);}
+ if(url.pathname==='/api/login'){
+  if(req.method!=='POST')return reply(res,405,{error:'Método não permitido'},origin);
+  if(!useAccounts)return reply(res,503,{error:'Login individual indisponível: configure PORTAL_USERS_FILE no servidor privado.'},origin);
+  if(!canTryLogin(req))return reply(res,429,{error:'Tentativas de login excedidas. Aguarde 10 minutos.'},origin);
+  try{
+   const body=await bodyJSON(req);
+   const session=login(body.username,body.password);
+   if(!session)return reply(res,401,{error:'Usuário ou senha inválidos.'},origin);
+   return reply(res,200,session,origin);
+  }catch{return reply(res,400,{error:'Dados de login inválidos.'},origin);}
+ }
+ if(url.pathname==='/api/logout'){
+  if(req.method!=='POST')return reply(res,405,{error:'Método não permitido'},origin);
+  if(useAccounts)logout(bearer(req));
+  return reply(res,200,{ok:true},origin);
+ }
  if(req.method!=='GET')return reply(res,405,{error:'Método não permitido'},origin);
- if(url.pathname==='/api/health')return reply(res,200,{status:'ok',configured:!!(base&&cfg.viagens.path&&cfg.pedidos.path&&env.PORTAL_ACCESS_TOKEN&&dssCredentialsReady())},origin);
+ if(url.pathname==='/api/health')return reply(res,200,{status:'ok',configured:!!(base&&cfg.viagens.path&&cfg.pedidos.path&&dssCredentialsReady()&&(useAccounts||env.PORTAL_ACCESS_TOKEN)),accounts:useAccounts},origin);
+ const user=identify(req);
+ if(url.pathname==='/api/me'){
+  if(!user)return reply(res,401,{error:'Sessão inválida ou expirada'},origin);
+  return reply(res,200,{user:{username:user.username,displayName:user.displayName,role:user.role},permissions:user.permissions},origin);
+ }
  if(url.pathname==='/api/status'){
-  if(!authorized(req))return reply(res,401,{error:'Não autorizado'},origin);
+  if(!user)return reply(res,401,{error:'Não autorizado'},origin);
+  if(!user.permissions.admin)return reply(res,403,{error:'Somente administradores podem consultar diagnósticos.'},origin);
   return reply(res,200,{status:'ok',configured:!!(base&&dssCredentialsReady()),lastSuccess:apiStats.lastSuccess,lastFailure:apiStats.lastFailure,counters:{...apiStats},cacheEntries:CACHE.size,cacheSeconds:cacheMaxAge/1000},origin);
  }
  if(url.pathname!=='/api/overview')return reply(res,404,{error:'Rota não encontrada'},origin);
- if(!authorized(req))return reply(res,401,{error:'Acesso ao portal não autorizado'},origin);
+ if(!user)return reply(res,401,{error:'Sessão inválida ou expirada'},origin);
  if(!allowedRate(req))return reply(res,429,{error:'Limite de consultas atingido. Aguarde um minuto e tente novamente.'},origin);
  if(!base)return reply(res,503,{error:'DSS_BASE_URL não configurado no servidor privado.'},origin);
  if(!dssCredentialsReady())return reply(res,503,{error:'Basic Auth do DSS não configurado no backend. Informe DSS_USERNAME e DSS_PASSWORD no arquivo .env privado.'},origin);
@@ -125,7 +170,7 @@ const server=http.createServer(async(req,res)=>{
  if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)return reply(res,400,{error:'Intervalo de datas inválido'},origin);
  const cacheKey=from+'|'+to;
  const cached=cacheGet(cacheKey);
- if(cached){apiStats.cached++;return reply(res,200,{...cached,cacheHit:true},origin);}
+ if(cached){apiStats.cached++;return reply(res,200,projectOverview({...cached,cacheHit:true},user.role),origin);}
  const started=Date.now();
  try{
   const result=await Promise.all(Object.keys(cfg).map(async name=>[name,await queryDss(name,from,to)]));
@@ -134,7 +179,7 @@ const server=http.createServer(async(req,res)=>{
   cachePut(cacheKey,payload);
   apiStats.success++;apiStats.lastSuccess=payload.updatedAt;
   console.info('[DSS] consulta concluída','período',from,to,'duração(ms)',Date.now()-started,'RVs',payload.data.viagens.length,'PFs',payload.data.pedidos.length);
-  return reply(res,200,payload,origin);
+  return reply(res,200,projectOverview(payload,user.role),origin);
  }catch(err){
   apiStats.failed++;apiStats.lastFailure=new Date().toISOString();
   console.error('[DSS]',err.name,err.message); // Não imprimir tokens, CPFs ou payloads DSS.
