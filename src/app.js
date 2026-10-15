@@ -45,7 +45,7 @@ const state = {
  apiUrl:localStorage.getItem('costalog_api_url')||'',token:'',importCount:0,
  customer:'',vehicle:'',serviceType:'',sortKey:'',sortDir:'desc',alertPriority:'todos',
  hiddenColumns:readPrefs('costalog_visible_columns',{}),presets:readPrefs('costalog_filter_presets',{}),
- reportSelected:'viagens',reportMulti:false,autoRefresh:0,lastSync:null,prevDataset:null,lateDays:2
+ reportSelected:'viagens',reportMulti:false,autoRefresh:0,lastSync:null,prevDataset:null,lateDays:2,apiDiagnostics:null
 };
 const icons={
  home:'<path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-7h6v7"/>',
@@ -365,6 +365,13 @@ root.addEventListener('click',e=>{
  if(action==='menu'){state.menu=!state.menu;render();}
  if(action==='refresh')loadData();
  if(action==='compare-periods')comparePeriods();
+ if(action==='api-diagnostics'){
+  if(!state.apiUrl||!state.token){alert('Conecte o backend e informe o token do portal antes de consultar os diagnósticos.');return;}
+  fetch(state.apiUrl.replace(/\/$/,'')+'/api/status',{headers:{Authorization:'Bearer '+state.token}})
+   .then(async res=>{if(!res.ok)throw Error('HTTP '+res.status);return res.json();})
+   .then(value=>{state.apiDiagnostics=value;render();})
+   .catch(err=>alert('Não foi possível consultar os diagnósticos: '+err.message));
+ }
  if(['xlsx-export','csv-advanced','pdf-report'].includes(action)){try{exportAdvanced(state.reportSelected||'viagens',action==='xlsx-export'?'xlsx':action==='csv-advanced'?'csv':'pdf');}catch(err){alert('Erro ao gerar relatório: '+err.message);}}
  if(action==='clear-filters'){state.customer='';state.vehicle='';state.serviceType='';state.search='';state.sortKey='';state.page=1;render();}
  if(action==='save-filter'){const name=prompt('Nome para este conjunto de filtros:');if(name&&name.trim()){state.presets[name.trim().slice(0,45)]={from:state.from,to:state.to,customer:state.customer,vehicle:state.vehicle,serviceType:state.serviceType,search:state.search};localStorage.setItem('costalog_filter_presets',JSON.stringify(state.presets));render();}}
