@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {webcrypto} from 'node:crypto';
 test('GitHub Pages aceita administrador temporário, troca senha e gerencia usuários DEMO sem API',async()=>{
  const db=new Map(),events={},fields={
   loginUser:{value:'admin'},loginPassword:{value:'CL-cwfK6_CoN6lKAUZeM5sPnsE'},
@@ -11,7 +10,6 @@ test('GitHub Pages aceita administrador temporário, troca senha e gerencia usu�
   adminNewRole:{value:'financeiro'},adminNewPassword:{value:'provisoria-funcionario-2026'}
  };
  let networkCalls=0;
- globalThis.crypto=webcrypto;
  globalThis.localStorage={getItem:k=>db.get(k)||null,setItem:(k,v)=>db.set(k,v),removeItem:k=>db.delete(k)};
  globalThis.window={location:{hostname:'joaopedrocostalog-netizen.github.io',protocol:'https:',origin:'https://joaopedrocostalog-netizen.github.io'}};
  const app={innerHTML:'',addEventListener:(type,fn)=>events[type]=fn};
