@@ -5,7 +5,7 @@
  */
 import http from 'node:http';
 import {timingSafeEqual} from 'node:crypto';
-import {configuredUsers,login,authenticate,logout} from './auth.mjs';
+import {configuredUsers,login,authenticate,logout,listAccounts,createAccount,updateAccount,changeOwnPassword,AccountError} from './auth.mjs';
 import {projectOverview,permissionsFor} from './access.mjs';
 const env=process.env;
 const useAccounts=configuredUsers();
@@ -64,7 +64,7 @@ function dssAuthHeaders(){
 }
 function reply(res,code,body,origin){
  const str=JSON.stringify(body),h={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(str),'X-Content-Type-Options':'nosniff'};
- if(origin&&origins.includes(origin)){h['Access-Control-Allow-Origin']=origin;h['Vary']='Origin';h['Access-Control-Allow-Headers']='Authorization, Content-Type';h['Access-Control-Allow-Methods']='GET, POST, OPTIONS';}
+ if(origin&&origins.includes(origin)){h['Access-Control-Allow-Origin']=origin;h['Vary']='Origin';h['Access-Control-Allow-Headers']='Authorization, Content-Type';h['Access-Control-Allow-Methods']='GET, POST, PATCH, OPTIONS';}
  res.writeHead(code,h);res.end(str);
 }
 function legacyAuthorized(req){
@@ -130,7 +130,7 @@ const server=http.createServer(async(req,res)=>{
  const origin=req.headers.origin||'';
  if(req.method==='OPTIONS'){
   if(origin&&!origins.includes(origin))return reply(res,403,{error:'Origem não permitida'});
-  res.writeHead(204,origin?{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, POST, OPTIONS','Vary':'Origin'}:{});res.end();return;
+  res.writeHead(204,origin?{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, POST, PATCH, OPTIONS','Vary':'Origin'}:{});res.end();return;
  }
  let url;try{url=new URL(req.url,'http://localhost');}catch{return reply(res,400,{error:'Requisição inválida'},origin);}
  if(url.pathname==='/api/login'){
@@ -149,20 +149,65 @@ const server=http.createServer(async(req,res)=>{
   if(useAccounts)logout(bearer(req));
   return reply(res,200,{ok:true},origin);
  }
+ // Administração: apenas sessões individuais no servidor e role de administrador.
+ if(url.pathname==='/api/change-password'){
+  if(req.method!=='POST')return reply(res,405,{error:'Método não permitido'},origin);
+  const user=useAccounts?identify(req):null;
+  if(!user)return reply(res,401,{error:'Sessão inválida ou expirada.'},origin);
+  if(!allowedRate(req))return reply(res,429,{error:'Aguarde antes de realizar outra tentativa.'},origin);
+  try{
+   const input=await bodyJSON(req);
+   changeOwnPassword(user.username,input.currentPassword,input.newPassword);
+   return reply(res,200,{ok:true,message:'Senha alterada. Faça login novamente.'},origin);
+  }catch(err){return reply(res,err instanceof AccountError?err.status:400,{error:err instanceof AccountError?err.message:'Não foi possível alterar a senha.'},origin);}
+ }
+ if(url.pathname==='/api/users'||url.pathname.startsWith('/api/users/')){
+  const user=useAccounts?identify(req):null;
+  if(!user)return reply(res,401,{error:'Sessão inválida ou expirada.'},origin);
+  if(!user.permissions.admin)return reply(res,403,{error:'Apenas administradores podem gerenciar contas.'},origin);
+  if(user.mustChangePassword)return reply(res,403,{error:'Altere sua senha provisória antes de gerenciar usuários.'},origin);
+  if(!allowedRate(req))return reply(res,429,{error:'Limite de solicitações atingido.'},origin);
+  try{
+   if(url.pathname==='/api/users'){
+    if(req.method==='GET')return reply(res,200,{users:listAccounts()},origin);
+    if(req.method==='POST'){
+     const input=await bodyJSON(req);
+     const created=createAccount(input);
+     console.info('[USERS]',user.username,'criou',created.username,'perfil',created.role);
+     return reply(res,201,{user:created},origin);
+    }
+   }else if(req.method==='PATCH'){
+    const target=decodeURIComponent(url.pathname.slice('/api/users/'.length));
+    if(target.includes('/')||!target)return reply(res,400,{error:'Nome de usuário inválido.'},origin);
+    const input=await bodyJSON(req);
+    const updated=updateAccount(target,input.action,input,user.username);
+    console.info('[USERS]',user.username,'alterou',updated.username,'ação',input.action);
+    return reply(res,200,{user:updated},origin);
+   }
+   return reply(res,405,{error:'Método não permitido.'},origin);
+  }catch(err){
+   if(err instanceof AccountError)return reply(res,err.status,{error:err.message},origin);
+   if(err.message?.includes('Senha precisa'))return reply(res,400,{error:err.message},origin);
+   console.error('[USERS] falha ao atualizar contas:',err.code||err.name);
+   return reply(res,500,{error:'Não foi possível salvar as contas. Verifique permissões do volume privado no servidor.'},origin);
+  }
+ }
  if(req.method!=='GET')return reply(res,405,{error:'Método não permitido'},origin);
  if(url.pathname==='/api/health')return reply(res,200,{status:'ok',configured:!!(base&&cfg.viagens.path&&cfg.pedidos.path&&dssCredentialsReady()&&(useAccounts||env.PORTAL_ACCESS_TOKEN)),accounts:useAccounts},origin);
  const user=identify(req);
  if(url.pathname==='/api/me'){
   if(!user)return reply(res,401,{error:'Sessão inválida ou expirada'},origin);
-  return reply(res,200,{user:{username:user.username,displayName:user.displayName,role:user.role},permissions:user.permissions},origin);
+  return reply(res,200,{user:{username:user.username,displayName:user.displayName,role:user.role,mustChangePassword:!!user.mustChangePassword},permissions:user.permissions},origin);
  }
  if(url.pathname==='/api/status'){
   if(!user)return reply(res,401,{error:'Não autorizado'},origin);
+  if(user.mustChangePassword)return reply(res,403,{error:'Altere a senha provisória.'},origin);
   if(!user.permissions.admin)return reply(res,403,{error:'Somente administradores podem consultar diagnósticos.'},origin);
   return reply(res,200,{status:'ok',configured:!!(base&&dssCredentialsReady()),lastSuccess:apiStats.lastSuccess,lastFailure:apiStats.lastFailure,counters:{...apiStats},cacheEntries:CACHE.size,cacheSeconds:cacheMaxAge/1000},origin);
  }
  if(url.pathname!=='/api/overview')return reply(res,404,{error:'Rota não encontrada'},origin);
  if(!user)return reply(res,401,{error:'Sessão inválida ou expirada'},origin);
+ if(user.mustChangePassword)return reply(res,403,{error:'Altere sua senha provisória antes de consultar o DSS.',code:'PASSWORD_CHANGE_REQUIRED'},origin);
  if(!allowedRate(req))return reply(res,429,{error:'Limite de consultas atingido. Aguarde um minuto e tente novamente.'},origin);
  if(!base)return reply(res,503,{error:'DSS_BASE_URL não configurado no servidor privado.'},origin);
  if(!dssCredentialsReady())return reply(res,503,{error:'Basic Auth do DSS não configurado no backend. Informe DSS_USERNAME e DSS_PASSWORD no arquivo .env privado.'},origin);
