@@ -4,6 +4,9 @@
  * Caminhos e parâmetros são configurados após validar o Swagger.
  */
 import http from 'node:http';
+import {readFile} from 'node:fs/promises';
+import {resolve,dirname,join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {timingSafeEqual} from 'node:crypto';
 import {configuredUsers,login,authenticate,logout,listAccounts,createAccount,updateAccount,changeOwnPassword,AccountError} from './auth.mjs';
 import {projectOverview,permissionsFor} from './access.mjs';
@@ -127,6 +130,32 @@ async function queryDss(name,from,to){
  if(Number.isInteger(v?.qtd_registros)&&v.qtd_registros>list.length)throw Error('DSS '+name+' indicou '+v.qtd_registros+' registros, mas retornou '+list.length+'. Verifique a paginação antes de gerar relatórios.');
  return list;
 }
+/** Frontend local no MESMO servidor e origem da API.
+ * Lista explícita: nunca servir .env, private/, api/ ou outros arquivos do disco.
+ */
+const webRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+const staticFiles=new Map([
+ ['/','index.html'],
+ ['/index.html','index.html'],
+ ['/styles.css','styles.css'],
+ ['/logo-costalog-sem-fundo-1024x876.png','logo-costalog-sem-fundo-1024x876.png'],
+ ...['app.js','dss-mapping.mjs','operational.mjs','reporting.mjs','advanced-ui.mjs','access-ui.mjs','admin-users.mjs'].map(name=>['/src/'+name,'src/'+name])
+]);
+async function serveLocalFrontend(req,res,url){
+ if(req.method!=='GET'&&req.method!=='HEAD')return false;
+ const path=staticFiles.get(url.pathname);
+ if(!path)return false;
+ const mime=path.endsWith('.css')?'text/css; charset=utf-8':path.endsWith('.js')||path.endsWith('.mjs')?'text/javascript; charset=utf-8':path.endsWith('.png')?'image/png':'text/html; charset=utf-8';
+ try{
+  const bytes=await readFile(join(webRoot,path));
+  res.writeHead(200,{'Content-Type':mime,'Content-Length':bytes.length,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"});
+  res.end(req.method==='HEAD'?undefined:bytes);
+ }catch(err){
+  if(err.code==='ENOENT')reply(res,404,{error:'Arquivo da interface não encontrado. Execute o projeto na pasta completa Viagens-PF, não somente api/.'});
+  else reply(res,500,{error:'Falha ao carregar a interface local.'});
+ }
+ return true;
+}
 const server=http.createServer(async(req,res)=>{
  const origin=req.headers.origin||'';
  if(req.method==='OPTIONS'){
@@ -134,6 +163,7 @@ const server=http.createServer(async(req,res)=>{
   res.writeHead(204,origin?{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, POST, PATCH, OPTIONS','Vary':'Origin'}:{});res.end();return;
  }
  let url;try{url=new URL(req.url,'http://localhost');}catch{return reply(res,400,{error:'Requisição inválida'},origin);}
+ if(await serveLocalFrontend(req,res,url))return;
  if(url.pathname==='/api/login'){
   if(req.method!=='POST')return reply(res,405,{error:'Método não permitido'},origin);
   if(!useAccounts)return reply(res,503,{error:'Login individual indisponível: configure PORTAL_USERS_FILE no servidor privado.'},origin);
