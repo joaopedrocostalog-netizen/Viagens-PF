@@ -243,7 +243,7 @@ function exportCsv(which){
  else if(which==='ctes'){name='pedidos_cte';rows=[['Documento','Tipo','Data','Cliente','Viagem','Valor','Situacao'],...[...d.ctes.map(x=>({...x,tipo:'CT-e'})),...d.pedidos.filter(x=>!x.isCte).map(x=>({...x,tipo:'Pedido de frete'}))].map(v=>[v.numero,v.tipo,v.data,v.cliente,v.viagemId,v.valor,v.status])];}
  else if(which==='clientes'){name='clientes';rows=[['Cliente','Viagens','Receita','Custo'],...aggregateClients(d.viagens).map(v=>[v.cliente,v.viagens,v.receitaN===v.viagens?v.receita:'',v.custoN===v.viagens?v.custo:''])];}
  else if(which==='mdfes'){name='mdfe';rows=[['MDF-e','Data','Viagem','Placa','Situacao','Conciliacao'],...d.mdfes.map(v=>[v.numero,v.data,v.viagemId,v.placa,v.status,mdfeSituation(v,d)])];}
- else{return exportCsv(state.view==='painel'?'viagens':state.view);}
+ else{return exportCsv('viagens');}
  const blob=new Blob(['\uFEFF'+rows.map(r=>r.map(csvCell).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8;'});
  const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='costalog_'+name+'_'+state.from+'_'+state.to+(state.mode==='demo'?'_DEMO':'')+'.csv';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);
 }
