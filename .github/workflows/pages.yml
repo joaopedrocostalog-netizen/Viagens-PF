@@ -19,7 +19,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Validar sintaxe JavaScript
-        run: node --check src/app.js && node --check api/server.mjs
+        run: node --check src/app.js && node --check src/dss-mapping.mjs && node --check api/server.mjs && node --test tests/*.test.mjs
       - name: Configurar GitHub Pages
         uses: actions/configure-pages@v5
       - name: Preparar arquivos públicos
@@ -27,7 +27,7 @@ jobs:
           mkdir -p public_site
           cp index.html styles.css public_site/
           mkdir -p public_site/src
-          cp src/app.js public_site/src/
+          cp src/app.js src/dss-mapping.mjs public_site/src/
           touch public_site/.nojekyll
       - name: Enviar frontend
         uses: actions/upload-pages-artifact@v3
