@@ -38,7 +38,15 @@ function mapViagem(v,i){
   kmPrevisto:moneyNumber(v.km_previsto),kmRodados:moneyNumber(v.total_km_rodados),
   abastecimento,adiantamento:moneyNumber(v.valor_adiantamento_vf),
   proventos:moneyNumber(v.valor_proventos_vf),liquido:moneyNumber(v.valor_liquido_vf),
-  custo:null,receita:null,pedidosVinculados:0,vinculoFinancas:'sem dados',tipoRv:s(v.tipo_rv)
+  custo:null,receita:null,pedidosVinculados:0,vinculoFinancas:'sem dados',tipoRv:s(v.tipo_rv),
+  veiculoId:id(v.veiculo_id),motoristaId:id(v.motorista_id),
+  carreta1Id:id(v.carreta1_id),carreta2Id:id(v.carreta2_id),carreta3Id:id(v.carreta3_id),
+  contratoVf:s(v.nro_contrato_vf),rotaMdf:s(v.rota_mdf),perfilCiot:s(v.perfil_ciot),
+  solicitacaoMonitoramento:s(v.nro_solic_monitoramento),programacaoId:id(v.programacao_id),
+  nroProgramacao:id(v.nro_programacao),rotaId:id(v.rota_id),empresa:s(v.empresa),
+  clientePredominante:s(v.cliente_predominante),container:s(v.nro_container),
+  proprietario:s(v.proprietario),statusPagamentoSaldo:s(v.status_pgto_saldo),
+  dataPagamentoSaldo:isoDate(v.data_pgto_saldo),createdBy:s(v.created_by),createdOn:isoDate(v.created_on)
  };
 }
 function mapPedido(v,i){
@@ -52,7 +60,21 @@ function mapPedido(v,i){
   status:s(v.status_pedido)||'Não informado',
   rvReferencia:id(v.rv_viagem),viagemId:null,matchMethod:'',ambiguous:false,
   nroMdf:mdfeNum,valor:moneyNumber(v.total_frete),valorReceber:moneyNumber(v.valor_receber),
-  tipoCte:s(v.tipo_cte),tipoDocumento:s(v.tipo_documento),isCte:!!cteNum,numeroPf:pedidoNum
+  tipoCte:s(v.tipo_cte),tipoDocumento:s(v.tipo_documento),isCte:!!cteNum,numeroPf:pedidoNum,
+  veiculoId:id(v.veiculo_id),motoristaId:id(v.motorista_id),motoristaNome:s(v.motorista_nome),
+  motoristaCpf:s(v.motorista_cpf),operacaoTransporte:s(v.operacao_transporte),
+  numeroFatura:s(v.nro_fatura),liberadoFaturamento:v.liberado_para_faturamento??null,
+  entregaConcluida:v.entrega_concluida??null,comprovanteEntrega:v.comprovante_entrega??null,
+  ocorrencia:s(v.ocorrencia),tipoServico:s(v.tipo_servico),freteMunicipal:v.frete_municipal??null,
+  numeroAverbacao:s(v.nro_averbacao),valorAverbacao:moneyNumber(v.valor_averbacao),
+  valorIcmsIss:moneyNumber(v.valor_icms_iss),freteSemIcms:moneyNumber(v.total_frete_sem_icms),
+  numeroNfse:s(v.numero_nfse),processoId:id(v.processo_id),numeroProcesso:s(v.numero_processo),
+  nroProgramacao:id(v.nro_programacao),programacaoId:id(v.programacao_id),
+  empresa:s(v.empresa),remetente:s(v.remetente),destinatario:s(v.destinatario),
+  container:s(v.nro_container),localColeta:s(v.local_coleta),
+  produtoPredominante:s(v.produto_predominante),refCliente:s(v.nro_ref_cliente),
+  valorMercadorias:moneyNumber(v.valor_mercadorias),numeroDocumento:s(v.nro_documento),
+  statusFiscal:null
  };
 }
 function mapMdfe(v,i){
