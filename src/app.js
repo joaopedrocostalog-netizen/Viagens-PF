@@ -243,17 +243,21 @@ function exportCsv(which){
 }
 function parseCsv(content){const text=content.replace(/^\uFEFF/,'').replace(/\r/g,'');const rows=text.split('\n').filter(x=>x.trim());if(rows.length<2)return [];const sep=rows[0].includes(';')?';':',';function parseLine(l){const out=[];let token='',quoted=false;for(let i=0;i<l.length;i++){const c=l[i];if(c==='"'&&l[i+1]==='"'&&quoted){token+='"';i++;}else if(c==='"'){quoted=!quoted;}else if(c===sep&&!quoted){out.push(token);token='';}else token+=c;}out.push(token);return out;}const headers=parseLine(rows.shift()).map(normalKey);return rows.map((l,i)=>{const fields=parseLine(l);const v={};headers.forEach((h,j)=>v[h]=fields[j]||'');return normalizeMdfe(v,i);}).filter(x=>x.numero!=='—');}
 async function loadData(){
+ if(!state.token){state.connect=true;state.loading=false;state.error='Para carregar os dados do DSS, informe o token de acesso do portal na janela Conectar API.';render();return;}
  state.loading=true;state.connect=false;state.error='';render();
  try{
   const url=(state.apiUrl||window.location.origin).replace(/\/$/,'')+'/api/overview?from='+encodeURIComponent(state.from)+'&to='+encodeURIComponent(state.to);
-  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),15000);
+  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),45000);
   let response;try{response=await fetch(url,{headers:state.token?{'Authorization':'Bearer '+state.token}:{},credentials:'omit',signal:controller.signal});}finally{clearTimeout(timer);}
-  if(!response.ok){let message='HTTP '+response.status;try{const b=await response.json();message=b.error||message;}catch{}throw new Error(message);}
+  if(!response.ok){let message='HTTP '+response.status;try{const b=await response.json();message=b.error||message;}catch{}
+   if(response.status===401){state.token='';state.connect=true;message='Token de acesso ao portal inválido ou ausente. Digite o token de acesso do portal (não a senha Basic Auth do DSS).';}
+   else if(response.status===503){message='O backend precisa ser configurado no servidor privado: '+message;}
+   throw new Error(message);}
   const data=await response.json();
   if(!data||!data.data)throw new Error('Formato de resposta desconhecido');
   state.dataset=normalizePayload(data);state.mode='live';state.error='';state.page=1;
  }catch(err){
-  state.mode='demo';state.dataset=demo;state.error='API indisponível: '+(err.name==='AbortError'?'tempo limite de 15 segundos':err.message)+'. Exibindo somente dados fictícios.';
+  state.mode='demo';state.dataset=demo;state.error='API indisponível: '+(err.name==='AbortError'?'tempo limite de 45 segundos':err.message)+'. Exibindo somente dados fictícios.';
  }finally{state.loading=false;render();}
 }
 root.addEventListener('click',e=>{
@@ -296,4 +300,4 @@ root.addEventListener('input',e=>{
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(state.selected||state.connect)){state.selected=null;state.connect=false;render();}});
 render();
-if(window.location.protocol!=='file:'&&state.apiUrl)loadData();
+if(window.location.protocol!=='file:'&&state.apiUrl&&state.token)loadData();
