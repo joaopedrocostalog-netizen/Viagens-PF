@@ -12,7 +12,7 @@ const origins=(env.PORTAL_ALLOWED_ORIGINS||'').split(',').map(s=>s.trim()).filte
 const timeout=Math.max(1000,Number(env.DSS_TIMEOUT_MS||20000));
 function config(name){
  const k='DSS_'+name.toUpperCase();
- return {path:env[k+'_PATH'],method:(env[k+'_METHOD']||'GET').toUpperCase(),from:env[k+'_QUERY_FROM'],to:env[k+'_QUERY_TO'],body:env[k+'_BODY_TEMPLATE']||'',dataPath:env[k+'_DATA_PATH']||''};
+ return {path:env[k+'_PATH']||({DSS_VIAGENS:'/listarViagens',DSS_PEDIDOS:'/listarPedidosFrete'}[k]||''),method:(env[k+'_METHOD']||'GET').toUpperCase(),from:env[k+'_QUERY_FROM']||(name==='viagens'||name==='pedidos'?'data_inicio':''),to:env[k+'_QUERY_TO']||(name==='viagens'||name==='pedidos'?'data_fim':''),body:env[k+'_BODY_TEMPLATE']||'',dataPath:env[k+'_DATA_PATH']||(name==='viagens'||name==='pedidos'?'registros':'')};
 }
 const cfg=Object.fromEntries(['viagens','pedidos','ctes','mdfes'].map(k=>[k,config(k)]));
 function reply(res,code,body,origin){
@@ -39,8 +39,9 @@ async function queryDss(name,from,to){
  if(!base)throw Error('DSS_BASE_URL não informado');
  const url=new URL(c.path.replace(/^\//,''),base.replace(/\/?$/,'/'));
  if(url.origin!==new URL(base).origin)throw Error('Origem DSS inválida');
- if(c.from)url.searchParams.set(c.from,from);
- if(c.to)url.searchParams.set(c.to,to);
+ const fmt=(name==='viagens'||name==='pedidos')?d=>d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4):d=>d;
+ if(c.from)url.searchParams.set(c.from,fmt(from));
+ if(c.to)url.searchParams.set(c.to,fmt(to));
  const headers={Accept:'application/json'};
  if(env.DSS_AUTH_HEADER&&env.DSS_AUTH_VALUE)headers[env.DSS_AUTH_HEADER]=env.DSS_AUTH_VALUE;
  let body;
@@ -48,8 +49,10 @@ async function queryDss(name,from,to){
  const r=await fetch(url,{method:c.method,headers,body,signal:AbortSignal.timeout(timeout),redirect:'error'});
  if(!r.ok)throw Error('Consulta '+name+' retornou HTTP '+r.status);
  let v;try{v=await r.json();}catch{throw Error('Resposta '+name+' não é JSON');}
+ if(v&&typeof v.status==='number'&&v.status!==200)throw Error('DSS '+name+' recusou a consulta (status '+v.status+'): '+String(v.mensagemErro||'verifique permissões e credenciais').slice(0,180));
  const list=listFrom(getPath(v,c.dataPath));
  if(!list)throw Error('Resposta '+name+' não contém lista; confira o DATA_PATH.');
+ if(Number.isInteger(v?.qtd_registros)&&v.qtd_registros>list.length)throw Error('DSS '+name+' indicou '+v.qtd_registros+' registros, mas retornou '+list.length+'. Verifique a paginação antes de gerar relatórios.');
  return list;
 }
 const server=http.createServer(async(req,res)=>{
@@ -63,7 +66,7 @@ const server=http.createServer(async(req,res)=>{
  if(url.pathname==='/api/health')return reply(res,200,{status:'ok',configured:!!(base&&cfg.viagens.path&&cfg.pedidos.path&&env.PORTAL_ACCESS_TOKEN)},origin);
  if(url.pathname!=='/api/overview')return reply(res,404,{error:'Rota não encontrada'},origin);
  if(!authorized(req))return reply(res,401,{error:'Acesso ao portal não autorizado'},origin);
- if(!base||!cfg.viagens.path||!cfg.pedidos.path)return reply(res,503,{error:'DSS ainda não configurado com os endpoints validados.'},origin);
+ if(!base)return reply(res,503,{error:'DSS_BASE_URL não configurado no servidor privado.'},origin);
  const from=url.searchParams.get('from')||'',to=url.searchParams.get('to')||'';
  if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)return reply(res,400,{error:'Intervalo de datas inválido'},origin);
  try{
