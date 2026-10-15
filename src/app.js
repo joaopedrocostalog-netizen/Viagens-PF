@@ -88,16 +88,16 @@ function normalizePayload(raw){
  return {viagens,pedidos,ctes,mdfes,sources:payload.sources||{viagens:true,pedidos:true,ctes:ctesApi.length>0||inferred.length>0,mdfes:Array.isArray(payload.mdfes)}};
 }
 function inRange(v){return !v||((!state.from||v>=state.from)&&(!state.to||v<=state.to));}
-function scoped(){const d=state.dataset;return {viagens:d.viagens.filter(x=>inRange(x.data)),ctes:d.ctes.filter(x=>inRange(x.data)),pedidos:d.pedidos.filter(x=>inRange(x.data)),mdfes:d.mdfes.filter(x=>inRange(x.data)),sources:d.sources};}
+function scoped(){const d=state.dataset;return {viagens:d.viagens.filter(x=>inRange(x.data)),allViagens:d.viagens,ctes:d.ctes.filter(x=>inRange(x.data)),pedidos:d.pedidos.filter(x=>inRange(x.data)),mdfes:d.mdfes.filter(x=>inRange(x.data)),sources:d.sources};}
 function totals(data){
  const trips=data.viagens;const ctes=data.ctes;
  const revenueKnown=trips.filter(v=>Number.isFinite(v.receita));
  const costsKnown=trips.filter(v=>Number.isFinite(v.custo));
  const revenue=revenueKnown.reduce((s,x)=>s+x.receita,0), cost=costsKnown.reduce((s,x)=>s+x.custo,0);
  const completeMoney=trips.length>0&&revenueKnown.length===trips.length&&costsKnown.length===trips.length;
- const orphan=data.sources.ctes?ctes.filter(c=>!c.viagemId||!trips.some(t=>t.id===c.viagemId)):null;
- const linked=data.mdfes.filter(m=>m.viagemId&&trips.some(t=>t.id===m.viagemId));
- const mismatched=data.sources.mdfes?data.mdfes.filter(m=>m.viagemId&&!trips.some(t=>t.id===m.viagemId)):null;
+ const orphan=data.sources.ctes?ctes.filter(c=>!c.viagemId||!data.allViagens.some(t=>t.id===c.viagemId)):null;
+ const linked=data.mdfes.filter(m=>m.viagemId&&data.allViagens.some(t=>t.id===m.viagemId));
+ const mismatched=data.sources.mdfes?data.mdfes.filter(m=>m.viagemId&&!data.allViagens.some(t=>t.id===m.viagemId)):null;
  return {revenue:revenueKnown.length?revenue:null,cost:costsKnown.length?cost:null,profit:completeMoney?revenue-cost:null,margin:completeMoney&&revenue?pct((revenue-cost)/revenue*100):'—',orphan,mismatched,linked,completeMoney,revenueCount:revenueKnown.length,costCount:costsKnown.length};
 }
 const navItems=[['painel','home','Visão geral'],['viagens','truck','Viagens'],['ctes','doc','Pedidos / CT-e'],['clientes','chart','Custos e Receitas'],['mdfes','shield','MDF-e'],['relatorios','doc','Relatórios'],['integracoes','cog','Integração DSS']];
@@ -145,7 +145,7 @@ function renderPainel(d,s){
  kpi('CUSTO DAS VIAGENS',money(s.cost),'Com valor informado','money')+
  kpi('RESULTADO OPERACIONAL',money(s.profit),'Margem: '+s.margin,'money '+(s.profit>=0&&s.profit!==null?'positive':''))+
  kpi('CT-e SEM VIAGEM',orphanCount,'CT-e identificados: '+cteCount,'alert')+
- kpi('MDF-e SEM VÍNCULO',mdfeCount,'Com viagem inválida','alert')+
+ kpi('MDF-e COM VÍNCULO INVÁLIDO',mdfeCount,'Com viagem inválida','alert')+
  '</div>'+
  '<div class="charts"><div class="card"><div class="card-head"><h3>Receita x custo por mês</h3><span>Ano '+esc(String(year))+'</span></div>'+chartSvg(d.viagens)+'<div class="chart-legend"><span><i class="legend-bullet" style="background:#e22231"></i>Receita</span><span><i class="legend-bullet" style="background:#777782"></i>Custo</span></div></div>'+
  '<div class="card"><div class="card-head"><h3>Receita por cliente</h3><span>Ranking do período</span></div>'+barRanking(d.viagens)+'</div></div>'+
@@ -203,7 +203,7 @@ function renderClientes(d,s){
  tableHtml(['Cliente','Viagens','Receita','Custo','Resultado','Margem'],p.slice.map(v=>{const valid=v.receitaN===v.viagens&&v.custoN===v.viagens;const luc=valid?v.receita-v.custo:null;return '<tr><td><strong>'+esc(v.cliente)+'</strong></td><td>'+number(v.viagens)+'</td><td>'+(v.receitaN?money(v.receita):'—')+'</td><td>'+(v.custoN?money(v.custo):'—')+'</td><td>'+money(luc)+'</td><td>'+pct(valid&&v.receita?luc/v.receita*100:null)+'</td></tr>';}))+paging(p)+
  '<p class="help">O resultado financeiro de um cliente fica indisponível quando uma ou mais viagens não possuem receita ou custo. Nenhum valor ausente é tratado como zero.</p>';
 }
-function mdfeSituation(m,d){if(!m.viagemId)return 'Sem vínculo informado';if(!d.viagens.some(v=>v.id===m.viagemId))return 'Viagem não encontrada';return 'Vinculado';}
+function mdfeSituation(m,d){if(!m.viagemId)return 'Sem vínculo informado';if(!d.allViagens.some(v=>v.id===m.viagemId))return 'Viagem não encontrada';return 'Vinculado';}
 function renderMdfes(d,s){
  let rows=searchRows(d.mdfes);if(state.filter==='vinculado')rows=rows.filter(m=>mdfeSituation(m,d)==='Vinculado');if(state.filter==='pendente')rows=rows.filter(m=>mdfeSituation(m,d)!=='Vinculado');rows.sort((a,b)=>b.data.localeCompare(a.data));const p=paginate(rows);
  return '<div class="table-tools"><h2>Conciliação de MDF-e</h2><div class="right-tools"><label class="btn btn-sm" for="csvMDFE">'+icon('download')+' Importar CSV de MDF-e</label><input id="csvMDFE" type="file" accept=".csv,text/csv" hidden>'+button('csv',icon('download')+' Exportar','btn-sm')+'</div></div>'+
@@ -302,4 +302,4 @@ root.addEventListener('input',e=>{
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(state.selected||state.connect)){state.selected=null;state.connect=false;render();}});
 render();
-if(window.location.protocol!=='file:')loadData();
+if(window.location.protocol!=='file:'&&state.apiUrl)loadData();
