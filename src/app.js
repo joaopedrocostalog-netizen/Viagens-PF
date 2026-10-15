@@ -116,7 +116,7 @@ function render(){
  const d=scoped(),stats=totals(d);
  const nav=navItems.map(x=>'<button class="side-link '+(state.view===x[0]?'active':'')+'" data-nav="'+x[0]+'">'+icon(x[1])+esc(x[2])+'</button>').join('');
  const buttons=tabs.map(x=>'<button class="tab '+(state.view===x[0]?'active':'')+'" role="tab" aria-selected="'+(state.view===x[0])+'" data-nav="'+x[0]+'">'+esc(x[1])+'</button>').join('');
- const message=state.mode==='live'?'<div class="info-strip live"><strong>Dados do DSS:</strong> consulta concluída. Os campos não disponibilizados pela API são exibidos como “—”.</div>':'<div class="info-strip'+(state.error?' error':'')+'"><strong>DADOS DEMONSTRATIVOS:</strong> números fictícios usados apenas para visualizar o portal. Nenhuma informação real da COSTALOG está sendo exibida.'+(state.error?'<div>'+esc(state.error)+'</div>':'')+'</div>';
+ const message=state.mode==='live'?'<div class="info-strip '+(state.error?'error':'live')+'"><strong>Dados do DSS:</strong> '+(state.error?'A última sincronização falhou. Mantidos os últimos dados reais carregados; podem estar desatualizados. '+esc(state.error):'Consulta concluída. Os campos não disponibilizados pela API são exibidos como “—”.')+'</div>':'<div class="info-strip'+(state.error?' error':'')+'"><strong>DADOS DEMONSTRATIVOS:</strong> números fictícios usados apenas para visualizar o portal. Nenhuma informação real da COSTALOG está sendo exibida.'+(state.error?'<div>'+esc(state.error)+'</div>':'')+'</div>';
  root.innerHTML='<div class="layout">'+
   (state.menu?'<button class="floating-close" data-action="menu" aria-label="Fechar menu"></button>':'')+
   '<aside class="sidebar '+(state.menu?'open':'')+'"><div class="brand"><img class="brand-logo" src="./logo-costalog-sem-fundo-1024x876.png" alt="Logotipo COSTALOG" width="48" height="46"><div><div class="brand-name">COSTALOG</div><div class="brand-sub">A LOGÍSTICA IDEAL</div></div></div><div class="side-title">GESTÃO DE FROTA</div><nav class="side-nav">'+nav+'</nav><div class="side-bottom"><strong>VIAGENS & FRETES</strong>Inteligência operacional e financeira<br>Portal interno COSTALOG</div></aside>'+
@@ -296,12 +296,18 @@ async function loadData(){
   if(!data||!data.data)throw new Error('Formato de resposta desconhecido');
   state.dataset=normalizePayload(data);state.mode='live';state.error='';state.page=1;state.lastSync=data.updatedAt||new Date().toISOString();state.prevDataset=null;
  }catch(err){
-  state.mode='demo';state.dataset=demo;state.error='API indisponível: '+(err.name==='AbortError'?'tempo limite de 45 segundos':err.message)+'. Exibindo somente dados fictícios.';
+  const alreadyLive=state.mode==='live';if(!alreadyLive){state.mode='demo';state.dataset=demo;}
+  state.error='API indisponível: '+(err.name==='AbortError'?'tempo limite de 45 segundos':err.message)+(alreadyLive?'. Dados anteriores mantidos.':'. Exibindo somente dados fictícios.');
  }finally{state.loading=false;render();}
 }
 
 function exportAdvanced(type,format){
- const d=scoped(),full=state.reportMulti&&format==='xlsx';
+ const raw=scoped(),full=state.reportMulti&&format==='xlsx';
+ const d={...raw,
+  viagens:searchRecords(raw.viagens,state.search),
+  pedidos:searchRecords(raw.pedidos,state.search),
+  ctes:searchRecords(raw.ctes,state.search),
+  mdfes:searchRecords(raw.mdfes,state.search)};
  const models=(full?REPORT_TYPES:[type]).map(t=>extractRows(t,d));
  const suffix=(state.mode==='live'?'DSS':'DEMO')+'_'+state.from+'_'+state.to;
  if(format==='xlsx')downloadXlsx(models,{mode:state.mode,from:state.from,to:state.to},'COSTALOG_'+(full?'COMPLETO':type)+'_'+suffix+'.xlsx');
