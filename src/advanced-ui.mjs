@@ -100,7 +100,7 @@ export function renderAdvanced(view,d,s){
   '<div class="split">'+section('Sincronização','Consultas mediante autenticação do portal',
     '<label class="filter"><span>Atualização automática (somente aba aberta)</span><select id="autoRefresh" class="control full">'+
     ['0','5','10','15','30'].map(v=>'<option value="'+v+'" '+(String(s.autoRefresh||'0')===v?'selected':'')+'>'+(v==='0'?'Desativada':v+' minutos')+'</option>').join('')+'</select></label><p class="help">A atualização automática não funciona com a aba fechada. O limite de chamadas e permissões do DSS devem ser respeitados.</p>'+
-    '<button class="btn" data-action="refresh">Sincronizar agora</button>')+
+    '<button class="btn" data-action="refresh">Sincronizar agora</button> <button class="btn" data-action="api-diagnostics">Consultar diagnósticos</button>'+ (s.apiDiagnostics?'<p class="help">API: '+h(s.apiDiagnostics.configured?'configurada':'não configurada')+' · Sucesso: '+h(s.apiDiagnostics.counters?.success??0)+' · Falhas: '+h(s.apiDiagnostics.counters?.failed??0)+' · Cache: '+h(s.apiDiagnostics.counters?.cached??0)+' · Último sucesso: '+h(s.apiDiagnostics.lastSuccess||'—')+'</p>':'') )+
    section('Segurança','Configurações e retenção',
    '<p class="help">Token do portal permanece somente na memória da aba. Preferências locais armazenam apenas filtros e colunas, não registros operacionais.</p>'+
    '<button class="btn" data-action="clear-settings">Limpar preferências locais</button>')+'</div>'+
