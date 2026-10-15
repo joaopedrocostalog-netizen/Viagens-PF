@@ -299,7 +299,7 @@ function renderConnect(){
  return '<div class="overlay" data-action="close-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Acessar portal COSTALOG">'+
  '<div class="drawer-top"><h2>Entrar no portal COSTALOG</h2>'+button('close',icon('close'),'btn-sm')+'</div>'+
  '<p class="help">Cada funcionário utiliza sua própria conta e vê apenas os módulos autorizados. O usuário e a senha do DSS ficam somente no servidor privado.</p>'+
- '<form id="loginForm"><div class="filter"><label for="apiUrl">Endereço da API (neste computador: http://localhost:3001)</label><input id="apiUrl" class="control full" type="url" required placeholder="https://portal-api.costalog.com.br" value="'+attr(state.apiUrl)+'"></div>'+
+ '<form id="loginForm">'+
  '<div class="filter" style="margin-top:17px"><label for="loginUser">Usuário do portal</label><input id="loginUser" class="control full" autocomplete="username" required placeholder="usuario.funcionario"></div>'+
  '<div class="filter" style="margin-top:17px"><label for="loginPassword">Senha do portal</label><input id="loginPassword" class="control full" type="password" autocomplete="current-password" required placeholder="Sua senha individual"></div>'+
  '<div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap"><button class="btn btn-red" type="submit">Entrar com segurança</button>'+button('demo','Fechar / demonstração operacional','btn-ghost')+'</div></form>'+
