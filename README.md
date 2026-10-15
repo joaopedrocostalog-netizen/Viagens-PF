@@ -143,7 +143,7 @@ O portal agora tem uma separação real entre módulos **Operacional** e **Finan
 - Campos como total_frete, valor_receber, valor_total_abastecido, adiantamentos, proventos, tributos, valores de averbação e números de fatura **não saem da API** para usuários operacionais. O servidor usa lista explícita de campos operacionais permitidos.
 - Os perfis de faturamento são restritos também em **Excel/CSV/PDF**. Links, menus ou requisições adulteradas não podem contornar o filtro de dados no servidor.
 - Senhas de funcionários não são as senhas Basic Auth do DSS. Cada conta utiliza uma senha individual protegida com scrypt e sal. A sessão expira após 8 horas e é apagada no logout. Desativar uma conta ou alterar sua senha invalida a sessão existente.
-- O antigo token PORTAL_ACCESS_TOKEN funciona apenas para compatibilidade quando **PORTAL_USERS_FILE não estiver configurado**. Para ter separação real de acesso, configure o arquivo de usuários e não distribua um token administrador compartilhado.
+- O antigo token PORTAL_ACCESS_TOKEN **está desabilitado por padrão**. Ele só funciona se PORTAL_USERS_FILE estiver ausente e PORTAL_ALLOW_LEGACY_TOKEN=true for configurado explicitamente (não recomendado em produção). Para ter separação real de acesso, configure o arquivo de usuários e não distribua um token administrador compartilhado.
 - O código está em api/auth.mjs e api/access.mjs, o gerenciador de contas em api/users.mjs e a interface em src/app.js / src/access-ui.mjs.
 
 ### Criando as contas (somente no servidor privado)
@@ -179,13 +179,13 @@ Depois, no servidor privado que executará a API, ajuste o arquivo .env:
 
     PORTAL_USERS_FILE=/app/private/portal-users.json
 
-A configuração acima corresponde ao caminho de dentro do Docker em compose.yaml. O arquivo privado de usuários é montado **somente para leitura** em /app/private/portal-users.json. Para execução direta, sem Docker, use o caminho real do arquivo nesse servidor.
+A configuração acima corresponde ao caminho de dentro do Docker em compose.yaml. A pasta privada de usuários é montada **com escrita** em /app/private, para que o administrador possa cadastrar funcionários pelo portal. Para execução direta, sem Docker, use o caminho real do arquivo nesse servidor.
 
 Configure também DSS_USERNAME e DSS_PASSWORD exclusivamente no servidor, e crie um proxy HTTPS com acesso corporativo. Se o usuário Node dentro do contêiner não tiver permissão de leitura no arquivo, ajuste a propriedade/permissões do arquivo no host, sem torná-lo público.
 
     docker compose up -d --build
 
-O contêiner não precisa escrever o arquivo de usuários: criação, desativação e atualização das contas são realizadas pelo CLI no servidor. Faça backup protegido do arquivo privado e mantenha senhas sob responsabilidade da TI.
+O contêiner precisa de permissão de escrita na pasta privada para que a interface administrativa possa criar, bloquear e atualizar contas. Inicialize o primeiro administrador com node api/users.mjs bootstrap admin antes de iniciar a API. Faça backup protegido do arquivo privado e mantenha senhas sob responsabilidade da TI.
 
 ### Como funciona para o funcionário
 
@@ -200,3 +200,7 @@ O contêiner não precisa escrever o arquivo de usuários: criação, desativaç
 ### Testes de proteção
 
 Os testes automatizados validam projeções distintas de resposta DSS para operacional/financeiro; acesso negado a diagnósticos administrativos; isolamento do cache entre perfis; logout; bloqueio imediato de usuário; abas visíveis por perfil; exportação que não inclui campos financeiros para um funcionário operacional.
+
+## Criar o primeiro administrador e liberar funcionários pelo site
+
+Veja [ADMINISTRACAO.md](ADMINISTRACAO.md), com comandos para Linux/Windows e Docker. O painel Administração agora permite cadastrar funcionários como Operacional, Financeiro ou Administrador, alterar perfil, bloquear/reativar contas e redefinir senhas. Novos funcionários precisam trocar a senha provisória no primeiro login. A primeira conta admin só é criada **no servidor privado** após a TI escolher uma senha; não há senha padrão e nenhuma conta real é provisionada pelo GitHub Pages.
