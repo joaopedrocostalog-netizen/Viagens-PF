@@ -44,7 +44,7 @@ demo.pedidos=demo.ctes.map(p=>({...p,pedidoNumero:'PF-'+p.numero,cteNumero:p.num
 const state = {
  view:'painel', from:String(year)+'-01-01',to:String(year)+'-12-31',search:'',filter:'todos',page:1,
  dataset:demo, mode:'demo',error:'',loading:false,selected:null,connect:false,menu:false,
- apiUrl:localStorage.getItem('costalog_api_url')||((window.location?.hostname==='localhost'||window.location?.hostname==='127.0.0.1')?window.location.origin:''),token:'',importCount:0,
+ apiUrl:((window.location?.hostname==='localhost'||window.location?.hostname==='127.0.0.1')?window.location.origin:(localStorage.getItem('costalog_api_url')||'')),token:'',importCount:0,
  customer:'',vehicle:'',serviceType:'',sortKey:'',sortDir:'desc',alertPriority:'todos',
  hiddenColumns:readPrefs('costalog_visible_columns',{}),presets:readPrefs('costalog_filter_presets',{}),
  reportSelected:'viagens',reportMulti:false,autoRefresh:0,lastSync:null,prevDataset:null,lateDays:2,apiDiagnostics:null,adminUsers:[],adminUsersLoading:false,adminUsersError:'',adminResetUser:'',role:'operacional',user:null,permissions:{operacional:true,financeiro:false,admin:false}
