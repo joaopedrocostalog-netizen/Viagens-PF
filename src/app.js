@@ -124,7 +124,7 @@ const state = {
  apiUrl:((window.location?.hostname==='localhost'||window.location?.hostname==='127.0.0.1')?window.location.origin:(localStorage.getItem('costalog_api_url')||'')),token:'',importCount:0,
  customer:'',vehicle:'',serviceType:'',sortKey:'',sortDir:'desc',alertPriority:'todos',
  hiddenColumns:readPrefs('costalog_visible_columns',{}),presets:readPrefs('costalog_filter_presets',{}),
- reportSelected:'viagens',reportMulti:false,autoRefresh:0,lastSync:null,prevDataset:null,lateDays:2,apiDiagnostics:null,adminUsers:[],adminUsersLoading:false,adminUsersError:'',adminResetUser:'',role:'operacional',user:null,permissions:{operacional:true,financeiro:false,admin:false}
+ demoOnly:PUBLIC_DEMO,reportSelected:'viagens',reportMulti:false,autoRefresh:0,lastSync:null,prevDataset:null,lateDays:2,apiDiagnostics:null,adminUsers:[],adminUsersLoading:false,adminUsersError:'',adminResetUser:'',role:'operacional',user:null,permissions:{operacional:true,financeiro:false,admin:false}
 };
 const icons={
  home:'<path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-7h6v7"/>',
@@ -206,7 +206,7 @@ function render(){
   '<main class="main"><header class="topbar"><div class="filter-row"><button class="btn btn-ghost btn-sm mobile-menu" data-action="menu" aria-label="Abrir menu">'+icon('menu')+'</button><strong>Viagens & Fretes</strong></div><div class="topbar-right"><span class="status '+(state.mode==='live'?'online':'')+'">'+(PUBLIC_DEMO?'Somente demonstração':state.mode==='live'?'DSS conectado':'Modo demonstração')+'</span>'+(state.user?'<span class="status online">'+esc(state.user.displayName||state.user.username)+' · '+esc(state.role)+'</span>'+button('logout','Sair','btn-ghost btn-sm'):button('connect','Entrar','btn-ghost btn-sm'))+(PUBLIC_DEMO?'':button('refresh',icon('reload')+' Atualizar','btn-sm'))+'</div></header>'+
   '<div class="content"><div class="heading"><div><h1>Controle de Viagens e Fretes</h1><p>Viagens, pedidos de frete, CT-e, MDF-e e análise de rentabilidade.</p></div><div class="heading-actions">'+button('csv',icon('download')+' Exportar CSV','btn-ghost')+button('print','Imprimir relatório','btn-ghost')+'</div></div><div class="tabbar" role="tablist">'+buttons+'</div>'+
   message+operationalFilters(d,state)+renderFilters()+(state.loading?'<div class="info-strip">Consultando a API do DSS...</div>':'')+renderView(d,stats)+
-  '<p class="footer-note">COSTALOG · Painel de viagens e fretes. Valores financeiros dependem do mapeamento correto dos campos de origem.</p></div></main></div>'+
+  '<p class="footer-note">COSTALOG · '+(PUBLIC_DEMO?'Ambiente de demonstração: dados e contas locais, sem conexão com API ou informações reais.':'Painel de viagens e fretes com acesso controlado.')+'</p></div></main></div>'+
   (state.selected?renderDrawer(d):'')+(state.connect?renderConnect():'')+(state.user?.mustChangePassword?renderForcePasswordChange():'')+(state.adminResetUser&&state.permissions.admin?renderAdminPasswordReset(state.adminResetUser):'');
 }
 function renderFilters(){
@@ -379,7 +379,7 @@ function renderConnect(){
  '<form id="loginForm">'+
  '<div class="filter" style="margin-top:17px"><label for="loginUser">Usuário do portal</label><input id="loginUser" class="control full" autocomplete="username" required placeholder="usuario.funcionario"></div>'+
  '<div class="filter" style="margin-top:17px"><label for="loginPassword">Senha do portal</label><input id="loginPassword" class="control full" type="password" autocomplete="current-password" required placeholder="Sua senha individual"></div>'+
- '<div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap"><button class="btn btn-red" type="submit">Entrar com segurança</button>'+button('demo','Fechar / demonstração operacional','btn-ghost')+'</div></form>'+
+ '<div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap"><button class="btn btn-red" type="submit">'+(PUBLIC_DEMO?'Entrar (demonstração)':'Entrar com segurança')+'</button>'+button('demo','Fechar / demonstração operacional','btn-ghost')+'</div></form>'+
  '<p class="help">'+(PUBLIC_DEMO?'Login inicial: admin. Utilize a senha temporária disponibilizada para testar e troque-a no primeiro acesso.':'O backend corporativo será configurado fora desta tela.')+'</p></aside></div>';
 }
 async function portalLogin(){
