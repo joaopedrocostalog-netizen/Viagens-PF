@@ -15,6 +15,27 @@ function config(name){
  return {path:env[k+'_PATH']||({DSS_VIAGENS:'/listarViagens',DSS_PEDIDOS:'/listarPedidosFrete'}[k]||''),method:(env[k+'_METHOD']||'GET').toUpperCase(),from:env[k+'_QUERY_FROM']||(name==='viagens'||name==='pedidos'?'data_inicio':''),to:env[k+'_QUERY_TO']||(name==='viagens'||name==='pedidos'?'data_fim':''),body:env[k+'_BODY_TEMPLATE']||'',dataPath:env[k+'_DATA_PATH']||(name==='viagens'||name==='pedidos'?'registros':'')};
 }
 const cfg=Object.fromEntries(['viagens','pedidos','ctes','mdfes'].map(k=>[k,config(k)]));
+/** Auth do DSS e auth do portal são diferentes.
+ * DSS: Basic Auth (somente backend). Portal: token Bearer de acesso à nossa API.
+ */
+const authType=(env.DSS_AUTH_TYPE||'basic').toLowerCase();
+function dssCredentialsReady(){
+ if(authType==='basic')return !!(env.DSS_USERNAME&&env.DSS_PASSWORD);
+ if(authType==='header')return !!(env.DSS_AUTH_HEADER&&env.DSS_AUTH_VALUE);
+ return false;
+}
+function dssAuthHeaders(){
+ if(authType==='basic'){
+  if(!dssCredentialsReady())throw Error('Basic Auth do DSS não configurado no servidor: defina DSS_USERNAME e DSS_PASSWORD.');
+  if(env.DSS_USERNAME.includes(':'))throw Error('DSS_USERNAME inválido: o caractere dois-pontos não é permitido no usuário Basic Auth.');
+  return {Authorization:'Basic '+Buffer.from(env.DSS_USERNAME+':'+env.DSS_PASSWORD,'utf8').toString('base64')};
+ }
+ if(authType==='header'){
+  if(!dssCredentialsReady())throw Error('Cabeçalho de autenticação DSS não configurado.');
+  return {[env.DSS_AUTH_HEADER]:env.DSS_AUTH_VALUE};
+ }
+ throw Error('DSS_AUTH_TYPE inválido. Use basic ou header.');
+}
 function reply(res,code,body,origin){
  const str=JSON.stringify(body),h={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(str),'X-Content-Type-Options':'nosniff'};
  if(origin&&origins.includes(origin)){h['Access-Control-Allow-Origin']=origin;h['Vary']='Origin';h['Access-Control-Allow-Headers']='Authorization, Content-Type';h['Access-Control-Allow-Methods']='GET, OPTIONS';}
@@ -42,8 +63,7 @@ async function queryDss(name,from,to){
  const fmt=(name==='viagens'||name==='pedidos')?d=>d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4):d=>d;
  if(c.from)url.searchParams.set(c.from,fmt(from));
  if(c.to)url.searchParams.set(c.to,fmt(to));
- const headers={Accept:'application/json'};
- if(env.DSS_AUTH_HEADER&&env.DSS_AUTH_VALUE)headers[env.DSS_AUTH_HEADER]=env.DSS_AUTH_VALUE;
+ const headers={Accept:'application/json',...dssAuthHeaders()};
  let body;
  if(c.method==='POST'){headers['Content-Type']='application/json';body=(c.body||'{}').replaceAll('{{from}}',from).replaceAll('{{to}}',to);JSON.parse(body);}
  const r=await fetch(url,{method:c.method,headers,body,signal:AbortSignal.timeout(timeout),redirect:'error'});
@@ -63,7 +83,7 @@ const server=http.createServer(async(req,res)=>{
  }
  let url;try{url=new URL(req.url,'http://localhost');}catch{return reply(res,400,{error:'Requisição inválida'},origin);}
  if(req.method!=='GET')return reply(res,405,{error:'Método não permitido'},origin);
- if(url.pathname==='/api/health')return reply(res,200,{status:'ok',configured:!!(base&&cfg.viagens.path&&cfg.pedidos.path&&env.PORTAL_ACCESS_TOKEN)},origin);
+ if(url.pathname==='/api/health')return reply(res,200,{status:'ok',configured:!!(base&&cfg.viagens.path&&cfg.pedidos.path&&env.PORTAL_ACCESS_TOKEN&&dssCredentialsReady())},origin);
  if(url.pathname!=='/api/overview')return reply(res,404,{error:'Rota não encontrada'},origin);
  if(!authorized(req))return reply(res,401,{error:'Acesso ao portal não autorizado'},origin);
  if(!base)return reply(res,503,{error:'DSS_BASE_URL não configurado no servidor privado.'},origin);
