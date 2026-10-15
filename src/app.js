@@ -204,7 +204,7 @@ function renderViagens(d,s){
   {key:'cliente',label:'Cliente'},{key:'placa',label:'Placa'},{key:'motoristaId',label:'Motorista ID'},
   {key:'container',label:'Container'},{key:'nroMdf',label:'Referência MDF-e'},
   {key:'origem',label:'Origem'},{key:'destino',label:'Destino'},
-  {key:'kmPrevisto',label:'KM previsto',format:'number'},{key:'kmRodados',label:'KM rodado',format:'number'},
+  {key:'kmPrevisto',label:'KM previsto',format:'number'},{key:'kmRodados',label:'KM rodado',format:'number'},{key:'desvioKm',label:'Desvio KM',format:'number'},{key:'custoAbastecimentoKm',label:'Abastecimento/km',format:'money'},
   {key:'receita',label:state.mode==='live'?'Fretes vinculados':'Receita',format:'money'},
   {key:state.mode==='live'?'abastecimento':'custo',label:state.mode==='live'?'Abastecimento (parcial)':'Custo',format:'money'},
   {key:'status',label:'Situação'}];
