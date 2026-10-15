@@ -46,3 +46,10 @@
 @media print{.filter-advanced,.advanced-summary .overview-shortcuts,.columns-picker,.report-grid{display:none!important}.analysis-grid{display:block}.card{break-inside:avoid}}
 
 .side-nav{overflow-y:auto;min-height:0;flex:1;scrollbar-width:thin;scrollbar-color:#39393d transparent}.side-bottom{flex-shrink:0}
+
+/* Navegação segregada por permissões */
+.side-section-label{font-size:10px;letter-spacing:1.6px;color:#a4a4aa;font-weight:800;padding:21px 13px 8px;border-top:1px solid #29292c;margin-top:12px}
+.side-section-label:first-child{border-top:0;margin-top:0;padding-top:5px}
+.side-link.active{box-shadow:inset 3px 0 0 #fff3}
+.topbar-right .status.online{max-width:260px;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:680px){.topbar-right .status.online{display:none}}
