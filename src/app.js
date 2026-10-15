@@ -1,3 +1,4 @@
+import {renderUsersManagement,renderForcePasswordChange} from './admin-users.mjs';
 import {permittedView,reportTypesFor,secureReport,safeView} from './access-ui.mjs';
 import {buildInsights,extractRows,REPORT_TYPES} from './operational.mjs';
 import {downloadXlsx,downloadFile,printReport} from './reporting.mjs';
@@ -46,7 +47,7 @@ const state = {
  apiUrl:localStorage.getItem('costalog_api_url')||'',token:'',importCount:0,
  customer:'',vehicle:'',serviceType:'',sortKey:'',sortDir:'desc',alertPriority:'todos',
  hiddenColumns:readPrefs('costalog_visible_columns',{}),presets:readPrefs('costalog_filter_presets',{}),
- reportSelected:'viagens',reportMulti:false,autoRefresh:0,lastSync:null,prevDataset:null,lateDays:2,apiDiagnostics:null,role:'operacional',user:null,permissions:{operacional:true,financeiro:false,admin:false}
+ reportSelected:'viagens',reportMulti:false,autoRefresh:0,lastSync:null,prevDataset:null,lateDays:2,apiDiagnostics:null,adminUsers:[],adminUsersLoading:false,adminUsersError:'',adminResetUser:'',role:'operacional',user:null,permissions:{operacional:true,financeiro:false,admin:false}
 };
 const icons={
  home:'<path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-7h6v7"/>',
@@ -129,7 +130,7 @@ function render(){
   '<div class="content"><div class="heading"><div><h1>Controle de Viagens e Fretes</h1><p>Viagens, pedidos de frete, CT-e, MDF-e e análise de rentabilidade.</p></div><div class="heading-actions">'+button('csv',icon('download')+' Exportar CSV','btn-ghost')+button('print','Imprimir relatório','btn-ghost')+'</div></div><div class="tabbar" role="tablist">'+buttons+'</div>'+
   message+operationalFilters(d,state)+renderFilters()+(state.loading?'<div class="info-strip">Consultando a API do DSS...</div>':'')+renderView(d,stats)+
   '<p class="footer-note">COSTALOG · Painel de viagens e fretes. Valores financeiros dependem do mapeamento correto dos campos de origem.</p></div></main></div>'+
-  (state.selected?renderDrawer(d):'')+(state.connect?renderConnect():'');
+  (state.selected?renderDrawer(d):'')+(state.connect?renderConnect():'')+(state.user?.mustChangePassword?renderForcePasswordChange():'')+(state.adminResetUser&&state.permissions.admin?renderAdminPasswordReset(state.adminResetUser):'');
 }
 function renderFilters(){
  if(state.view==='integracoes')return '';
@@ -146,6 +147,7 @@ function renderView(d,s){
  if(state.view==='clientes')return renderClientes(d,s);
  if(state.view==='mdfes')return renderMdfes(d,s);
  if(state.view==='relatorios')return renderReportHub(d,state);
+ if(state.view==='administracao'&&state.permissions.admin)return renderUsersManagement(state.adminUsers,state.adminUsersLoading,state.adminUsersError)+renderAdvanced(state.view,d,state);
  if(ADVANCED_VIEWS.includes(state.view))return renderAdvanced(state.view,d,state);
  return renderIntegracoes();
 }
@@ -318,15 +320,81 @@ async function portalLogin(){
   state.token=data.token;state.user=data.user;state.role=data.user.role;state.permissions=data.permissions;
   state.view='painel';state.connect=false;state.error='';state.dataset={viagens:[],pedidos:[],ctes:[],mdfes:[],sources:{}};
   state.mode='live';render();
+  if(state.user.mustChangePassword)return;
   await loadData();
+  if(state.permissions.admin)loadAdminUsers();
  }catch(err){alert('Login não autorizado: '+err.message);}
+}
+function adminEndpoint(path=''){
+ return state.apiUrl.replace(/\/$/,'')+'/api/users'+path;
+}
+async function adminFetch(path='',options={}){
+ if(!state.permissions.admin||!state.token)throw Error('Somente administradores podem gerenciar contas.');
+ const headers={Authorization:'Bearer '+state.token,...(options.body?{'Content-Type':'application/json'}:{})};
+ const response=await fetch(adminEndpoint(path),{...options,headers,credentials:'omit'});
+ let result;try{result=await response.json();}catch{result={};}
+ if(response.status===401){clearSession();state.connect=true;render();throw Error('Sessão expirada. Faça login novamente.');}
+ if(!response.ok)throw Error(result.error||'Erro HTTP '+response.status);
+ return result;
+}
+async function loadAdminUsers(){
+ if(!state.permissions.admin||!state.token)return;
+ const stamp=identityEpoch;
+ state.adminUsersLoading=true;state.adminUsersError='';render();
+ try{
+  const result=await adminFetch();
+  if(stamp!==identityEpoch)return;
+  state.adminUsers=result.users||[];
+ }catch(err){if(stamp===identityEpoch)state.adminUsersError=err.message;}
+ finally{if(stamp===identityEpoch){state.adminUsersLoading=false;render();}}
+}
+async function createPortalUser(){
+ if(!state.permissions.admin)return;
+ const name=document.getElementById('adminNewName')?.value.trim();
+ const username=document.getElementById('adminNewUsername')?.value.trim().toLowerCase();
+ const role=document.getElementById('adminNewRole')?.value;
+ const password=document.getElementById('adminNewPassword')?.value||'';
+ if(password.length<12||password.length>256){alert('A senha provisória precisa ter de 12 a 256 caracteres.');return;}
+ if(role==='administrador'&&!confirm('Este funcionário terá acesso total e poderá gerenciar outros usuários. Confirmar?'))return;
+ try{
+  await adminFetch('',{method:'POST',body:JSON.stringify({name,username,role,password})});
+  await loadAdminUsers();
+  alert('Conta de '+username+' criada. Entregue a senha provisória de forma segura. A troca será exigida no primeiro acesso.');
+ }catch(err){alert('Não foi possível criar funcionário: '+err.message);}
+}
+async function updatePortalUser(username,action,extra={}){
+ if(!state.permissions.admin)return;
+ try{
+  await adminFetch('/'+encodeURIComponent(username),{method:'PATCH',body:JSON.stringify({action,...extra})});
+  state.adminResetUser='';
+  await loadAdminUsers();
+ }catch(err){alert('Não foi possível atualizar o usuário: '+err.message);}
+}
+function renderAdminPasswordReset(username){
+ return '<div class="overlay"><aside class="drawer" role="dialog" aria-modal="true"><div class="drawer-top"><h2>Redefinir senha de '+esc(username)+'</h2><button class="btn" type="button" data-action="close-admin-reset">Fechar</button></div>'+
+ '<p class="help">Defina uma senha provisória de pelo menos 12 caracteres. O funcionário será obrigado a trocá-la no próximo acesso.</p>'+
+ '<form id="resetPortalUserPassword"><label for="adminResetPassword">Senha provisória</label><input id="adminResetPassword" class="control full" type="password" minlength="12" maxlength="256" autocomplete="new-password" required>'+
+ '<button class="btn btn-red" type="submit">Confirmar redefinição</button></form></aside></div>';
+}
+async function changePortalPassword(){
+ const currentPassword=document.getElementById('currentPortalPassword')?.value||'';
+ const newPassword=document.getElementById('newPortalPassword')?.value||'';
+ const confirmPassword=document.getElementById('confirmPortalPassword')?.value||'';
+ if(newPassword!==confirmPassword){alert('As novas senhas são diferentes.');return;}
+ if(newPassword.length<12||newPassword.length>256){alert('A senha deve ter 12 a 256 caracteres.');return;}
+ try{
+  const r=await fetch(state.apiUrl.replace(/\/$/,'')+'/api/change-password',{method:'POST',headers:{Authorization:'Bearer '+state.token,'Content-Type':'application/json'},credentials:'omit',body:JSON.stringify({currentPassword,newPassword})});
+  const data=await r.json();if(!r.ok)throw Error(data.error||'Não foi possível trocar senha.');
+  clearSession();state.connect=true;render();
+  alert('Senha atualizada. Entre novamente com sua senha pessoal.');
+ }catch(err){alert('Falha ao alterar senha: '+err.message);}
 }
 function clearSession(){
  identityEpoch++;
  const token=state.token,url=state.apiUrl;
  if(token&&url)fetch(url.replace(/\/$/,'')+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+token},credentials:'omit'}).catch(()=>{});
  state.token='';state.user=null;state.role='operacional';state.permissions={operacional:true,financeiro:false,admin:false};
- state.mode='demo';state.dataset=demo;state.view='painel';state.prevDataset=null;state.loading=false;state.selected=null;state.lastSync=null;state.apiDiagnostics=null;
+ state.mode='demo';state.dataset=demo;state.view='painel';state.adminUsers=[];state.adminUsersError='';state.adminResetUser='';state.adminUsersLoading=false;state.prevDataset=null;state.loading=false;state.selected=null;state.lastSync=null;state.apiDiagnostics=null;
 }
 function csvCell(s){const v=str(s);return '"'+v.replace(/"/g,'""')+'"';}
 function exportCsv(which){
@@ -407,18 +475,26 @@ async function comparePeriods(){
  }catch(err){alert('Não foi possível obter o período anterior: '+err.message);}
 }
 root.addEventListener('click',e=>{
- const nav=e.target.closest('[data-nav]');if(nav){if(!permittedView(state.role,nav.dataset.nav))return;state.view=nav.dataset.nav;state.search='';state.filter='todos';state.sortKey='';state.page=1;state.menu=false;state.selected=null;render();return;}
+ const nav=e.target.closest('[data-nav]');if(nav){if(state.user?.mustChangePassword)return;if(!permittedView(state.role,nav.dataset.nav))return;state.view=nav.dataset.nav;state.search='';state.filter='todos';state.sortKey='';state.page=1;state.menu=false;state.selected=null;render();if(state.view==='administracao'&&state.permissions.admin)loadAdminUsers();return;}
  const detail=e.target.closest('[data-detail]');if(detail){state.selected=detail.dataset.detail;render();return;}
  const sort=e.target.closest('[data-sort]');if(sort){const k=sort.dataset.sort;state.sortDir=state.sortKey===k&&state.sortDir==='asc'?'desc':'asc';state.sortKey=k;state.page=1;render();return;}
  const report=e.target.closest('[data-report-select]');if(report){state.reportSelected=report.dataset.reportSelect;state.reportMulti=false;render();return;}
  const priority=e.target.closest('[data-alert-priority]');if(priority){state.alertPriority=priority.dataset.alertPriority;state.page=1;render();return;}
  const exp=e.target.closest('[data-export]');if(exp){try{exportAdvanced(exp.dataset.export,'csv');}catch(err){alert(err.message);}return;}
+ const targetRole=e.target.closest('[data-admin-reset]');if(targetRole&&state.permissions.admin){state.adminResetUser=targetRole.dataset.adminReset;render();return;}
+ const targetToggle=e.target.closest('[data-admin-toggle]');if(targetToggle&&state.permissions.admin){
+  const username=targetToggle.dataset.adminToggle,disabled=targetToggle.dataset.disabled==='1';
+  if(confirm((disabled?'Reativar':'Bloquear')+' o funcionário '+username+'?'))updatePortalUser(username,disabled?'enable':'disable');
+  return;
+ }
  const act=e.target.closest('[data-action]');if(!act)return;
  const action=act.dataset.action;
  if(action==='close-overlay'&&e.target!==act)return;
  if(action==='close'||action==='close-overlay'){state.selected=null;state.connect=false;render();}
  if(action==='menu'){state.menu=!state.menu;render();}
  if(action==='refresh')loadData();
+ if(action==='reload-users')loadAdminUsers();
+ if(action==='close-admin-reset'){state.adminResetUser='';render();}
  if(action==='compare-periods')comparePeriods();
  if(action==='api-diagnostics'){
   if(!state.permissions.admin){alert('Acesso restrito a administradores.');return;}
@@ -443,8 +519,23 @@ root.addEventListener('click',e=>{
  if(action==='logout'){clearSession();render();}
  if(action==='test-connect'){portalLogin();}
 });
-root.addEventListener('submit',e=>{if(e.target?.id==='loginForm'){e.preventDefault();portalLogin();}});
+root.addEventListener('submit',e=>{
+ if(e.target?.id==='loginForm'){e.preventDefault();portalLogin();}
+ if(e.target?.id==='createPortalUser'){e.preventDefault();createPortalUser();}
+ if(e.target?.id==='forcePasswordChange'){e.preventDefault();changePortalPassword();}
+ if(e.target?.id==='resetPortalUserPassword'){
+  e.preventDefault();const password=document.getElementById('adminResetPassword')?.value||'';
+  if(state.adminResetUser&&password.length>=12)updatePortalUser(state.adminResetUser,'reset-password',{password});
+ }
+});
 root.addEventListener('change',e=>{
+ if(e.target.dataset?.adminRole && state.permissions.admin){
+  const username=e.target.dataset.adminRole,role=e.target.value;
+  const previous=state.adminUsers.find(u=>u.username===username)?.role;
+  if(role!==previous&&confirm('Alterar a permissão de '+username+' para '+role+'?'))updatePortalUser(username,'role',{role});
+  else render();
+  return;
+ }
  if(e.target.id==='from'){state.from=e.target.value;state.page=1;if(state.mode==='live')loadData();else render();}
  if(e.target.id==='to'){state.to=e.target.value;state.page=1;if(state.mode==='live')loadData();else render();}
  if(e.target.id==='statusFilter'){state.filter=e.target.value;state.page=1;render();}
