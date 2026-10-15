@@ -1,3 +1,6 @@
+import {extractRows,REPORT_TYPES} from './operational.mjs';
+import {downloadXlsx,downloadFile,printReport} from './reporting.mjs';
+import {renderAdvanced,operationalFilters,renderInsightsStrip,renderReportHub,ADVANCED_VIEWS} from './advanced-ui.mjs';
 import {normalizeOverview,costByClient} from './dss-mapping.mjs';
 /* COSTALOG | Viagens e Fretes. Sem credenciais no frontend. */
 const root = document.getElementById('app');
@@ -34,10 +37,14 @@ const demo = {
  ],
  sources:{viagens:true,pedidos:true,ctes:true,mdfes:true}
 };
+const readPrefs=(key,def)=>{try{return JSON.parse(localStorage.getItem(key))??def;}catch{return def;}};
 const state = {
  view:'painel', from:String(year)+'-01-01',to:String(year)+'-12-31',search:'',filter:'todos',page:1,
  dataset:demo, mode:'demo',error:'',loading:false,selected:null,connect:false,menu:false,
- apiUrl:localStorage.getItem('costalog_api_url')||'',token:'',importCount:0
+ apiUrl:localStorage.getItem('costalog_api_url')||'',token:'',importCount:0,
+ customer:'',vehicle:'',serviceType:'',sortKey:'',sortDir:'desc',alertPriority:'todos',
+ hiddenColumns:readPrefs('costalog_visible_columns',{}),presets:readPrefs('costalog_filter_presets',{}),
+ reportSelected:'viagens',reportMulti:false,autoRefresh:0,lastSync:null,prevDataset:null,lateDays:2
 };
 const icons={
  home:'<path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-7h6v7"/>',
@@ -81,7 +88,16 @@ function normalizeMdfe(v,i){
 }
 function normalizePayload(raw){return normalizeOverview(raw);}
 function inRange(v){return !v||((!state.from||v>=state.from)&&(!state.to||v<=state.to));}
-function scoped(){const d=state.dataset;return {viagens:d.viagens.filter(x=>inRange(x.data)),allViagens:d.viagens,ctes:d.ctes.filter(x=>inRange(x.data)),pedidos:d.pedidos.filter(x=>inRange(x.data)),mdfes:d.mdfes.filter(x=>inRange(x.data)),sources:d.sources};}
+function scoped(){
+ const d=state.dataset;
+ const matches=r=>(!state.customer||r.cliente===state.customer)&&(!state.vehicle||r.placa===state.vehicle);
+ let viagens=d.viagens.filter(v=>inRange(v.data)&&matches(v));
+ const pedidos=d.pedidos.filter(p=>inRange(p.data)&&matches(p)&&(!state.serviceType||p.tipoServico===state.serviceType));
+ const ctes=d.ctes.filter(c=>inRange(c.data)&&matches(c)&&(!state.serviceType||c.tipoServico===state.serviceType));
+ const mdfes=d.mdfes.filter(x=>inRange(x.data)&&(!state.vehicle||x.placa===state.vehicle));
+ if(state.serviceType)viagens=viagens.filter(v=>pedidos.some(p=>p.viagemId===v.id));
+ return {viagens,allViagens:d.viagens,ctes,pedidos,mdfes,sources:d.sources};
+}
 function totals(data){
  const trips=data.viagens;const ctes=data.ctes;
  const revenueKnown=trips.filter(v=>Number.isFinite(v.receita));
@@ -93,8 +109,8 @@ function totals(data){
  const mismatched=data.sources.mdfes?data.mdfes.filter(m=>m.viagemId&&!data.allViagens.some(t=>t.id===m.viagemId)):null;
  return {revenue:revenueKnown.length?revenue:null,cost:costsKnown.length?cost:null,profit:completeMoney?revenue-cost:null,margin:completeMoney&&revenue?pct((revenue-cost)/revenue*100):'—',orphan,mismatched,linked,completeMoney,revenueCount:revenueKnown.length,costCount:costsKnown.length};
 }
-const navItems=[['painel','home','Visão geral'],['viagens','truck','Viagens'],['ctes','doc','Pedidos / CT-e'],['clientes','chart','Custos e Receitas'],['mdfes','shield','MDF-e'],['relatorios','doc','Relatórios'],['integracoes','cog','Integração DSS']];
-const tabs=[['painel','Painel'],['viagens','Viagens'],['ctes','Pedidos / CT-e'],['clientes','Clientes'],['mdfes','MDF-e'],['relatorios','Relatórios'],['integracoes','Integração']];
+const navItems=[['painel','home','Painel geral'],['viagens','truck','Viagens / RV'],['ctes','doc','Pedidos / CT-e'],['faturamento','doc','Entrega / faturamento'],['pendencias','shield','Pendências'],['clientes','chart','Clientes / fretes'],['rotas','chart','Rotas'],['veiculos','truck','Frota'],['motoristas','home','Motoristas'],['containers','doc','Containers'],['mdfes','shield','MDF-e'],['analises','chart','Análises operacionais'],['relatorios','doc','Relatórios'],['administracao','cog','Administração'],['integracoes','cog','Integração DSS']];
+const tabs=[['painel','Painel'],['viagens','Viagens'],['ctes','Pedidos / CT-e'],['faturamento','Faturamento'],['pendencias','Pendências'],['clientes','Clientes'],['rotas','Rotas'],['veiculos','Frota'],['motoristas','Motoristas'],['containers','Containers'],['mdfes','MDF-e'],['analises','Análises'],['relatorios','Relatórios'],['administracao','Administração'],['integracoes','Integração']];
 function button(action,label,extra){return '<button class="btn '+(extra||'')+'" data-action="'+action+'">'+label+'</button>';}
 function render(){
  const d=scoped(),stats=totals(d);
@@ -106,25 +122,26 @@ function render(){
   '<aside class="sidebar '+(state.menu?'open':'')+'"><div class="brand"><img class="brand-logo" src="./logo-costalog-sem-fundo-1024x876.png" alt="Logotipo COSTALOG" width="48" height="46"><div><div class="brand-name">COSTALOG</div><div class="brand-sub">A LOGÍSTICA IDEAL</div></div></div><div class="side-title">GESTÃO DE FROTA</div><nav class="side-nav">'+nav+'</nav><div class="side-bottom"><strong>VIAGENS & FRETES</strong>Inteligência operacional e financeira<br>Portal interno COSTALOG</div></aside>'+
   '<main class="main"><header class="topbar"><div class="filter-row"><button class="btn btn-ghost btn-sm mobile-menu" data-action="menu" aria-label="Abrir menu">'+icon('menu')+'</button><strong>Viagens & Fretes</strong></div><div class="topbar-right"><span class="status '+(state.mode==='live'?'online':'')+'">'+(state.mode==='live'?'DSS conectado':'Modo demonstração')+'</span>'+button('connect','Conectar API','btn-ghost btn-sm')+button('refresh',icon('reload')+' Atualizar','btn-sm')+'</div></header>'+
   '<div class="content"><div class="heading"><div><h1>Controle de Viagens e Fretes</h1><p>Viagens, pedidos de frete, CT-e, MDF-e e análise de rentabilidade.</p></div><div class="heading-actions">'+button('csv',icon('download')+' Exportar CSV','btn-ghost')+button('print','Imprimir relatório','btn-ghost')+'</div></div><div class="tabbar" role="tablist">'+buttons+'</div>'+
-  message+renderFilters()+(state.loading?'<div class="info-strip">Consultando a API do DSS...</div>':'')+renderView(d,stats)+
+  message+operationalFilters(d,state)+renderFilters()+(state.loading?'<div class="info-strip">Consultando a API do DSS...</div>':'')+renderView(d,stats)+
   '<p class="footer-note">COSTALOG · Painel de viagens e fretes. Valores financeiros dependem do mapeamento correto dos campos de origem.</p></div></main></div>'+
   (state.selected?renderDrawer(d):'')+(state.connect?renderConnect():'');
 }
 function renderFilters(){
  if(state.view==='integracoes')return '';
  return '<div class="filters"><div class="filter"><label for="from">De</label><input class="control" id="from" type="date" value="'+attr(state.from)+'"></div><div class="filter"><label for="to">Até</label><input class="control" id="to" type="date" value="'+attr(state.to)+'"></div>'+
- (['viagens','ctes','clientes','mdfes'].includes(state.view)?'<div class="filter grow"><label for="searchInput">Buscar registros</label><input id="searchInput" class="control full" type="search" placeholder="Número, placa, cliente ou situação..." value="'+attr(state.search)+'"></div>':'')+
+ (['viagens','ctes','clientes','mdfes',...ADVANCED_VIEWS].includes(state.view)?'<div class="filter grow"><label for="searchInput">Buscar registros</label><input id="searchInput" class="control full" type="search" placeholder="Número, placa, cliente ou situação..." value="'+attr(state.search)+'"></div>':'')+
  (['viagens','ctes','mdfes'].includes(state.view)?'<div class="filter"><label for="statusFilter">Situação</label><select id="statusFilter" class="control"><option value="todos">Todas</option><option value="vinculado" '+(state.filter==='vinculado'?'selected':'')+'>Vinculados</option><option value="pendente" '+(state.filter==='pendente'?'selected':'')+'>Sem vínculo</option></select></div>':'')+
  '</div>';
 }
 function kpi(label,value,sub,cl){return '<article class="kpi"><div class="kpi-label">'+label+'</div><div class="kpi-value '+(cl||'')+'">'+value+'</div><div class="kpi-sub">'+sub+'</div></article>';}
 function renderView(d,s){
- if(state.view==='painel')return renderPainel(d,s);
+ if(state.view==='painel')return renderPainel(d,s)+renderInsightsStrip(d,state);
  if(state.view==='viagens')return renderViagens(d,s);
  if(state.view==='ctes')return renderCtes(d);
  if(state.view==='clientes')return renderClientes(d,s);
  if(state.view==='mdfes')return renderMdfes(d,s);
- if(state.view==='relatorios')return renderRelatorios(d,s);
+ if(state.view==='relatorios')return renderReportHub(d,state);
+ if(ADVANCED_VIEWS.includes(state.view))return renderAdvanced(state.view,d,state);
  return renderIntegracoes();
 }
 function renderPainel(d,s){
@@ -151,7 +168,7 @@ function renderPainel(d,s){
 }
 function chartSvg(trips){
  const months=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
- const aggregate=months.map((_,i)=>{const m=String(year)+'-'+String(i+1).padStart(2,'0');const t=trips.filter(x=>x.data.startsWith(m));return [t.reduce((s,x)=>s+(x.receita||0),0),t.reduce((s,x)=>s+((state.mode==='live'?x.abastecimento:x.custo)||0),0)];});
+ const aggregate=months.map((_,i)=>{const m=(state.from||String(year)).slice(0,4)+'-'+String(i+1).padStart(2,'0');const t=trips.filter(x=>x.data.startsWith(m));return [t.reduce((s,x)=>s+(x.receita||0),0),t.reduce((s,x)=>s+((state.mode==='live'?x.abastecimento:x.custo)||0),0)];});
  const hasRevenue=trips.some(x=>Number.isFinite(x.receita)),hasCost=trips.some(x=>Number.isFinite(state.mode==='live'?x.abastecimento:x.custo));
  if(!hasRevenue&&!hasCost)return '<div class="empty"><b>Sem dados para o gráfico</b>A API ainda não forneceu valores financeiros utilizáveis.</div>';
  const max=Math.max(1,...aggregate.flat())*1.1;const W=760,H=250,left=48,top=20,h=180,w=680;
@@ -255,14 +272,50 @@ async function loadData(){
    throw new Error(message);}
   const data=await response.json();
   if(!data||!data.data)throw new Error('Formato de resposta desconhecido');
-  state.dataset=normalizePayload(data);state.mode='live';state.error='';state.page=1;
+  state.dataset=normalizePayload(data);state.mode='live';state.error='';state.page=1;state.lastSync=data.updatedAt||new Date().toISOString();state.prevDataset=null;
  }catch(err){
   state.mode='demo';state.dataset=demo;state.error='API indisponível: '+(err.name==='AbortError'?'tempo limite de 45 segundos':err.message)+'. Exibindo somente dados fictícios.';
  }finally{state.loading=false;render();}
 }
+
+function exportAdvanced(type,format){
+ const d=scoped(),full=state.reportMulti&&format==='xlsx';
+ const models=(full?REPORT_TYPES:[type]).map(t=>extractRows(t,d));
+ const suffix=(state.mode==='live'?'DSS':'DEMO')+'_'+state.from+'_'+state.to;
+ if(format==='xlsx')downloadXlsx(models,{mode:state.mode,from:state.from,to:state.to},'COSTALOG_'+(full?'COMPLETO':type)+'_'+suffix+'.xlsx');
+ if(format==='pdf')printReport(models,{mode:state.mode,from:state.from,to:state.to});
+ if(format==='csv'){
+  const r=models[0],lines=[r.columns.map(x=>x[1]),...r.rows.map(row=>r.columns.map(c=>row[c[0]]??''))];
+  const quote=x=>{let t=String(x??'');if(/^[=+@-]/.test(t)&&!/^-(\d+)(\.\d+)?$/.test(t))t="'"+t;return '"'+t.replace(/"/g,'""')+'"';};
+  const csv='\uFEFF'+lines.map(x=>x.map(quote).join(';')).join('\r\n');
+  downloadFile(new TextEncoder().encode(csv),'COSTALOG_'+type+'_'+suffix+'.csv','text/csv;charset=utf-8');
+ }
+}
+let refreshTimer=null;
+function activateRefresh(){
+ if(refreshTimer)clearInterval(refreshTimer);
+ if(state.autoRefresh>0)refreshTimer=setInterval(()=>{
+  if(state.mode==='live'&&state.token&&!state.loading&&document.visibilityState==='visible')loadData();
+ },state.autoRefresh*60000);
+}
+async function comparePeriods(){
+ if(state.mode!=='live'||!state.apiUrl||!state.token){alert('Conecte a API DSS para comparar períodos reais.');return;}
+ const start=Date.parse(state.from+'T12:00:00Z'),end=Date.parse(state.to+'T12:00:00Z');
+ if(!Number.isFinite(start)||!Number.isFinite(end)||end<start){alert('Escolha um intervalo de datas válido.');return;}
+ const days=Math.round((end-start)/86400000)+1;
+ const iso=x=>new Date(x).toISOString().slice(0,10),from=iso(start-days*86400000),to=iso(start-86400000);
+ try{
+  const response=await fetch(state.apiUrl.replace(/\/$/,'')+'/api/overview?from='+from+'&to='+to,{headers:{Authorization:'Bearer '+state.token}});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  state.prevDataset=normalizePayload(await response.json());render();
+ }catch(err){alert('Não foi possível obter o período anterior: '+err.message);}
+}
 root.addEventListener('click',e=>{
  const nav=e.target.closest('[data-nav]');if(nav){state.view=nav.dataset.nav;state.search='';state.filter='todos';state.page=1;state.menu=false;state.selected=null;render();return;}
  const detail=e.target.closest('[data-detail]');if(detail){state.selected=detail.dataset.detail;render();return;}
+ const sort=e.target.closest('[data-sort]');if(sort){const k=sort.dataset.sort;state.sortDir=state.sortKey===k&&state.sortDir==='asc'?'desc':'asc';state.sortKey=k;state.page=1;render();return;}
+ const report=e.target.closest('[data-report-select]');if(report){state.reportSelected=report.dataset.reportSelect;state.reportMulti=false;render();return;}
+ const priority=e.target.closest('[data-alert-priority]');if(priority){state.alertPriority=priority.dataset.alertPriority;state.page=1;render();return;}
  const exp=e.target.closest('[data-export]');if(exp){exportCsv(exp.dataset.export);return;}
  const act=e.target.closest('[data-action]');if(!act)return;
  const action=act.dataset.action;
@@ -270,6 +323,12 @@ root.addEventListener('click',e=>{
  if(action==='close'||action==='close-overlay'){state.selected=null;state.connect=false;render();}
  if(action==='menu'){state.menu=!state.menu;render();}
  if(action==='refresh')loadData();
+ if(action==='compare-periods')comparePeriods();
+ if(['xlsx-export','csv-advanced','pdf-report'].includes(action)){try{exportAdvanced(state.reportSelected||'viagens',action==='xlsx-export'?'xlsx':action==='csv-advanced'?'csv':'pdf');}catch(err){alert('Erro ao gerar relatório: '+err.message);}}
+ if(action==='clear-filters'){state.customer='';state.vehicle='';state.serviceType='';state.search='';state.sortKey='';state.page=1;render();}
+ if(action==='save-filter'){const name=prompt('Nome para este conjunto de filtros:');if(name&&name.trim()){state.presets[name.trim().slice(0,45)]={from:state.from,to:state.to,customer:state.customer,vehicle:state.vehicle,serviceType:state.serviceType,search:state.search};localStorage.setItem('costalog_filter_presets',JSON.stringify(state.presets));render();}}
+ if(action==='delete-filter'){const sel=document.getElementById('savedPreset'),name=sel?.value;if(!name){alert('Selecione primeiro um filtro salvo.');return;}if(confirm('Excluir o filtro salvo '+name+'?')){delete state.presets[name];localStorage.setItem('costalog_filter_presets',JSON.stringify(state.presets));render();}}
+ if(action==='clear-settings'){if(confirm('Limpar filtros salvos e preferências de colunas?')){localStorage.removeItem('costalog_filter_presets');localStorage.removeItem('costalog_visible_columns');state.presets={};state.hiddenColumns={};state.autoRefresh=0;activateRefresh();render();}}
  if(action==='connect'){state.connect=true;state.selected=null;render();}
  if(action==='go-viagens'){state.view='viagens';state.page=1;render();}
  if(action==='csv')exportCsv(state.view==='painel'?'viagens':state.view);
@@ -287,6 +346,29 @@ root.addEventListener('change',e=>{
  if(e.target.id==='from'){state.from=e.target.value;state.page=1;if(state.mode==='live')loadData();else render();}
  if(e.target.id==='to'){state.to=e.target.value;state.page=1;if(state.mode==='live')loadData();else render();}
  if(e.target.id==='statusFilter'){state.filter=e.target.value;state.page=1;render();}
+ if(e.target.id==='filterClient'){state.customer=e.target.value;state.page=1;render();}
+ if(e.target.id==='filterPlate'){state.vehicle=e.target.value;state.page=1;render();}
+ if(e.target.id==='filterType'){state.serviceType=e.target.value;state.page=1;render();}
+ if(e.target.id==='sortDir'){state.sortDir=e.target.value;state.page=1;render();}
+ if(e.target.id==='autoRefresh'){state.autoRefresh=Number(e.target.value);activateRefresh();render();}
+ if(e.target.id==='reportSelected'){state.reportSelected=e.target.value;render();}
+ if(e.target.id==='reportMulti'){state.reportMulti=e.target.value==='all';render();}
+ if(e.target.id==='savedPreset'&&e.target.value){const preset=state.presets[e.target.value];if(!preset)return;Object.assign(state,preset,{page:1,prevDataset:null});if(state.mode==='live')loadData();else render();}
+ if(e.target.id==='quickPeriod'&&e.target.value){
+  const now=new Date(),today=new Date(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()));
+  const iso=x=>x.toISOString().slice(0,10);let from,to;
+  if(e.target.value==='this-month'){from=new Date(Date.UTC(now.getFullYear(),now.getMonth(),1));to=new Date(Date.UTC(now.getFullYear(),now.getMonth()+1,0));}
+  if(e.target.value==='last-month'){from=new Date(Date.UTC(now.getFullYear(),now.getMonth()-1,1));to=new Date(Date.UTC(now.getFullYear(),now.getMonth(),0));}
+  if(e.target.value==='this-year'){from=new Date(Date.UTC(now.getFullYear(),0,1));to=today;}
+  if(e.target.value==='last-90'){from=new Date(today.getTime()-89*86400000);to=today;}
+  state.from=iso(from);state.to=iso(to);state.page=1;state.prevDataset=null;
+  if(state.mode==='live')loadData();else render();
+ }
+ if(e.target.dataset.columnToggle){
+  const [view,key]=e.target.dataset.columnToggle.split(':'),old=state.hiddenColumns[view]||[];
+  state.hiddenColumns[view]=e.target.checked?old.filter(x=>x!==key):[...new Set([...old,key])];
+  localStorage.setItem('costalog_visible_columns',JSON.stringify(state.hiddenColumns));render();
+ }
  if(e.target.id==='csvMDFE'){
   const file=e.target.files&&e.target.files[0];if(!file)return;
   file.text().then(text=>{const records=parseCsv(text);if(!records.length){alert('Nenhum registro válido no CSV. Confira o cabeçalho.');return;}state.dataset={...state.dataset,mdfes:records,sources:{...state.dataset.sources,mdfes:true}};state.importCount=records.length;render();alert(records.length+' MDF-e carregados nesta aba.');}).catch(()=>alert('Não foi possível ler o arquivo.'));
