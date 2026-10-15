@@ -1,6 +1,6 @@
 import {extractRows,REPORT_TYPES} from './operational.mjs';
 import {downloadXlsx,downloadFile,printReport} from './reporting.mjs';
-import {renderAdvanced,operationalFilters,renderInsightsStrip,renderReportHub,ADVANCED_VIEWS} from './advanced-ui.mjs';
+import {renderAdvanced,operationalFilters,renderInsightsStrip,renderReportHub,renderGrid,ADVANCED_VIEWS} from './advanced-ui.mjs';
 import {normalizeOverview,costByClient} from './dss-mapping.mjs';
 /* COSTALOG | Viagens e Fretes. Sem credenciais no frontend. */
 const root = document.getElementById('app');
@@ -196,16 +196,38 @@ function searchRows(list){const term=normalKey(state.search);return list.filter(
 function paginate(list){const pageCount=Math.max(1,Math.ceil(list.length/15));state.page=Math.min(state.page,pageCount);const start=(state.page-1)*15;return {slice:list.slice(start,start+15),total:list.length,pages:pageCount};}
 function paging(p){return '<div class="pagination"><span>'+number(p.total)+' registros · Página '+state.page+' de '+p.pages+'</span><div class="pagination-actions"><button class="btn btn-sm" data-action="prev" '+(state.page<=1?'disabled':'')+'>Anterior</button><button class="btn btn-sm" data-action="next" '+(state.page>=p.pages?'disabled':'')+'>Próxima</button></div></div>';}
 function renderViagens(d,s){
- let rows=searchRows(d.viagens);if(state.filter==='vinculado')rows=rows.filter(v=>d.ctes.some(c=>c.viagemId===v.id)||d.mdfes.some(m=>m.viagemId===v.id));if(state.filter==='pendente')rows=rows.filter(v=>!d.ctes.some(c=>c.viagemId===v.id)&&!d.mdfes.some(m=>m.viagemId===v.id));rows.sort((a,b)=>b.data.localeCompare(a.data));const p=paginate(rows);
- return '<div class="table-tools"><h2>Viagens cadastradas</h2><div class="right-tools"><span class="status">'+number(rows.length)+' viagens</span>'+button('csv',icon('download')+' Exportar','btn-sm')+'</div></div>'+
- tableHtml(['Nº RV','Início','Cliente','Placa','MDF-e','Origem / Destino','Fretes vinculados','Abastecimento / custo','Resultado','Situação'],p.slice.map(v=>'<tr><td><button class="row-link" data-detail="viagens:'+attr(v.id)+'">'+esc(v.numero)+'</button></td><td>'+dateBR(v.data)+'</td><td>'+esc(v.cliente)+'</td><td>'+esc(v.placa||'—')+'</td><td>'+esc(v.nroMdf||'—')+'</td><td>'+esc((v.origem||'—')+' → '+(v.destino||'—'))+'</td><td>'+money(v.receita)+'</td><td>'+money(state.mode==='live'?v.abastecimento:v.custo)+'</td><td>'+money(Number.isFinite(v.receita)&&Number.isFinite(v.custo)?v.receita-v.custo:null)+'</td><td>'+statusPill(v.status)+'</td></tr>'))+paging(p);
+ let rows=searchRows(d.viagens);
+ if(state.filter==='vinculado')rows=rows.filter(v=>d.ctes.some(c=>c.viagemId===v.id)||d.mdfes.some(m=>m.viagemId===v.id));
+ if(state.filter==='pendente')rows=rows.filter(v=>!d.ctes.some(c=>c.viagemId===v.id)&&!d.mdfes.some(m=>m.viagemId===v.id));
+ const cols=[
+  {key:'numero',label:'Nº RV',detail:'viagens'},{key:'data',label:'Início',format:'date'},{key:'dataTermino',label:'Término',format:'date'},
+  {key:'cliente',label:'Cliente'},{key:'placa',label:'Placa'},{key:'motoristaId',label:'Motorista ID'},
+  {key:'container',label:'Container'},{key:'nroMdf',label:'Referência MDF-e'},
+  {key:'origem',label:'Origem'},{key:'destino',label:'Destino'},
+  {key:'kmPrevisto',label:'KM previsto',format:'number'},{key:'kmRodados',label:'KM rodado',format:'number'},
+  {key:'receita',label:state.mode==='live'?'Fretes vinculados':'Receita',format:'money'},
+  {key:state.mode==='live'?'abastecimento':'custo',label:state.mode==='live'?'Abastecimento (parcial)':'Custo',format:'money'},
+  {key:'status',label:'Situação'}];
+ return renderGrid('Viagens cadastradas',rows,cols,state,'viagens','Clique no número da RV para consultar a ficha completa e os documentos relacionados.');
 }
 function renderCtes(d){
  const combined=[...d.ctes.map(x=>({...x,category:'CT-e'})),...d.pedidos.filter(p=>!p.isCte).map(x=>({...x,category:'Pedido de frete'}))];
- let rows=searchRows(combined);if(state.filter==='vinculado')rows=rows.filter(x=>x.viagemId);if(state.filter==='pendente')rows=rows.filter(x=>!x.viagemId);rows.sort((a,b)=>b.data.localeCompare(a.data));const p=paginate(rows);
- return '<div class="table-tools"><h2>Pedidos de frete e CT-e</h2><div class="right-tools"><span class="status">'+number(rows.length)+' registros</span>'+button('csv',icon('download')+' Exportar','btn-sm')+'</div></div>'+
- '<div class="info-strip">GET /listarPedidosFrete: nro_cte identifica CT-e quando preenchido; rv_viagem referencia a viagem por rv_id ou nro_rv, se único. CT-e não localizado pode corresponder a viagem fora do período.</div>'+
- tableHtml(['Documento','Pedido PF','Tipo','Emissão','Cliente','RV','MDF-e','Valor frete','Situação'],p.slice.map(v=>'<tr><td><button class="row-link" data-detail="ctes:'+attr(v.id)+'">'+esc(v.numero)+'</button></td><td>'+esc(v.pedidoNumero||'—')+'</td><td>'+esc(v.category)+'</td><td>'+dateBR(v.data)+'</td><td>'+esc(v.cliente)+'</td><td>'+(v.viagemId?esc(v.viagemId):'<span class="pill red">Não localizada</span>')+'</td><td>'+esc(v.nroMdf||'—')+'</td><td>'+money(v.valor)+'</td><td>'+statusPill(v.status)+'</td></tr>'))+paging(p);
+ let rows=searchRows(combined);
+ if(state.filter==='vinculado')rows=rows.filter(x=>x.viagemId);
+ if(state.filter==='pendente')rows=rows.filter(x=>!x.viagemId);
+ const cols=[
+  {key:'numero',label:'Nº documento',detail:'ctes'},{key:'pedidoNumero',label:'Pedido PF'},
+  {key:'cteNumero',label:'CT-e'},{key:'data',label:'Emissão',format:'date'},{key:'dataCte',label:'Emissão CT-e',format:'date'},
+  {key:'cliente',label:'Cliente'},{key:'motoristaNome',label:'Motorista'}, {key:'placa',label:'Placa'},
+  {key:'rvReferencia',label:'RV ref.'},{key:'nroMdf',label:'MDF-e ref.'},
+  {key:'valor',label:'Valor frete',format:'money'},{key:'valorReceber',label:'Valor a receber',format:'money'},
+  {key:'liberadoFaturamento',label:'Liberado faturamento',format:'bool'},
+  {key:'numeroFatura',label:'Nº fatura'},{key:'entregaConcluida',label:'Entrega concluída',format:'bool'},
+  {key:'comprovanteEntrega',label:'Comprovante',format:'bool'},{key:'ocorrencia',label:'Ocorrência'},
+  {key:'valorIcmsIss',label:'ICMS/ISS',format:'money'},{key:'valorAverbacao',label:'Averbação',format:'money'},
+  {key:'status',label:'Situação'}];
+ return '<div class="info-strip">CT-e é identificado quando nro_cte possui número válido. “Sem RV” significa vínculo não localizado na consulta, não prova que a RV inexista. Situações fiscais completas exigem outras fontes.</div>'+
+ renderGrid('Pedidos de frete e CT-e',rows,cols,state,'ctes','Consulta de campos disponíveis em GET /listarPedidosFrete');
 }
 function renderClientes(d,s){
  let rows=searchRows(aggregateClients(d.viagens,d.pedidos));const p=paginate(rows);
@@ -311,7 +333,7 @@ async function comparePeriods(){
  }catch(err){alert('Não foi possível obter o período anterior: '+err.message);}
 }
 root.addEventListener('click',e=>{
- const nav=e.target.closest('[data-nav]');if(nav){state.view=nav.dataset.nav;state.search='';state.filter='todos';state.page=1;state.menu=false;state.selected=null;render();return;}
+ const nav=e.target.closest('[data-nav]');if(nav){state.view=nav.dataset.nav;state.search='';state.filter='todos';state.sortKey='';state.page=1;state.menu=false;state.selected=null;render();return;}
  const detail=e.target.closest('[data-detail]');if(detail){state.selected=detail.dataset.detail;render();return;}
  const sort=e.target.closest('[data-sort]');if(sort){const k=sort.dataset.sort;state.sortDir=state.sortKey===k&&state.sortDir==='asc'?'desc':'asc';state.sortKey=k;state.page=1;render();return;}
  const report=e.target.closest('[data-report-select]');if(report){state.reportSelected=report.dataset.reportSelect;state.reportMulti=false;render();return;}
