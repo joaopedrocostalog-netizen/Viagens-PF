@@ -10,3 +10,37 @@
 @media(max-width:980px){.sidebar{position:fixed;left:-250px;transition:left .2s;box-shadow:12px 0 30px #0007}.sidebar.open{left:0}.mobile-menu{display:inline-flex}.topbar{padding:0 16px}.content{padding:22px 15px 50px}.charts,.bottom-panels{grid-template-columns:1fr}.heading h1{font-size:20px}}
 @media(max-width:620px){.topbar-right .status{display:none}.kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.kpi{padding:12px}.kpi-value{font-size:20px}.kpi-value.money{font-size:17px}.filter{flex:1;min-width:130px}.heading-actions{width:100%}.bar-item{grid-template-columns:85px 1fr 68px}.topbar{height:55px}.split{grid-template-columns:1fr}.heading{margin-bottom:12px}.tab{padding:13px 12px}.floating-close{display:block;position:fixed;inset:0;background:#0008;z-index:29;border:0}.sidebar.open{z-index:30}}
 @media print{.sidebar,.topbar,.filters,.tabbar,.heading-actions,.table-tools .right-tools,.pagination,.info-strip,.btn{display:none!important}.main{width:100%}.content{padding:0}.card,.kpi,.table-wrap{break-inside:avoid}body{background:white;color:black}.card,.kpi,.table-wrap{background:white;color:black;border-color:#bbb}td,th{color:black!important}}
+
+/* Inteligência operacional COSTALOG */
+.filter-advanced{background:#141416;border:1px solid #29292d;border-radius:12px;margin-bottom:16px;padding:14px}
+.filter-row .filter span,.filter-advanced .filter span{font-size:11px;color:#aaa;font-weight:700}
+.filter-advanced .filter{min-width:145px}
+.filter-compact{flex:1 1 180px}
+.filter-row-actions{margin-top:12px;justify-content:flex-start}
+.filter-row-actions button{align-self:flex-end}
+.advanced-summary{margin-top:20px;margin-bottom:20px}
+.advanced-summary .kpis{grid-template-columns:repeat(6,minmax(0,1fr))}
+.overview-shortcuts{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0 20px}
+.analysis-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.sort-link{border:0;padding:0;background:transparent;color:inherit;cursor:pointer;font:inherit;white-space:nowrap;text-align:left}
+.sort-link:hover{color:#ff5364}
+.columns-picker{position:relative;display:inline-block;z-index:12}
+.columns-picker>summary{list-style:none;cursor:pointer;display:inline-flex}
+.columns-picker>summary::-webkit-details-marker{display:none}
+.columns-list{background:#202023;border:1px solid #49494d;border-radius:10px;min-width:220px;max-width:320px;max-height:360px;overflow-y:auto;position:absolute;right:0;top:43px;padding:10px;box-shadow:0 12px 40px #000a;display:grid;gap:6px;z-index:15}
+.columns-list label{display:flex;align-items:center;gap:8px;color:#e4e4e6;font-size:12px;padding:6px;cursor:pointer}
+.columns-list label:hover{background:#353539;border-radius:5px}
+.columns-list input{accent-color:#e00016}
+.report-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.report-card{text-align:left;border:1px solid #303035;background:#151516;color:#f5f5f7;border-radius:12px;padding:18px;min-height:85px;display:flex;flex-direction:column;justify-content:space-between;gap:8px}
+.report-card:hover{border-color:#c01829;background:#22171b}
+.report-card strong{font-size:13px}
+.report-card small{font-size:11px;color:#a3a3a8}
+.analysis-grid .table-wrap{max-height:500px}
+.card .table-wrap{border-radius:8px}
+.card .pagination{padding-bottom:0}
+.advanced-summary .section-title{margin-top:10px}
+@media(max-width:1400px){.advanced-summary .kpis{grid-template-columns:repeat(3,1fr)}.report-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:980px){.analysis-grid{grid-template-columns:1fr}.filter-row-actions{align-items:flex-end}.filter-advanced .filter{min-width:135px}}
+@media(max-width:620px){.advanced-summary .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.report-grid{grid-template-columns:1fr}.columns-list{right:auto;left:0}.filter-advanced{padding:10px}.filter-row-actions .btn{flex:1}.topbar-right .btn{padding:8px}}
+@media print{.filter-advanced,.advanced-summary .overview-shortcuts,.columns-picker,.report-grid{display:none!important}.analysis-grid{display:block}.card{break-inside:avoid}}
