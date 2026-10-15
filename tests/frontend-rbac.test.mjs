@@ -56,5 +56,5 @@ test('Cada funcionário vê somente abas permitidas após login; logout esconde 
  events.submit({target:{id:'loginForm'},preventDefault(){}});
  await wait();
  assert(root.innerHTML.includes('data-nav="administracao"'));
- assert(root.innerHTML.includes('data-nav="integracoes"'));
+ assert(!root.innerHTML.includes('data-nav="integracoes"'),'A aba de integração deve estar oculta enquanto a API estiver desativada.');
 });
