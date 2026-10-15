@@ -55,6 +55,38 @@ O frontend pode ser colocado em rota interna ou incorporado em iframe pela empre
 
 GitHub Pages NÃO executa o backend privado. Coloque api/server.mjs em servidor corporativo protegido por HTTPS, controle de acesso/SSO e auditoria. Configure PORTAL_ALLOWED_ORIGINS para os domínios realmente autorizados.
 
+
+## Módulos operacionais e melhorias adicionais (outubro de 2026)
+
+Esta versão contém funcionalidades de consulta e análise que usam listarViagens e listarPedidosFrete, preservando o backend Basic Auth privado. O frontend permanece no GitHub Pages e exige a ativação do backend corporativo para exibir dados reais.
+
+### Operação
+
+- Painel: quantidade de RVs em andamento/finalizadas, pedidos, CT-e, entregas sem comprovante, fretes, abastecimento e comparação com o período anterior.
+- Viagens: ficha RV com contrato, motorista, veículos, container, MDF-e referenciado, datas, rotas, KM previsto/rodado, desvio e custo parcial de abastecimento por KM.
+- Pedidos e CT-e: datas, número de PF/CT-e, cliente, rota, motorista, valores, tributos, averbação, situação de entrega, comprovante, fatura e ocorrências.
+- Central de pendências: CT-e não numerado, entrega sem comprovante, faturamento sem número de fatura, vínculo RV ausente/ambíguo, ocorrências e desvio de KM. São indícios para conferência, não certezas de irregularidade.
+- Áreas específicas: clientes, rotas, frota, motoristas, containers, referências MDF-e, faturamento e análises mensais.
+
+### Pesquisa e relatórios
+
+- Períodos rápidos, filtros por cliente/placa/tipo de serviço, pesquisa textual, ordenação, paginação e personalização de colunas.
+- Preferências de filtros guardadas localmente, sem persistir dados operacionais da empresa.
+- Relatórios de RV, PF, CT-e, clientes, rotas, frota, motoristas, containers, MDF-e, pendências e meses.
+- CSV UTF-8, arquivo Excel XLSX real com múltiplas abas e versão de impressão preparada para a função Salvar como PDF do navegador.
+- Horário da última sincronização, atualização automática opcional com a aba aberta, tratamento de falhas sem substituição silenciosa dos últimos dados reais.
+
+### Backend
+
+- Basic Auth DSS guardado apenas no servidor corporativo, separado do Bearer do portal.
+- Cache limitado por TTL em memória, limite simples de consultas por IP e rota protegida de diagnóstico /api/status.
+- Testes automatizados para normalização, cálculos, conciliação, exportação Excel, renderização das telas e proxy DSS simulado.
+- As credenciais reais e dados de clientes não devem ser publicados no GitHub.
+
+### Limitações expressas
+
+Status fiscal de MDF-e/CT-e, pagamento efetivamente recebido, lucro e custo operacional completo, GPS, comprovantes digitais e SSO/login individual exigem fontes e integração complementares. A interface não deve inferir essas informações dos endpoints atuais. A implantação do backend no servidor da COSTALOG continua necessária para ligar as telas aos registros reais.
+
 ## Segurança e pendências
 
 - Repositório público: nunca envie tokens, .env ou dados reais de clientes, viagens e documentos fiscais.
