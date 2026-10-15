@@ -72,11 +72,11 @@ function normalizeDoc(v,i){
  const cteNumber=pick(v,['numeroCTe','nroCTe','nrCTe','numCTe','cteNumero','chaveCTe','chaveAcessoCTe']);
  const order=str(pick(v,['numeroPedidoFrete','nroPedidoFrete','numPedido','idPedidoFrete','pedido','numero','id']));
  const id=str(cteNumber||order||i+1);
- return {id:id,numero:str(cteNumber||order||'—'),data:toDay(pick(v,['dataEmissao','dtEmissao','dataCTe','data'])),cliente:str(pick(v,['nomeCliente','razaoSocial','cliente','tomador','nomeTomador']))||'Não informado',viagemId:str(pick(v,['idViagem','numeroViagem','nroViagem','nrViagem','codViagem','viagem']))||null,valor:toMoney(pick(v,['valorFrete','valorCTe','valorTotal','valor','vlrFrete','receita'])),chave:str(pick(v,['chaveCTe','chaveAcessoCTe','chaveAcesso'])),status:str(pick(v,['situacao','status']))||'Não informado',isCte:cteNumber!==undefined};
+ return {id:id,numero:str(cteNumber||order||'—'),data:toDay(pick(v,['dataEmissao','dtEmissao','dataCTe','data'])),cliente:str(pick(v,['nomeCliente','razaoSocial','cliente','tomador','nomeTomador']))||'Não informado',viagemId:str(pick(v,['idViagem','numeroViagem','nroViagem','nrViagem','codViagem','viagemId','viagem']))||null,valor:toMoney(pick(v,['valorFrete','valorCTe','valorTotal','valor','vlrFrete','receita'])),chave:str(pick(v,['chaveCTe','chaveAcessoCTe','chaveAcesso'])),status:str(pick(v,['situacao','status']))||'Não informado',isCte:cteNumber!==undefined};
 }
 function normalizeMdfe(v,i){
  const n=str(pick(v,['numeroMDFe','nroMDFe','nrMDFe','numero','id']));
- return {id:n||String(i+1),numero:n||'—',data:toDay(pick(v,['dataEmissao','dtEmissao','data'])),viagemId:str(pick(v,['idViagem','numeroViagem','nroViagem','nrViagem','viagem']))||null,placa:str(pick(v,['placaVeiculo','placa','placaTracao'])),status:str(pick(v,['situacao','status']))||'Não informado'};
+ return {id:n||String(i+1),numero:n||'—',data:toDay(pick(v,['dataEmissao','dtEmissao','data'])),viagemId:str(pick(v,['idViagem','numeroViagem','nroViagem','nrViagem','viagemId','viagem']))||null,placa:str(pick(v,['placaVeiculo','placa','placaTracao'])),status:str(pick(v,['situacao','status']))||'Não informado'};
 }
 function normalizePayload(raw){
  const payload=raw.data||raw;const viagens=extractList(payload.viagens).map(normalizeViagem);
@@ -85,7 +85,7 @@ function normalizePayload(raw){
  const inferred=pedidos.filter(x=>x.isCte);
  const ctes=ctesApi.length?ctesApi:inferred;
  const mdfes=extractList(payload.mdfes).map(normalizeMdfe);
- return {viagens,pedidos,ctes,mdfes,sources:payload.sources||{viagens:true,pedidos:true,ctes:ctesApi.length>0||inferred.length>0,mdfes:Array.isArray(payload.mdfes)}};
+ return {viagens,pedidos,ctes,mdfes,sources:{...(payload.sources||{viagens:true,pedidos:true,mdfes:Array.isArray(payload.mdfes)}),ctes:!!(ctesApi.length||inferred.length||payload.sources?.ctes)}};
 }
 function inRange(v){return !v||((!state.from||v>=state.from)&&(!state.to||v<=state.to));}
 function scoped(){const d=state.dataset;return {viagens:d.viagens.filter(x=>inRange(x.data)),allViagens:d.viagens,ctes:d.ctes.filter(x=>inRange(x.data)),pedidos:d.pedidos.filter(x=>inRange(x.data)),mdfes:d.mdfes.filter(x=>inRange(x.data)),sources:d.sources};}
