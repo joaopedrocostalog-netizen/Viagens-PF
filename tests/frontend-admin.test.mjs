@@ -12,7 +12,7 @@ function fakeBrowser(){
  const root={innerHTML:'',addEventListener(name,cb){events[name]=cb;}};
  globalThis.document={getElementById(id){return id==='app'?root:fields[id]||null;},addEventListener(){},visibilityState:'visible'};
  globalThis.localStorage={getItem:key=>store.get(key)||null,setItem:(key,val)=>store.set(key,val),removeItem:key=>store.delete(key)};
- globalThis.window={location:{protocol:'file:'}};
+ globalThis.window={location:{protocol:'file:',origin:'https://api.exemplo.local'}};
  globalThis.alert=()=>{};globalThis.confirm=()=>true;
  return {events,fields,root};
 }
