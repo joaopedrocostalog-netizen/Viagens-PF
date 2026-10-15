@@ -10,7 +10,8 @@ test('Cada funcionário vê somente abas permitidas após login; logout esconde 
  };
  globalThis.localStorage={getItem:x=>storage.get(x)||null,setItem:(x,v)=>storage.set(x,v),removeItem:x=>storage.delete(x)};
  globalThis.document={getElementById:id=>id==='app'?root:fields[id]||null,addEventListener(){},visibilityState:'visible'};
- globalThis.window={location:{protocol:'file:'}};
+ globalThis.window={location:{protocol:'file:',origin:'https://api.exemplo.local'}};
+ globalThis.alert=()=>{};globalThis.confirm=()=>true;
  let activeRole='operacional';
  const user=()=>({username:activeRole,displayName:'Usuário Teste',role:activeRole});
  const permissions=()=>({operacional:true,financeiro:activeRole!=='operacional',admin:activeRole==='administrador'});
