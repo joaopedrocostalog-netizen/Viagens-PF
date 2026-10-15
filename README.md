@@ -1,6 +1,6 @@
 # COSTALOG — Portal de Viagens e Fretes
 
-Site corporativo com visual preto, vermelho e branco, inspirado no Controle de Pneus das imagens. Frontend HTML/CSS/JavaScript com backend Node.js privado para o DSS.
+Site corporativo com visual preto, vermelho e branco, inspirado no Controle de Pneus das imagens. A barra lateral utiliza o PNG original logo-costalog-sem-fundo-1024x876.png, já presente no repositório. Frontend HTML/CSS/JavaScript com backend Node.js privado para o DSS.
 
 ## Funcionalidades criadas
 
@@ -65,3 +65,26 @@ GitHub Pages NÃO executa o backend privado. Coloque api/server.mjs em servidor 
 ## Testes e GitHub Actions
 
 A publicação executa verificações de sintaxe e testes automáticos de mapeamento de RV, pedido/CT-e e backend. O teste do backend usa um servidor DSS **simulado**, confere Basic Auth e testa o token do portal, sem acessar ou registrar credenciais reais. Falhas de execuções anteriores permanecem no histórico do GitHub, mesmo após a correção; sempre confira a execução mais recente no branch main.
+
+## Diagnóstico da integração (DSS x portal)
+
+**O frontend hospedado no GitHub Pages não se conecta diretamente ao DSS.** É obrigatório configurar e executar o backend Node.js num servidor privado, com HTTPS e controle de acesso. A própria equipe da empresa deve definir esse endereço seguro.
+
+1. Configure no servidor o arquivo privado .env a partir do modelo .env.example, com DSS_AUTH_TYPE=basic, DSS_USERNAME, DSS_PASSWORD e um PORTAL_ACCESS_TOKEN forte (diferente da senha DSS).
+2. Confirme DSS_BASE_URL. Com o padrão atual, o backend monta o destino como DSS_BASE_URL + /listarViagens ou /listarPedidosFrete. Se os caminhos reais tiverem outro prefixo, ajuste DSS_BASE_URL e as variáveis DSS_*_PATH.
+3. Inicie o backend (Node.js 20+) com node --env-file=.env api/server.mjs, atrás de um proxy HTTPS. Não exponha a porta diretamente na internet.
+4. Consulte /api/health no servidor: configured=true exige base URL, rotas, credenciais DSS e token do portal; não significa que a consulta DSS já funcionou.
+5. No site, clique em **Conectar API**, informe a URL HTTPS do backend corporativo e o PORTAL_ACCESS_TOKEN. **Não digite a senha DSS no navegador.** O token do portal não é armazenado; depois de recarregar a página, será necessário digitá-lo novamente.
+6. Clique em Atualizar e confira os resultados. Se não houver acesso ao backend, serão exibidos dados de demonstração com aviso, nunca dados reais presumidos.
+
+Erros comuns:
+- HTTP 401 no endpoint do **portal**: PORTAL_ACCESS_TOKEN incorreto. Não é a senha DSS.
+- Falha DSS HTTP 401: credenciais DSS_USERNAME / DSS_PASSWORD incorretas ou conta bloqueada.
+- Falha DSS HTTP 403: permissões DSS insuficientes ou módulo tms_integr_prog_pg_motorista não habilitado.
+- Falha DSS HTTP 404: endereço base ou rota DSS incorreta.
+- HTTP 503 no portal: base URL ou Basic Auth DSS ainda não configurados no backend.
+- Erro de rede/CORS: conferir HTTPS, endereço do backend e PORTAL_ALLOWED_ORIGINS.
+
+A interface aguarda até 45 segundos por resposta. O backend tem um limite configurável por consulta (DSS_TIMEOUT_MS, padrão 20 segundos). Os testes automatizados usam um **servidor DSS simulado**, sem credenciais nem informações reais da COSTALOG.
+
+Os workflows antigos com falhas continuam no histórico do GitHub mesmo depois de executados os reparos: confirme o commit e o status da execução mais recente.
