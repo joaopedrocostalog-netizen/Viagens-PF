@@ -41,6 +41,83 @@ const demo = {
 };
 const readPrefs=(key,def)=>{try{return JSON.parse(localStorage.getItem(key))??def;}catch{return def;}};
 demo.pedidos=demo.ctes.map(p=>({...p,pedidoNumero:'PF-'+p.numero,cteNumero:p.numero}));
+
+/* GitHub Pages = APENAS DEMONSTRAÇÃO, SEM AUTENTICAÇÃO REAL.
+   Os dados reais DSS nunca devem ser servidos com a autenticação local do navegador. */
+const PUBLIC_DEMO=window.location?.hostname?.endsWith('.github.io')===true;
+const DEMO_USERS_KEY='costalog_demo_users_v1';
+const TEMP_ADMIN_SALT='0586030c9088763dba9e1cde008cce5a';
+const TEMP_ADMIN_HASH='977b36fdad10f371180e01878f3d4331ae80c73e7b422eaeabb058ac48e65bdd';
+const PBKDF2_ITERATIONS=120000;
+const demoRoles=['operacional','financeiro','administrador'];
+const demoRights=role=>({operacional:true,financeiro:role!=='operacional',admin:role==='administrador'});
+function demoUsers(){
+ try {
+  const rows=JSON.parse(localStorage.getItem(DEMO_USERS_KEY)||'null');
+  if(Array.isArray(rows)&&rows.length)return rows;
+ }catch{}
+ return [{username:'admin',name:'Administrador (demonstração)',role:'administrador',salt:TEMP_ADMIN_SALT,hash:TEMP_ADMIN_HASH,disabled:false,mustChangePassword:true}];
+}
+function demoSave(rows){localStorage.setItem(DEMO_USERS_KEY,JSON.stringify(rows));}
+const randomHex=n=>[...crypto.getRandomValues(new Uint8Array(n))].map(x=>x.toString(16).padStart(2,'0')).join('');
+async function demoHash(password,salt){
+ if(typeof password!=='string'||password.length<12||password.length>256)throw Error('Use uma senha de 12 a 256 caracteres.');
+ if(!crypto?.subtle)throw Error('O modo de demonstração exige HTTPS e navegador atualizado.');
+ const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);
+ const derived=await crypto.subtle.deriveBits({name:'PBKDF2',salt:new Uint8Array(salt.match(/../g).map(x=>parseInt(x,16))),iterations:PBKDF2_ITERATIONS,hash:'SHA-256'},key,256);
+ return [...new Uint8Array(derived)].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+const demoPublic=u=>({username:u.username,displayName:u.name||u.username,name:u.name||u.username,role:u.role,disabled:!!u.disabled,mustChangePassword:!!u.mustChangePassword});
+async function demoSignin(username,password){
+ const u=demoUsers().find(x=>x.username===String(username||'').toLowerCase().trim()&&!x.disabled);
+ if(!u||await demoHash(password,u.salt)!==u.hash)throw Error('Usuário ou senha temporária incorretos.');
+ return demoPublic(u);
+}
+async function demoAccountAction(path='',options={}){
+ if(state.role!=='administrador'||!state.user||state.user.mustChangePassword)throw Error('Somente o administrador pode modificar contas demonstrativas.');
+ const rows=demoUsers(),operation=options.method||'GET',input=options.body?JSON.parse(options.body):{};
+ const admins=()=>rows.filter(x=>x.role==='administrador'&&!x.disabled).length;
+ if(!path&&operation==='GET')return {users:rows.map(demoPublic)};
+ if(!path&&operation==='POST'){
+  const username=String(input.username||'').trim().toLowerCase(),name=String(input.name||'').trim();
+  if(!/^[a-z0-9._-]{3,60}$/.test(username)||name.length<2||name.length>100)throw Error('Informe nome e login válidos.');
+  if(!demoRoles.includes(input.role))throw Error('Permissão inválida.');
+  if(rows.some(x=>x.username===username))throw Error('Este login já está cadastrado neste navegador.');
+  const salt=randomHex(16),hash=await demoHash(input.password,salt);
+  const newUser={username,name,role:input.role,salt,hash,disabled:false,mustChangePassword:true};
+  rows.push(newUser);demoSave(rows);return {user:demoPublic(newUser)};
+ }
+ if(path.startsWith('/')&&operation==='PATCH'){
+  const username=decodeURIComponent(path.slice(1)),target=rows.find(x=>x.username===username);
+  if(!target)throw Error('Funcionário não encontrado.');
+  switch(input.action){
+   case 'role':
+    if(!demoRoles.includes(input.role))throw Error('Permissão inválida.');
+    if(target.username===state.user.username&&input.role!=='administrador')throw Error('Não é possível rebaixar sua própria conta.');
+    if(target.role==='administrador'&&input.role!=='administrador'&&admins()<=1)throw Error('Mantenha um administrador.');
+    target.role=input.role;break;
+   case 'disable':
+    if(target.username===state.user.username)throw Error('Não pode bloquear sua própria conta.');
+    if(target.role==='administrador'&&admins()<=1)throw Error('Mantenha um administrador.');
+    target.disabled=true;break;
+   case 'enable':target.disabled=false;break;
+   case 'reset-password':
+    target.salt=randomHex(16);target.hash=await demoHash(input.password,target.salt);target.mustChangePassword=true;break;
+   default:throw Error('Ação inválida.');
+  }
+  demoSave(rows);return {user:demoPublic(target)};
+ }
+ throw Error('Operação inválida.');
+}
+async function demoChangeOwnPassword(currentPassword,newPassword){
+ const rows=demoUsers(),u=rows.find(x=>x.username===state.user?.username);
+ if(!u||await demoHash(currentPassword,u.salt)!==u.hash)throw Error('Senha provisória incorreta.');
+ if(currentPassword===newPassword)throw Error('A nova senha deve ser diferente.');
+ const salt=randomHex(16),hash=await demoHash(newPassword,salt);
+ Object.assign(u,{salt,hash,mustChangePassword:false});
+ demoSave(rows);
+}
+
 const state = {
  view:'painel', from:String(year)+'-01-01',to:String(year)+'-12-31',search:'',filter:'todos',page:1,
  dataset:demo, mode:'demo',error:'',loading:false,selected:null,connect:false,menu:false,
@@ -119,14 +196,14 @@ function render(){
  state.view=safeView(state.role,state.view);
  const d=scoped(),stats=totals(d);
  const groupFor=x=>['faturamento','clientes','analises'].includes(x)?'FINANCEIRO':['administracao','integracoes'].includes(x)?'ACESSO RESTRITO':'OPERACIONAL';
- const visibleNav=navItems.filter(x=>permittedView(state.role,x[0]));
+ const visibleNav=navItems.filter(x=>x[0]!=='integracoes'&&permittedView(state.role,x[0]));
  const nav=visibleNav.map((x,i)=>(i===0||groupFor(x[0])!==groupFor(visibleNav[i-1][0])?'<div class="side-section-label">'+groupFor(x[0])+'</div>':'')+'<button class="side-link '+(state.view===x[0]?'active':'')+'" data-nav="'+x[0]+'">'+icon(x[1])+esc(x[2])+'</button>').join('');
- const buttons=tabs.filter(x=>permittedView(state.role,x[0])).map(x=>'<button class="tab '+(state.view===x[0]?'active':'')+'" role="tab" aria-selected="'+(state.view===x[0])+'" data-nav="'+x[0]+'">'+esc(x[1])+'</button>').join('');
+ const buttons=tabs.filter(x=>x[0]!=='integracoes'&&permittedView(state.role,x[0])).map(x=>'<button class="tab '+(state.view===x[0]?'active':'')+'" role="tab" aria-selected="'+(state.view===x[0])+'" data-nav="'+x[0]+'">'+esc(x[1])+'</button>').join('');
  const message=state.mode==='live'?'<div class="info-strip '+(state.error?'error':'live')+'"><strong>Dados do DSS:</strong> '+(state.error?'A última sincronização falhou. Mantidos os últimos dados reais carregados; podem estar desatualizados. '+esc(state.error):'Consulta concluída. Os campos não disponibilizados pela API são exibidos como “—”.')+'</div>':'<div class="info-strip'+(state.error?' error':'')+'"><strong>DADOS DEMONSTRATIVOS:</strong> números fictícios usados apenas para visualizar o portal. Nenhuma informação real da COSTALOG está sendo exibida.'+(state.error?'<div>'+esc(state.error)+'</div>':'')+'</div>';
  root.innerHTML='<div class="layout">'+
   (state.menu?'<button class="floating-close" data-action="menu" aria-label="Fechar menu"></button>':'')+
   '<aside class="sidebar '+(state.menu?'open':'')+'"><div class="brand"><img class="brand-logo" src="./logo-costalog-sem-fundo-1024x876.png" alt="Logotipo COSTALOG" width="48" height="46"><div><div class="brand-name">COSTALOG</div><div class="brand-sub">A LOGÍSTICA IDEAL</div></div></div><div class="side-title">GESTÃO DE FROTA</div><nav class="side-nav">'+nav+'</nav><div class="side-bottom"><strong>VIAGENS & FRETES</strong>Inteligência operacional e financeira<br>Portal interno COSTALOG</div></aside>'+
-  '<main class="main"><header class="topbar"><div class="filter-row"><button class="btn btn-ghost btn-sm mobile-menu" data-action="menu" aria-label="Abrir menu">'+icon('menu')+'</button><strong>Viagens & Fretes</strong></div><div class="topbar-right"><span class="status '+(state.mode==='live'?'online':'')+'">'+(state.mode==='live'?'DSS conectado':'Modo demonstração')+'</span>'+(state.user?'<span class="status online">'+esc(state.user.displayName||state.user.username)+' · '+esc(state.role)+'</span>'+button('logout','Sair','btn-ghost btn-sm'):button('connect','Entrar','btn-ghost btn-sm'))+button('refresh',icon('reload')+' Atualizar','btn-sm')+'</div></header>'+
+  '<main class="main"><header class="topbar"><div class="filter-row"><button class="btn btn-ghost btn-sm mobile-menu" data-action="menu" aria-label="Abrir menu">'+icon('menu')+'</button><strong>Viagens & Fretes</strong></div><div class="topbar-right"><span class="status '+(state.mode==='live'?'online':'')+'">'+(PUBLIC_DEMO?'Somente demonstração':state.mode==='live'?'DSS conectado':'Modo demonstração')+'</span>'+(state.user?'<span class="status online">'+esc(state.user.displayName||state.user.username)+' · '+esc(state.role)+'</span>'+button('logout','Sair','btn-ghost btn-sm'):button('connect','Entrar','btn-ghost btn-sm'))+(PUBLIC_DEMO?'':button('refresh',icon('reload')+' Atualizar','btn-sm'))+'</div></header>'+
   '<div class="content"><div class="heading"><div><h1>Controle de Viagens e Fretes</h1><p>Viagens, pedidos de frete, CT-e, MDF-e e análise de rentabilidade.</p></div><div class="heading-actions">'+button('csv',icon('download')+' Exportar CSV','btn-ghost')+button('print','Imprimir relatório','btn-ghost')+'</div></div><div class="tabbar" role="tablist">'+buttons+'</div>'+
   message+operationalFilters(d,state)+renderFilters()+(state.loading?'<div class="info-strip">Consultando a API do DSS...</div>':'')+renderView(d,stats)+
   '<p class="footer-note">COSTALOG · Painel de viagens e fretes. Valores financeiros dependem do mapeamento correto dos campos de origem.</p></div></main></div>'+
@@ -147,7 +224,7 @@ function renderView(d,s){
  if(state.view==='clientes')return renderClientes(d,s);
  if(state.view==='mdfes')return renderMdfes(d,s);
  if(state.view==='relatorios')return renderReportHub(d,state);
- if(state.view==='administracao'&&state.permissions.admin)return renderUsersManagement(state.adminUsers,state.adminUsersLoading,state.adminUsersError)+renderAdvanced(state.view,d,state);
+ if(state.view==='administracao'&&state.permissions.admin)return renderUsersManagement(state.adminUsers,state.adminUsersLoading,state.adminUsersError)+(PUBLIC_DEMO?'<p class="help">Administração de demonstração: contas e senhas permanecem somente neste navegador. Dados fictícios. A configuração da API será feita depois.</p>':renderAdvanced(state.view,d,state));
  if(ADVANCED_VIEWS.includes(state.view))return renderAdvanced(state.view,d,state);
  return renderIntegracoes();
 }
@@ -298,17 +375,26 @@ function renderDrawer(d){
 function renderConnect(){
  return '<div class="overlay" data-action="close-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Acessar portal COSTALOG">'+
  '<div class="drawer-top"><h2>Entrar no portal COSTALOG</h2>'+button('close',icon('close'),'btn-sm')+'</div>'+
- '<p class="help">Cada funcionário utiliza sua própria conta e vê apenas os módulos autorizados. O usuário e a senha do DSS ficam somente no servidor privado.</p>'+
+ '<p class="help">'+(PUBLIC_DEMO?'Acesso de demonstração com dados fictícios. Conta e alterações ficam somente neste navegador; não protegem informações reais.':'Cada funcionário utiliza sua própria conta e vê apenas os módulos autorizados. O servidor protege os dados reais.')+'</p>'+
  '<form id="loginForm">'+
  '<div class="filter" style="margin-top:17px"><label for="loginUser">Usuário do portal</label><input id="loginUser" class="control full" autocomplete="username" required placeholder="usuario.funcionario"></div>'+
  '<div class="filter" style="margin-top:17px"><label for="loginPassword">Senha do portal</label><input id="loginPassword" class="control full" type="password" autocomplete="current-password" required placeholder="Sua senha individual"></div>'+
  '<div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap"><button class="btn btn-red" type="submit">Entrar com segurança</button>'+button('demo','Fechar / demonstração operacional','btn-ghost')+'</div></form>'+
- '<p class="help">Não informe aqui a senha Basic Auth do DSS: o acesso ao DSS é feito exclusivamente pelo servidor da empresa.</p></aside></div>';
+ '<p class="help">'+(PUBLIC_DEMO?'Login inicial: admin. Utilize a senha temporária disponibilizada para testar e troque-a no primeiro acesso.':'O backend corporativo será configurado fora desta tela.')+'</p></aside></div>';
 }
 async function portalLogin(){
- const url=document.getElementById('apiUrl')?.value.trim().replace(/\/$/,'')||'';
+ const url=state.apiUrl?.replace(/\/$/,'')||window.location.origin;
  const username=document.getElementById('loginUser')?.value.trim()||'';
  const password=document.getElementById('loginPassword')?.value||'';
+ if(PUBLIC_DEMO){
+  try{
+   const user=await demoSignin(username,password);
+   clearSession();state.user=user;state.role=user.role;state.permissions=demoRights(user.role);
+   state.view='painel';state.connect=false;state.error='';state.mode='demo';state.dataset=demo;render();
+   if(state.permissions.admin&&!state.user.mustChangePassword)loadAdminUsers();
+  }catch(err){alert('Demonstração: '+err.message);}
+  return;
+ }
  if(!/^https:\/\//i.test(url)&&!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(url)){alert('Use HTTPS ou localhost para desenvolvimento.');return;}
  try{
   const res=await fetch(url+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'omit',body:JSON.stringify({username,password})});
@@ -329,6 +415,7 @@ function adminEndpoint(path=''){
  return state.apiUrl.replace(/\/$/,'')+'/api/users'+path;
 }
 async function adminFetch(path='',options={}){
+ if(PUBLIC_DEMO)return demoAccountAction(path,options);
  if(!state.permissions.admin||!state.token)throw Error('Somente administradores podem gerenciar contas.');
  const headers={Authorization:'Bearer '+state.token,...(options.body?{'Content-Type':'application/json'}:{})};
  const response=await fetch(adminEndpoint(path),{...options,headers,credentials:'omit'});
@@ -338,7 +425,7 @@ async function adminFetch(path='',options={}){
  return result;
 }
 async function loadAdminUsers(){
- if(!state.permissions.admin||!state.token)return;
+ if(!state.permissions.admin||(PUBLIC_DEMO?false:!state.token))return;
  const stamp=identityEpoch;
  state.adminUsersLoading=true;state.adminUsersError='';render();
  try{
@@ -383,6 +470,12 @@ async function changePortalPassword(){
  if(newPassword!==confirmPassword){alert('As novas senhas são diferentes.');return;}
  if(newPassword.length<12||newPassword.length>256){alert('A senha deve ter 12 a 256 caracteres.');return;}
  try{
+  if(PUBLIC_DEMO){
+   await demoChangeOwnPassword(currentPassword,newPassword);
+   clearSession();state.connect=true;render();
+   alert('Senha de demonstração alterada neste navegador. Entre novamente com a nova senha.');
+   return;
+  }
   const r=await fetch(state.apiUrl.replace(/\/$/,'')+'/api/change-password',{method:'POST',headers:{Authorization:'Bearer '+state.token,'Content-Type':'application/json'},credentials:'omit',body:JSON.stringify({currentPassword,newPassword})});
   const data=await r.json();if(!r.ok)throw Error(data.error||'Não foi possível trocar senha.');
   clearSession();state.connect=true;render();
@@ -492,11 +585,11 @@ root.addEventListener('click',e=>{
  if(action==='close-overlay'&&e.target!==act)return;
  if(action==='close'||action==='close-overlay'){state.selected=null;state.connect=false;render();}
  if(action==='menu'){state.menu=!state.menu;render();}
- if(action==='refresh')loadData();
+ if(action==='refresh'&&!PUBLIC_DEMO)loadData();
  if(action==='reload-users')loadAdminUsers();
  if(action==='close-admin-reset'){state.adminResetUser='';render();}
- if(action==='compare-periods')comparePeriods();
- if(action==='api-diagnostics'){
+ if(action==='compare-periods'&&!PUBLIC_DEMO)comparePeriods();
+ if(action==='api-diagnostics'&&!PUBLIC_DEMO){
   if(!state.permissions.admin){alert('Acesso restrito a administradores.');return;}
   if(!state.apiUrl||!state.token){alert('Conecte o backend e informe o token do portal antes de consultar os diagnósticos.');return;}
   fetch(state.apiUrl.replace(/\/$/,'')+'/api/status',{headers:{Authorization:'Bearer '+state.token}})
@@ -575,4 +668,4 @@ root.addEventListener('input',e=>{
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(state.selected||state.connect)){state.selected=null;state.connect=false;render();}});
 render();
-if(window.location.protocol!=='file:'&&state.apiUrl&&state.token)loadData();
+if(!PUBLIC_DEMO&&window.location.protocol!=='file:'&&state.apiUrl&&state.token)loadData();
