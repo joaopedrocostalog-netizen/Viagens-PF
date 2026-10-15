@@ -44,7 +44,7 @@ demo.pedidos=demo.ctes.map(p=>({...p,pedidoNumero:'PF-'+p.numero,cteNumero:p.num
 const state = {
  view:'painel', from:String(year)+'-01-01',to:String(year)+'-12-31',search:'',filter:'todos',page:1,
  dataset:demo, mode:'demo',error:'',loading:false,selected:null,connect:false,menu:false,
- apiUrl:localStorage.getItem('costalog_api_url')||'',token:'',importCount:0,
+ apiUrl:localStorage.getItem('costalog_api_url')||((window.location?.hostname==='localhost'||window.location?.hostname==='127.0.0.1')?window.location.origin:''),token:'',importCount:0,
  customer:'',vehicle:'',serviceType:'',sortKey:'',sortDir:'desc',alertPriority:'todos',
  hiddenColumns:readPrefs('costalog_visible_columns',{}),presets:readPrefs('costalog_filter_presets',{}),
  reportSelected:'viagens',reportMulti:false,autoRefresh:0,lastSync:null,prevDataset:null,lateDays:2,apiDiagnostics:null,adminUsers:[],adminUsersLoading:false,adminUsersError:'',adminResetUser:'',role:'operacional',user:null,permissions:{operacional:true,financeiro:false,admin:false}
@@ -299,7 +299,7 @@ function renderConnect(){
  return '<div class="overlay" data-action="close-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Acessar portal COSTALOG">'+
  '<div class="drawer-top"><h2>Entrar no portal COSTALOG</h2>'+button('close',icon('close'),'btn-sm')+'</div>'+
  '<p class="help">Cada funcionário utiliza sua própria conta e vê apenas os módulos autorizados. O usuário e a senha do DSS ficam somente no servidor privado.</p>'+
- '<form id="loginForm"><div class="filter"><label for="apiUrl">Endereço do backend corporativo (HTTPS)</label><input id="apiUrl" class="control full" type="url" required placeholder="https://portal-api.costalog.com.br" value="'+attr(state.apiUrl)+'"></div>'+
+ '<form id="loginForm"><div class="filter"><label for="apiUrl">Endereço da API (neste computador: http://localhost:3001)</label><input id="apiUrl" class="control full" type="url" required placeholder="https://portal-api.costalog.com.br" value="'+attr(state.apiUrl)+'"></div>'+
  '<div class="filter" style="margin-top:17px"><label for="loginUser">Usuário do portal</label><input id="loginUser" class="control full" autocomplete="username" required placeholder="usuario.funcionario"></div>'+
  '<div class="filter" style="margin-top:17px"><label for="loginPassword">Senha do portal</label><input id="loginPassword" class="control full" type="password" autocomplete="current-password" required placeholder="Sua senha individual"></div>'+
  '<div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap"><button class="btn btn-red" type="submit">Entrar com segurança</button>'+button('demo','Fechar / demonstração operacional','btn-ghost')+'</div></form>'+
@@ -323,7 +323,7 @@ async function portalLogin(){
   if(state.user.mustChangePassword)return;
   await loadData();
   if(state.permissions.admin)loadAdminUsers();
- }catch(err){alert('Login não autorizado: '+err.message);}
+ }catch(err){const offline=err instanceof TypeError||/failed to fetch|networkerror|load failed/i.test(err.message||'');alert(offline?'Não foi possível conectar à API. Se está no mesmo computador, inicie o backend no PowerShell com node api/server.mjs e abra http://localhost:3001/ (não o endereço GitHub Pages). Verifique http://localhost:3001/api/health.': 'Login não autorizado: '+err.message);}
 }
 function adminEndpoint(path=''){
  return state.apiUrl.replace(/\/$/,'')+'/api/users'+path;
