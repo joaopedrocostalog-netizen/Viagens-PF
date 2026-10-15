@@ -88,3 +88,11 @@ Erros comuns:
 A interface aguarda até 45 segundos por resposta. O backend tem um limite configurável por consulta (DSS_TIMEOUT_MS, padrão 20 segundos). Os testes automatizados usam um **servidor DSS simulado**, sem credenciais nem informações reais da COSTALOG.
 
 Os workflows antigos com falhas continuam no histórico do GitHub mesmo depois de executados os reparos: confirme o commit e o status da execução mais recente.
+
+## Backend em Docker (opcional)
+
+Uma forma de rodar a API em servidor Linux/Windows com Docker é configurar .env **somente no servidor**, depois iniciar:
+
+    docker compose up -d --build
+
+O compose.yaml expõe a porta apenas no loopback (127.0.0.1:3001), não diretamente na internet. A empresa precisa configurar um proxy reverso HTTPS autenticado para a URL usada na tela "Conectar API". Nunca hospede o arquivo .env no GitHub Pages.
