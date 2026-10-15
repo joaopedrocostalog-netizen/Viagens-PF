@@ -38,6 +38,7 @@ const demo = {
  sources:{viagens:true,pedidos:true,ctes:true,mdfes:true}
 };
 const readPrefs=(key,def)=>{try{return JSON.parse(localStorage.getItem(key))??def;}catch{return def;}};
+demo.pedidos=demo.ctes.map(p=>({...p,pedidoNumero:'PF-'+p.numero,cteNumero:p.numero}));
 const state = {
  view:'painel', from:String(year)+'-01-01',to:String(year)+'-12-31',search:'',filter:'todos',page:1,
  dataset:demo, mode:'demo',error:'',loading:false,selected:null,connect:false,menu:false,
@@ -335,7 +336,11 @@ async function comparePeriods(){
  try{
   const response=await fetch(state.apiUrl.replace(/\/$/,'')+'/api/overview?from='+from+'&to='+to,{headers:{Authorization:'Bearer '+state.token}});
   if(!response.ok)throw Error('HTTP '+response.status);
-  state.prevDataset=normalizePayload(await response.json());render();
+  const previous=normalizePayload(await response.json());
+ const matches=r=>(!state.customer||r.cliente===state.customer)&&(!state.vehicle||r.placa===state.vehicle);
+ const pedidos=previous.pedidos.filter(p=>matches(p)&&(!state.serviceType||p.tipoServico===state.serviceType));
+ const viagens=previous.viagens.filter(v=>matches(v)&&(!state.serviceType||pedidos.some(p=>p.viagemId===v.id)));
+ state.prevDataset={...previous,allViagens:previous.viagens,viagens,pedidos,ctes:previous.ctes.filter(matches),mdfes:previous.mdfes};render();
  }catch(err){alert('Não foi possível obter o período anterior: '+err.message);}
 }
 root.addEventListener('click',e=>{
