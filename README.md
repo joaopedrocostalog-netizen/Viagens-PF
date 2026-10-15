@@ -6,7 +6,7 @@ Site corporativo com visual preto, vermelho e branco, inspirado no Controle de P
 
 - Dashboard com viagens, receita, custo, resultado e alertas de CT-e/MDF-e.
 - Tabelas de viagens, pedidos de frete e CT-e, clientes e MDF-e com filtros e detalhes.
-- Custo, receita e margem por viagem/cliente (apenas quando os valores estão disponíveis).
+- Valores de pedidos por viagem e cliente (total_frete), abastecimento por viagem (valor_total_abastecido) e apresentação explícita de custos totais/lucro como indisponíveis quando não há dados suficientes.
 - Gráficos por mês, ranking por cliente, CSV compatível com Excel e impressão.
 - Conciliação de MDF-e por ID de viagem e importação manual de CSV.
 - Menu responsivo e demonstração com números FICTÍCIOS, sempre identificados.
@@ -23,27 +23,27 @@ Abra http://localhost:8080. É possível publicar também via GitHub Pages.
 
 Documentação fornecida: https://costalog.dssinformatica.com.br/wsdss/docs?urls.primaryName=APIs+Gerais
 
-A documentação Swagger da instalação NÃO pôde ser acessada no desenvolvimento. Antes de conectar, obtenha as informações reais de listarViagens e listarPedidosFrete (caminho, método, autenticação, filtros, estrutura da resposta e paginação). Os endpoints não foram inventados.
+Os esquemas fornecidos confirmaram GET /listarViagens e GET /listarPedidosFrete, com filtros data_inicio e data_fim (dd/mm/aaaa). Ambos retornam o array registros, acompanhado de status, apiVersion, mensagemErro e qtd_registros. Ainda falta confirmar o prefixo/endereço-base definitivo e a autenticação usada pela instalação do DSS.
 
-1. Em servidor PRIVADO, copie .env.example para .env e configure DSS_BASE_URL, DSS_AUTH_HEADER, DSS_AUTH_VALUE, DSS_VIAGENS_PATH, DSS_PEDIDOS_PATH e PORTAL_ACCESS_TOKEN.
-2. Ajuste as variáveis opcionais DSS_VIAGENS_METHOD / QUERY_FROM / QUERY_TO / BODY_TEMPLATE / DATA_PATH e equivalentes de pedidos e MDF-e conforme o Swagger.
+1. Em servidor PRIVADO, copie .env.example para .env, informe DSS_BASE_URL, PORTAL_ACCESS_TOKEN e as configurações de autenticação DSS_AUTH_HEADER e DSS_AUTH_VALUE **somente após confirmá-las com a equipe DSS**. Os demais parâmetros das duas operações já estão preenchidos conforme a documentação enviada.
+2. Verifique a URL efetiva das duas rotas, o acesso ao módulo tms_integr_prog_pg_motorista e se a quantidade em qtd_registros corresponde à lista recebida. No backend os filtros ISO do navegador são convertidos para dd/mm/aaaa.
 3. Execute com Node.js 20 ou superior:
 
        node --env-file=.env api/server.mjs
 
 4. Consulte GET http://localhost:3001/api/health.
 5. No portal, clique em Conectar API, informe o endereço HTTPS do backend e o token PORTAL_ACCESS_TOKEN. O token da tela só fica na memória da aba.
-6. Valide no arquivo src/app.js os adaptadores normalizeViagem, normalizeDoc e normalizeMdfe de acordo com respostas reais da DSS.
+6. Confira os registros reais antes de usar o portal operacionalmente. O mapeamento documentado está em src/dss-mapping.mjs e os testes em tests/dss-mapping.test.mjs.
 
 Backend implementado: GET /api/overview?from=AAAA-MM-DD&to=AAAA-MM-DD, protegido por Authorization: Bearer PORTAL_ACCESS_TOKEN. DSS_AUTH_VALUE fica SOMENTE no backend. Para POST JSON, BODY_TEMPLATE aceita os placeholders {{from}} e {{to}}.
 
 ## CT-e e MDF-e
 
-Um pedido de frete não é automaticamente um CT-e. O painel só reconhece CT-e quando existe número ou chave de CT-e na resposta, ou quando uma fonte específica é configurada. Há suporte opcional a DSS_CTES_PATH e DSS_MDFES_PATH, quando forem verificados na documentação.
+Nos pedidos, nro_cte com valor não nulo nem zero identifica CT-e. pf_id/nro_pf identificam pedidos. rv_viagem é conciliado com rv_id ou nro_rv; na ausência desse vínculo, nro_mdf pode sugerir vínculo apenas quando o mesmo número for único entre as viagens. Referências ambíguas são marcadas, não confirmadas. Há suporte opcional a DSS_CTES_PATH e DSS_MDFES_PATH, caso existam no ambiente.
 
-Caso não exista API de MDF-e, importe um CSV UTF-8 com colunas numero;data;viagemId;placa;status na página de MDF-e. O cruzamento por ID de viagem evita assumir que datas ou placas semelhantes comprovam a vinculação.
+Os campos nro_mdf nas viagens e pedidos são referências de MDF-e, não respostas fiscais completas nem confirmação de situação do documento. A aba MDF-e mostra essas referências com aviso. Para situação fiscal, conecte outra fonte ou importe um CSV UTF-8 com colunas numero;data;viagemId;placa;status.
 
-Receitas e custos não retornados são exibidos como desconhecidos (—), sem tratá-los como zero. Se a API retornar dados paginados, implemente todas as páginas antes de usar totais reais.
+O total_frete representa o valor do pedido e não prova faturamento/recebimento. O valor_receber é preservado separadamente. Na RV, valor_total_abastecido, valor_adiantamento_vf, valor_proventos_vf e valor_liquido_vf NÃO são somados como custo total, pois podem se sobrepor. A tela mostra abastecimento como custo parcial; sem outros custos e regra de apuração, lucro/margem ficam como desconhecidos (—). Caso qtd_registros supere a quantidade retornada, o backend bloqueia o relatório para evitar números incompletos.
 
 ## Publicação na empresa
 
