@@ -54,6 +54,7 @@ function columnsPicker(columns,s,view){
 function rowTable(title,rows,columns,s,view,sub=''){
  return '<div class="table-tools"><h2>'+h(title)+'</h2>'+columnsPicker(columns,s,view)+'</div>'+section(title,sub,tableAdvanced(rows,columns,s,view));
 }
+export function renderGrid(title,rows,cols,state,view,sub=''){return rowTable(title,rows,cols,state,view,sub);}
 const customerCols=[{key:'name',label:'Cliente'},{key:'orders',label:'Pedidos',format:'number'},{key:'ctes',label:'CT-e',format:'number'},{key:'linkedTrips',label:'RVs vinculadas',format:'number'},{key:'freight',label:'Fretes',format:'money'},{key:'ticket',label:'Ticket médio',format:'money'}];
 const routesCols=[{key:'name',label:'Rota'},{key:'viagens',label:'Viagens',format:'number'},{key:'km',label:'KM realizados',format:'number'},{key:'fuel',label:'Abastecimento',format:'money'},{key:'freight',label:'Fretes vinculados',format:'money'}];
 const vehiclesCols=[{key:'name',label:'Veículo / placa'},{key:'viagens',label:'Viagens',format:'number'},{key:'km',label:'KM realizados',format:'number'},{key:'fuel',label:'Abastecimento',format:'money'},{key:'freight',label:'Fretes vinculados',format:'money'}];
