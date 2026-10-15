@@ -9,6 +9,7 @@ import {configuredUsers,login,authenticate,logout,listAccounts,createAccount,upd
 import {projectOverview,permissionsFor} from './access.mjs';
 const env=process.env;
 const useAccounts=configuredUsers();
+const allowLegacy=env.PORTAL_ALLOW_LEGACY_TOKEN==='true';
 const port=Number(env.PORT||3001);
 const base=env.DSS_BASE_URL||'';
 const origins=(env.PORTAL_ALLOWED_ORIGINS||'').split(',').map(s=>s.trim()).filter(Boolean);
@@ -76,7 +77,7 @@ function legacyAuthorized(req){
 function bearer(req){return (req.headers.authorization||'').replace(/^Bearer\s+/i,'');}
 function identify(req){
  if(useAccounts)return authenticate(bearer(req));
- if(legacyAuthorized(req))return {username:'legado-admin',displayName:'Administrador',role:'administrador',permissions:permissionsFor('administrador')};
+ if(allowLegacy&&legacyAuthorized(req))return {username:'legado-admin',displayName:'Administrador',role:'administrador',permissions:permissionsFor('administrador')};
  return null;
 }
 async function bodyJSON(req){
@@ -193,7 +194,7 @@ const server=http.createServer(async(req,res)=>{
   }
  }
  if(req.method!=='GET')return reply(res,405,{error:'Método não permitido'},origin);
- if(url.pathname==='/api/health')return reply(res,200,{status:'ok',configured:!!(base&&cfg.viagens.path&&cfg.pedidos.path&&dssCredentialsReady()&&(useAccounts||env.PORTAL_ACCESS_TOKEN)),accounts:useAccounts},origin);
+ if(url.pathname==='/api/health')return reply(res,200,{status:'ok',configured:!!(base&&cfg.viagens.path&&cfg.pedidos.path&&dssCredentialsReady()&&(useAccounts||(allowLegacy&&env.PORTAL_ACCESS_TOKEN))),accounts:useAccounts},origin);
  const user=identify(req);
  if(url.pathname==='/api/me'){
   if(!user)return reply(res,401,{error:'Sessão inválida ou expirada'},origin);
