@@ -6,3 +6,9 @@ node_modules/
 *.log
 coverage/
 dist/
+
+# Contas e arquivos privados do portal (NUNCA publicar)
+portal-users.json
+portal-users*.json
+private/
+secrets/
