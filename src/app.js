@@ -151,8 +151,8 @@ function renderPainel(d,s){
 }
 function chartSvg(trips){
  const months=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
- const aggregate=months.map((_,i)=>{const m=String(year)+'-'+String(i+1).padStart(2,'0');const t=trips.filter(x=>x.data.startsWith(m));return [t.reduce((s,x)=>s+(x.receita||0),0),t.reduce((s,x)=>s+(x.custo||0),0)];});
- const hasRevenue=trips.some(x=>Number.isFinite(x.receita)),hasCost=trips.some(x=>Number.isFinite(x.custo));
+ const aggregate=months.map((_,i)=>{const m=String(year)+'-'+String(i+1).padStart(2,'0');const t=trips.filter(x=>x.data.startsWith(m));return [t.reduce((s,x)=>s+(x.receita||0),0),t.reduce((s,x)=>s+((state.mode==='live'?x.abastecimento:x.custo)||0),0)];});
+ const hasRevenue=trips.some(x=>Number.isFinite(x.receita)),hasCost=trips.some(x=>Number.isFinite(state.mode==='live'?x.abastecimento:x.custo));
  if(!hasRevenue&&!hasCost)return '<div class="empty"><b>Sem dados para o gráfico</b>A API ainda não forneceu valores financeiros utilizáveis.</div>';
  const max=Math.max(1,...aggregate.flat())*1.1;const W=760,H=250,left=48,top=20,h=180,w=680;
  const xy=(i,val)=>(left+(i*w/11)).toFixed(1)+','+(top+h-(val/max*h)).toFixed(1);
