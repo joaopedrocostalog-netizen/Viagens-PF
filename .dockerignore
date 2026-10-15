@@ -1,0 +1,11 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+src
+tests
+index.html
+styles.css
+*.png
+README.md
