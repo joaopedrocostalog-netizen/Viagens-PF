@@ -25,7 +25,7 @@ jobs:
       - name: Preparar arquivos públicos
         run: |
           mkdir -p public_site
-          cp index.html styles.css public_site/
+          cp index.html styles.css logo-costalog-sem-fundo-1024x876.png public_site/
           mkdir -p public_site/src
           cp src/app.js src/dss-mapping.mjs public_site/src/
           touch public_site/.nojekyll
