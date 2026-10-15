@@ -1,5 +1,5 @@
 import {permittedView,reportTypesFor,secureReport,safeView} from './access-ui.mjs';
-import {extractRows,REPORT_TYPES} from './operational.mjs';
+import {buildInsights,extractRows,REPORT_TYPES} from './operational.mjs';
 import {downloadXlsx,downloadFile,printReport} from './reporting.mjs';
 import {renderAdvanced,operationalFilters,renderInsightsStrip,renderReportHub,renderGrid,ADVANCED_VIEWS} from './advanced-ui.mjs';
 import {normalizeOverview,costByClient} from './dss-mapping.mjs';
