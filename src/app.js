@@ -1,3 +1,5 @@
+import {renderGlobalSearch,renderCustomDashboard,renderCustomerProfiles,renderDriverRouteDetails,renderAlertsHub,renderComparison} from './intelligence-ui.mjs';
+import {normalizedLayout,reorderMetric,comparisonWindows} from './intelligence.mjs';
 import {renderHero,renderSummary,renderCharts,renderTripsHeader,renderReportsHeader} from './visual-dashboard.mjs';
 import {resolvePortalApi} from './site-config.mjs';
 import {renderUsersManagement,renderForcePasswordChange} from './admin-users.mjs';
@@ -122,9 +124,11 @@ async function demoChangeOwnPassword(currentPassword,newPassword){
 }
 
 const state = {
- view:'painel', chartInterval:'mensal', from:String(year)+'-01-01',to:String(year)+'-12-31',search:'',filter:'todos',page:1,
+ view:'painel', chartInterval:'mensal', compareInterval:'mensal',compareAnchor:new Date().toISOString().slice(0,10), from:String(year)+'-01-01',to:String(year)+'-12-31',search:'',filter:'todos',page:1,
  dataset:demo, mode:'demo',error:'',loading:false,selected:null,connect:false,menu:false,
  apiUrl:portalSettings.apiUrl,token:'',importCount:0,
+ globalQuery:'',clientSelected:'',routeSelected:'',driverSelected:'',alertKind:'todos',
+ metricLayout:null,showMetricOptions:false,comparison:null,comparisonLoading:false,comparisonError:'',
  customer:'',vehicle:'',serviceType:'',sortKey:'',sortDir:'desc',alertPriority:'todos',
  hiddenColumns:readPrefs('costalog_visible_columns',{}),presets:readPrefs('costalog_filter_presets',{}),
  demoOnly:PUBLIC_DEMO,reportSelected:'viagens',reportMulti:false,autoRefresh:0,lastSync:null,prevDataset:null,lateDays:2,apiDiagnostics:null,adminUsers:[],adminUsersLoading:false,adminUsersError:'',adminResetUser:'',role:'operacional',user:null,permissions:{operacional:true,financeiro:false,admin:false}
@@ -192,14 +196,14 @@ function totals(data){
  const mismatched=data.sources.mdfes?data.mdfes.filter(m=>m.viagemId&&!data.allViagens.some(t=>t.id===m.viagemId)):null;
  return {revenue:revenueKnown.length?revenue:null,cost:costsKnown.length?cost:null,profit:completeMoney?revenue-cost:null,margin:completeMoney&&revenue?pct((revenue-cost)/revenue*100):'—',orphan,mismatched,linked,completeMoney,revenueCount:revenueKnown.length,costCount:costsKnown.length};
 }
-const navItems=[['painel','home','Painel geral'],['viagens','truck','Viagens / RV'],['ctes','doc','Pedidos / CT-e'],['entregas','doc','Entregas'],['pendencias','shield','Pendências'],['rotas','chart','Rotas'],['veiculos','truck','Frota'],['motoristas','home','Motoristas'],['containers','doc','Containers'],['mdfes','shield','MDF-e'],['relatorios','doc','Relatórios'],['faturamento','doc','Faturamento'],['clientes','chart','Clientes / Fretes'],['analises','chart','Análises financeiras'],['administracao','cog','Administração'],['integracoes','cog','Integração DSS']];
+const navItems=[['painel','home','Painel geral'],['comparativos','chart','Comparativos'],['viagens','truck','Viagens / RV'],['ctes','doc','Pedidos / CT-e'],['entregas','doc','Entregas'],['pendencias','shield','Pendências'],['rotas','chart','Rotas'],['veiculos','truck','Frota'],['motoristas','home','Motoristas'],['containers','doc','Containers'],['mdfes','shield','MDF-e'],['relatorios','doc','Relatórios'],['faturamento','doc','Faturamento'],['clientes','chart','Clientes / Fretes'],['analises','chart','Análises financeiras'],['administracao','cog','Administração'],['integracoes','cog','Integração DSS']];
 const tabs=[['painel','Painel'],['viagens','Viagens'],['ctes','Pedidos / CT-e'],['entregas','Entregas'],['pendencias','Pendências'],['rotas','Rotas'],['veiculos','Frota'],['motoristas','Motoristas'],['containers','Containers'],['mdfes','MDF-e'],['relatorios','Relatórios'],['faturamento','Faturamento'],['clientes','Clientes'],['analises','Análises financeiras'],['administracao','Administração'],['integracoes','Integração']];
 function button(action,label,extra){return '<button type="button" class="btn '+(extra||'')+'" data-action="'+action+'">'+label+'</button>';}
 function render(){
  state.view=safeView(state.role,state.view);
  const d=scoped(),stats=totals(d);
  const allowed=navItems.filter(x=>x[0]!=='integracoes'&&permittedView(state.role,x[0]));
- const PRIMARY=['painel','graficos','viagens','ctes','faturamento','relatorios'];
+ const PRIMARY=['painel','graficos','comparativos','viagens','ctes','faturamento','relatorios'];
  const secondary=allowed.filter(x=>!PRIMARY.includes(x[0]));
  const tab=(x,cl)=>'<button type="button" class="'+cl+' '+(state.view===x[0]?'active':'')+'" data-nav="'+x[0]+'" aria-current="'+(state.view===x[0]?'page':'false')+'">'+icon(x[1])+'<span>'+esc(x[2])+'</span></button>';
  const primary=allowed.filter(x=>PRIMARY.includes(x[0])).map(x=>tab(x,'v-nav-item')).join('');
@@ -210,6 +214,7 @@ function render(){
  const tools=['viagens','ctes','relatorios','faturamento'].includes(state.view)?
   '<div class="v-heading-tools">'+button('csv',icon('download')+' CSV','btn-sm')+button('print','PDF / Imprimir','btn-sm btn-red')+'</div>':'';
  const dateFilters=state.view==='administracao'?'':renderFilters();
+ const globalSearch=state.view==='administracao'?'':renderGlobalSearch(state,d);
  root.innerHTML='<div class="layout v-app"><main class="main v-main">'+
  '<header class="topbar v-topbar"><div class="v-topbrand"><img class="v-brand-logo" src="./logo-costalog-sem-fundo-1024x876.png" alt="Logotipo COSTALOG"><div><b>COSTALOG</b><small>A LOGÍSTICA IDEAL</small></div><i></i><strong>GESTÃO DE VIAGENS & FRETES</strong></div>'+
  '<div class="topbar-right v-accountbar"><span class="v-environment '+(state.mode==='live'?'connected':'')+'">'+(state.mode==='live'?'● DSS':'● DEMO')+'</span>'+
@@ -217,7 +222,7 @@ function render(){
  '<div class="v-menu-row"><nav class="v-main-nav" aria-label="Seções principais">'+primary+'</nav><div class="v-right-hint">'+(state.mode==='live'?'DADOS DO DSS':'DADOS DE TESTE')+'</div></div>'+
  (sub?'<nav class="v-sub-nav" aria-label="Outras áreas">'+sub+'</nav>':'')+
  '<div class="content v-content">'+renderHero(state.view,d,{from:state.from,to:state.to,mode:state.mode,financeiro:state.permissions.financeiro})+
- '<div class="v-tools-row">'+dateFilters+tools+'</div>'+detailedFilters+message+
+ '<div class="v-tools-row">'+dateFilters+tools+'</div>'+globalSearch+detailedFilters+message+
  (state.loading?'<div class="info-strip">Consultando registros DSS...</div>':'')+
  renderView(d,stats)+
  '<footer class="v-footer">COSTALOG • Portal de inteligência operacional • '+(PUBLIC_DEMO?'Contas de demonstração somente neste navegador.':'Acesso baseado em permissões, dados DSS protegidos no servidor.')+'</footer></div></main></div>'+
@@ -234,12 +239,15 @@ function renderFilters(){
 }
 function kpi(label,value,sub,cl){return '<article class="kpi"><div class="kpi-label">'+label+'</div><div class="kpi-value '+(cl||'')+'">'+value+'</div><div class="kpi-sub">'+sub+'</div></article>';}
 function renderView(d,s){
- if(state.view==='painel')return renderSummary(d,{financeiro:state.permissions.financeiro,mode:state.mode,from:state.from,to:state.to});
+ if(state.view==='painel')return renderCustomDashboard(d,state)+renderSummary(d,{financeiro:state.permissions.financeiro,mode:state.mode,from:state.from,to:state.to,showCards:false});
+ if(state.view==='comparativos')return renderComparison(d,state);
  if(state.view==='graficos')return renderCharts(d,{financeiro:state.permissions.financeiro,interval:state.chartInterval});
  if(state.view==='viagens')return renderTripsHeader(d)+renderViagens(d,s);
  if(state.view==='ctes')return renderCtes(d);
- if(state.view==='clientes')return renderClientes(d,s);
+ if(state.view==='clientes')return renderCustomerProfiles(d,state);
  if(state.view==='mdfes')return renderMdfes(d,s);
+ if(state.view==='pendencias')return renderAlertsHub(d,state);
+ if(state.view==='rotas'||state.view==='motoristas')return renderDriverRouteDetails(d,state,state.view);
  if(state.view==='relatorios')return renderReportsHeader(d,{financeiro:state.permissions.financeiro,interval:state.chartInterval})+renderReportHub(d,state);
  if(state.view==='administracao'&&state.permissions.admin)return renderUsersManagement(state.adminUsers,state.adminUsersLoading,state.adminUsersError)+(PUBLIC_DEMO?'<p class="help">Demonstração: contas e senhas ficam somente neste navegador. Sem dados reais.</p>':'<p class="help">Os dados DSS são consultados automaticamente após o login e ao alterar as datas. A configuração da API é feita somente no servidor.</p>');
  if(ADVANCED_VIEWS.includes(state.view))return renderAdvanced(state.view,d,state);
@@ -407,7 +415,7 @@ async function portalLogin(){
   try{
    const user=await demoSignin(username,password);
    clearSession();state.user=user;state.role=user.role;state.permissions=demoRights(user.role);
-   state.view='painel';state.connect=false;state.error='';state.mode='demo';state.dataset=demo;render();
+   state.view='painel';state.connect=false;state.error='';state.mode='demo';state.dataset=demo;loadMetricPreferences();render();
    if(state.permissions.admin&&!state.user.mustChangePassword)loadAdminUsers();
   }catch(err){alert('Demonstração: '+err.message);}
   return;
@@ -422,7 +430,7 @@ async function portalLogin(){
   state.apiUrl=url;
   state.token=data.token;state.user=data.user;state.role=data.user.role;state.permissions=data.permissions;
   state.view='painel';state.connect=false;state.error='';state.dataset={viagens:[],pedidos:[],ctes:[],mdfes:[],sources:{}};
-  state.mode='live';render();
+  state.mode='live';loadMetricPreferences();render();
   if(state.user.mustChangePassword)return;
   await loadData();
   if(state.permissions.admin)loadAdminUsers();
@@ -499,12 +507,57 @@ async function changePortalPassword(){
   alert('Senha atualizada. Entre novamente com sua senha pessoal.');
  }catch(err){alert('Falha ao alterar senha: '+err.message);}
 }
+
+function metricPrefsKey(){
+ const user=state.user?.username||'visitante',mode=PUBLIC_DEMO?'demo':'corporativo';
+ return 'costalog_dashboard_v1:'+mode+':'+encodeURIComponent(user)+':'+state.role;
+}
+function loadMetricPreferences(){
+ let saved=null;
+ try{const v=JSON.parse(localStorage.getItem(metricPrefsKey())||'null');if(Array.isArray(v))saved=v;}catch{}
+ state.metricLayout=normalizedLayout(saved,{financial:!!state.permissions.financeiro});
+}
+function saveMetricPreferences(){
+ localStorage.setItem(metricPrefsKey(),JSON.stringify(normalizedLayout(state.metricLayout,{financial:!!state.permissions.financeiro})));
+}
+let comparisonSeq=0;
+async function fetchPeriodComparison(){
+ if(state.mode!=='live'||!state.apiUrl||!state.token)return;
+ const interval=state.compareInterval,anchor=state.compareAnchor;
+ const windows=comparisonWindows(anchor,interval);
+ const seq=++comparisonSeq,identity=identityEpoch;
+ state.comparisonLoading=true;state.comparisonError='';state.comparison=null;render();
+ try{
+  const get=async range=>{
+   const url=state.apiUrl.replace(/\/$/,'')+'/api/overview?from='+range.from+'&to='+range.to;
+   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);
+   try{
+    const res=await fetch(url,{headers:{Authorization:'Bearer '+state.token},credentials:'omit',signal:controller.signal});
+    if(!res.ok){let reason='HTTP '+res.status;try{reason=(await res.json()).error||reason;}catch{}throw Error(reason);}
+    return normalizePayload(await res.json());
+   }finally{clearTimeout(timer);}
+  };
+  const [current,previous]=await Promise.all([get(windows.current),get(windows.previous)]);
+  if(seq!==comparisonSeq||identity!==identityEpoch||state.compareInterval!==interval||state.compareAnchor!==anchor)return;
+  const matches=r=>(!state.customer||r.cliente===state.customer)&&(!state.vehicle||r.placa===state.vehicle);
+  const filter=d=>{
+   const pedidos=d.pedidos.filter(p=>matches(p)&&(!state.serviceType||p.tipoServico===state.serviceType));
+   const viagens=d.viagens.filter(v=>matches(v)&&(!state.serviceType||pedidos.some(p=>p.viagemId===v.id)));
+   return {...d,viagens,pedidos,ctes:pedidos.filter(p=>p.isCte)};
+  };
+  state.comparison={anchor,interval,current:filter(current),previous:filter(previous),source:'DSS'};
+ }catch(err){
+  if(seq===comparisonSeq&&identity===identityEpoch)state.comparisonError='Não foi possível consultar ambos os períodos no DSS: '+err.message;
+ }finally{
+  if(seq===comparisonSeq&&identity===identityEpoch){state.comparisonLoading=false;render();}
+ }
+}
 function clearSession(){
- identityEpoch++;
+ identityEpoch++;comparisonSeq++;
  const token=state.token,url=state.apiUrl;
  if(token&&url)fetch(url.replace(/\/$/,'')+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+token},credentials:'omit'}).catch(()=>{});
  state.token='';state.user=null;state.role='operacional';state.permissions={operacional:true,financeiro:false,admin:false};
- state.mode='demo';state.dataset=demo;state.view='painel';state.adminUsers=[];state.adminUsersError='';state.adminResetUser='';state.adminUsersLoading=false;state.prevDataset=null;state.loading=false;state.selected=null;state.lastSync=null;state.apiDiagnostics=null;
+ state.mode='demo';state.dataset=demo;state.view='painel';state.comparison=null;state.comparisonError='';state.metricLayout=null;state.clientSelected='';state.globalQuery='';state.adminUsers=[];state.adminUsersError='';state.adminResetUser='';state.adminUsersLoading=false;state.prevDataset=null;state.loading=false;state.selected=null;state.lastSync=null;state.apiDiagnostics=null;
 }
 function csvCell(s){const v=str(s);return '"'+v.replace(/"/g,'""')+'"';}
 function exportCsv(which){
@@ -533,7 +586,7 @@ async function loadData(){
   const data=await response.json();
   if(epoch!==identityEpoch)return;
   if(!data||!data.data)throw new Error('Formato de resposta desconhecido');
-  state.dataset=normalizePayload(data);state.mode='live';state.error='';state.page=1;state.lastSync=data.updatedAt||new Date().toISOString();state.prevDataset=null;
+  state.dataset=normalizePayload(data);state.mode='live';state.error='';state.page=1;state.comparison=null;state.lastSync=data.updatedAt||new Date().toISOString();state.prevDataset=null;
  }catch(err){
   if(epoch!==identityEpoch && state.token)return;
   const alreadyLive=state.mode==='live';if(!alreadyLive){state.mode='demo';state.dataset=demo;}
@@ -585,7 +638,47 @@ async function comparePeriods(){
  }catch(err){alert('Não foi possível obter o período anterior: '+err.message);}
 }
 root.addEventListener('click',e=>{
- const nav=e.target.closest('[data-nav]');if(nav){if(state.user?.mustChangePassword)return;if(!permittedView(state.role,nav.dataset.nav))return;state.view=nav.dataset.nav;state.search='';state.filter='todos';state.sortKey='';state.page=1;state.menu=false;state.selected=null;render();if(state.view==='administracao'&&state.permissions.admin)loadAdminUsers();return;}
+ const searchHit=e.target.closest('[data-search-result]');
+ if(searchHit){
+  const raw=searchHit.dataset.searchResult||'',pos=raw.indexOf(':');
+  if(pos<0)return;
+  const group=raw.slice(0,pos),id=raw.slice(pos+1);
+  state.globalQuery='';
+  if(group==='clientes'&&state.permissions.financeiro){state.view='clientes';state.clientSelected=id;render();return;}
+  const view=group==='viagens'?'viagens':group==='pedidos'?'ctes':'mdfes';
+  if(!permittedView(state.role,view))return;
+  state.view=view;state.selected=view+':'+id;render();return;
+ }
+ const openClient=e.target.closest('[data-client-open]');
+ if(openClient&&state.permissions.financeiro){state.clientSelected=openClient.dataset.clientOpen;render();return;}
+ const profileDetail=e.target.closest('[data-profile-detail]');
+ if(profileDetail){state.selected=profileDetail.dataset.profileDetail;render();return;}
+ const openRoute=e.target.closest('[data-route-open]');
+ if(openRoute){state.routeSelected=openRoute.dataset.routeOpen;render();return;}
+ const openDriver=e.target.closest('[data-driver-open]');
+ if(openDriver){state.driverSelected=openDriver.dataset.driverOpen;render();return;}
+ const alertDetail=e.target.closest('[data-alert-detail]');
+ if(alertDetail){const ref=alertDetail.dataset.alertDetail,kind=ref.split(':')[0];
+  if(!permittedView(state.role,kind))return;
+  state.view=kind;state.selected=ref;render();return;
+ }
+ const compareInterval=e.target.closest('[data-compare-interval]');
+ if(compareInterval){state.compareInterval=compareInterval.dataset.compareInterval;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;}
+ const metricMove=e.target.closest('[data-metric-move]');
+ if(metricMove){const [id,direction]=metricMove.dataset.metricMove.split(':');state.metricLayout=reorderMetric(state.metricLayout,id,Number(direction),{financial:!!state.permissions.financeiro});saveMetricPreferences();render();return;}
+ const insAction=e.target.closest('[data-ins-action]');
+ if(insAction){
+  const action=insAction.dataset.insAction;
+  if(action==='clear-search')state.globalQuery='';
+  if(action==='close-client')state.clientSelected='';
+  if(action==='clear-route')state.routeSelected='';
+  if(action==='clear-driver')state.driverSelected='';
+  if(action==='customize')state.showMetricOptions=!state.showMetricOptions;
+  if(action==='reset-metrics'){state.metricLayout=null;try{localStorage.removeItem(metricPrefsKey());}catch{}}
+  if(action==='load-comparison'){fetchPeriodComparison();return;}
+  render();return;
+ }
+ const nav=e.target.closest('[data-nav]');if(nav){if(state.user?.mustChangePassword)return;if(!permittedView(state.role,nav.dataset.nav))return;state.view=nav.dataset.nav;state.clientSelected='';state.routeSelected='';state.driverSelected='';state.globalQuery='';state.search='';state.filter='todos';state.sortKey='';state.page=1;state.menu=false;state.selected=null;render();if(state.view==='administracao'&&state.permissions.admin)loadAdminUsers();return;}
  const graphInterval=e.target.closest('[data-chart-interval]');if(graphInterval){state.chartInterval=graphInterval.dataset.chartInterval;render();return;}
  const detail=e.target.closest('[data-detail]');if(detail){state.selected=detail.dataset.detail;render();return;}
  const sort=e.target.closest('[data-sort]');if(sort){const k=sort.dataset.sort;state.sortDir=state.sortKey===k&&state.sortDir==='asc'?'desc':'asc';state.sortKey=k;state.page=1;render();return;}
@@ -649,6 +742,17 @@ root.addEventListener('change',e=>{
  }
  if(e.target.id==='from'){state.from=e.target.value;state.page=1;if(state.mode==='live')loadData();else render();}
  if(e.target.id==='to'){state.to=e.target.value;state.page=1;if(state.mode==='live')loadData();else render();}
+ if(e.target.id==='compareAnchorInput'){
+  state.compareAnchor=e.target.value;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;
+ }
+ if(e.target.id==='alertPriorityFilter'){state.alertPriority=e.target.value;render();return;}
+ if(e.target.id==='alertKindFilter'){state.alertKind=e.target.value;render();return;}
+ if(e.target.dataset?.metricToggle){
+  const id=e.target.dataset.metricToggle;
+  const current=normalizedLayout(state.metricLayout,{financial:!!state.permissions.financeiro});
+  state.metricLayout=e.target.checked?[...new Set([...current,id])]:current.filter(x=>x!==id);
+  saveMetricPreferences();render();return;
+ }
  if(e.target.id==='statusFilter'){state.filter=e.target.value;state.page=1;render();}
  if(e.target.id==='filterClient'){state.customer=e.target.value;state.page=1;render();}
  if(e.target.id==='filterPlate'){state.vehicle=e.target.value;state.page=1;render();}
@@ -679,11 +783,19 @@ root.addEventListener('change',e=>{
  }
 });
 root.addEventListener('input',e=>{
+ if(e.target.id==='globalSearchInput'){
+  const cursor=e.target.selectionStart;
+  state.globalQuery=e.target.value;render();
+  const input=document.getElementById('globalSearchInput');
+  if(input){input.focus();if(typeof input.setSelectionRange==='function'&&typeof cursor==='number')input.setSelectionRange(cursor,cursor);}
+  return;
+ }
  if(e.target.id==='searchInput'){
   const start=e.target.selectionStart;state.search=e.target.value;state.page=1;render();
   const input=document.getElementById('searchInput');if(input){input.focus();input.setSelectionRange(start,start);}
  }
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(state.selected||state.connect)){state.selected=null;state.connect=false;render();}});
+loadMetricPreferences();
 render();
 if(!PUBLIC_DEMO&&window.location.protocol!=='file:'&&state.apiUrl&&state.token)loadData();
