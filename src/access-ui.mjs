@@ -1,5 +1,5 @@
 /** Regras visuais: segurança real é aplicada em api/access.mjs no servidor. */
-export const OP_VIEWS=['painel','viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','containers','mdfes','relatorios'];
+export const OP_VIEWS=['painel','graficos','viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','containers','mdfes','relatorios'];
 export const FIN_VIEWS=['faturamento','clientes','analises'];
 export const ADMIN_VIEWS=['administracao','integracoes'];
 export const OP_REPORTS=['viagens','pedidos','ctes','rotas','veiculos','motoristas','containers','mdfes','pendencias','mensal'];
