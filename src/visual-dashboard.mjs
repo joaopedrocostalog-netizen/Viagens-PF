@@ -119,16 +119,16 @@ export function timelineGroups(d,interval='mensal'){
 }
 export function lineGraph(series,metric='viagens',color='#ff3548'){
  if(!series.length)return empty('Selecione um período com registros para gerar a evolução');
- const W=780,H=286,L=45,R=18,T=22,BOT=42,innerW=W-L-R,innerH=H-T-BOT;
+ const W=780,SVG_H=286,L=45,R=18,T=22,BOT=42,innerW=W-L-R,innerH=SVG_H-T-BOT;
  const vals=series.map(v=>Number(v[metric])||0),max=Math.max(1,...vals),step=vals.length>1?innerW/(vals.length-1):0;
  const pt=(i,v)=>[L+(vals.length===1?innerW/2:i*step),T+innerH-innerH*v/max];
  const points=vals.map((v,i)=>pt(i,v).map(n=>n.toFixed(1)).join(',')).join(' ');
  const area=vals.map((v,i)=>pt(i,v).map(n=>n.toFixed(1)).join('L')).join(' '); // informational only, polygon uses closed coordinates below
  const polygon=[L+','+(T+innerH),points,(L+innerW)+','+(T+innerH)].join(' ');
  const grids=Array.from({length:5},(_,i)=>{const y=T+innerH*i/4;return '<line x1="'+L+'" y1="'+y+'" x2="'+(L+innerW)+'" y2="'+y+'" stroke="#292a2e" stroke-dasharray="4 5"/><text x="2" y="'+(y+3)+'" fill="#a3a4ad" font-size="11">'+H(N(Math.round(max*(1-i/4))))+'</text>';}).join('');
- const labels=series.map((d,i)=>'<text x="'+pt(i,0)[0]+'" y="'+(H-12)+'" text-anchor="middle" fill="#9c9da7" font-size="10">'+H(d.label.slice(5).replace('-','/'))+'</text>').join('');
+ const labels=series.map((d,i)=>'<text x="'+pt(i,0)[0]+'" y="'+(SVG_H-12)+'" text-anchor="middle" fill="#9c9da7" font-size="10">'+H(d.label.slice(5).replace('-','/'))+'</text>').join('');
  const markers=vals.map((v,i)=>'<circle cx="'+pt(i,v)[0]+'" cy="'+pt(i,v)[1]+'" r="3.7" fill="'+color+'" stroke="#141416" stroke-width="2"><title>'+H(series[i].label+' · '+N(v))+'</title></circle>').join('');
- return '<div class="v-svg-holder"><svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Evolução de '+H(metric)+' por período"><defs><linearGradient id="vLineFade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="'+color+'" stop-opacity=".36"/><stop offset="1" stop-color="'+color+'" stop-opacity=".01"/></linearGradient></defs>'+grids+
+ return '<div class="v-svg-holder"><svg viewBox="0 0 '+W+' '+SVG_H+'" role="img" aria-label="Evolução de '+H(metric)+' por período"><defs><linearGradient id="vLineFade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="'+color+'" stop-opacity=".36"/><stop offset="1" stop-color="'+color+'" stop-opacity=".01"/></linearGradient></defs>'+grids+
  '<polygon fill="url(#vLineFade)" points="'+polygon+'"/><polyline points="'+points+'" fill="none" stroke="'+color+'" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>'+markers+labels+'</svg></div>';
 }
 export function renderCharts(d,settings){
