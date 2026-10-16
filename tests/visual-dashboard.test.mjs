@@ -16,7 +16,7 @@ const data={
 const cfg={from:'2026-10-01',to:'2026-10-31',interval:'diario',mode:'live'};
 test('Status e categoria gera matriz RODO/LS a partir de registros DSS sem inventar tipo',()=>{
  const html=renderSummary(data,{...cfg,financeiro:false});
- assert(html.includes('STATUS & CATEGORIA'));
+ assert(html.includes('STATUS &amp; CATEGORIA'));
  assert(html.includes('RODO'));
  assert(html.includes('LS'));
  assert(html.includes('Em viagem'));
