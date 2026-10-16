@@ -9,7 +9,7 @@ test('Painel e todas as novas páginas renderizam sem erro de JavaScript',async(
  globalThis.window={location:{protocol:'file:'}};
  await import('../src/app.js?smoke=1');
  assert(root.innerHTML.includes('COSTALOG'));
- assert(root.innerHTML.includes('STATUS & CATEGORIA'),'Novo painel matriz deve renderizar');
+ assert(root.innerHTML.includes('STATUS &amp; CATEGORIA'),'Novo painel matriz deve renderizar');
  assert(root.innerHTML.includes('v-matrix'),'Matriz operacional ausente');
  assert(root.innerHTML.includes('data-nav="graficos"'),'Navegação de gráficos ausente');
  for(const view of ['graficos','pendencias','rotas','veiculos','motoristas','containers','faturamento','analises','administracao','relatorios','viagens','ctes','clientes','mdfes','integracoes']){
