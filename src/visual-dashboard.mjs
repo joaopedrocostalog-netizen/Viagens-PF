@@ -38,6 +38,7 @@ export function renderHero(view,d,{from,to,mode,financeiro}){
   viagens:['VIAGENS / RV','Relatórios de viagem, placas, clientes e situações'],
   ctes:['PEDIDOS DE FRETE / CT-e','Acompanhamento de documentos vinculados às viagens'],
   relatorios:['RELATÓRIOS DE PERFORMANCE','Business Intelligence & Operational Metrics'],
+  comparativos:['COMPARATIVOS','Evolução diária, semanal e mensal dos indicadores'],
   faturamento:['FATURAMENTO','Análise financeira dos pedidos de frete'],
   clientes:['CLIENTES & FRETES','Valores e distribuição por cliente'],
   analises:['ANÁLISES FINANCEIRAS','Tendências mensais e valores de pedidos']
@@ -77,8 +78,8 @@ export function renderSummary(d,settings){
  }).join('')+'</tbody></table></div>';
  const warnings=makeAlerts(d).filter(a=>fin||a.type!=='sem_fatura').slice(0,6);
  const alertHtml=warnings.length?warnings.map(a=>'<div class="v-alert '+(a.level==='high'?'critical':'')+'"><div class="v-alert-title">'+H(a.title)+'</div><p>'+H(a.detail)+'</p><span>'+H(a.refDate||'')+'</span></div>').join(''):empty('Nenhuma pendência identificada nos registros selecionados');
- return '<div class="v-stats-grid">'+cards.join('')+'</div>'+
- '<div class="v-stats-grid v-secondary-stats">'+extras.join('')+'</div>'+
+ return (settings.showCards===false?'':'<div class="v-stats-grid">'+cards.join('')+'</div>')+
+ (settings.showCards===false?'':'<div class="v-stats-grid v-secondary-stats">'+extras.join('')+'</div>')+
  '<div class="v-section-grid">'+panel('STATUS & CATEGORIA','Distribuição por tipo e situação informada na RV',matrix,'v-span-7')+
  panel('ALERTAS & PENDÊNCIAS','Conferência dos registros disponíveis', '<div class="v-alert-list">'+alertHtml+'</div>','v-span-5')+'</div>'+
  '<div class="v-bottom-actions"><button class="btn btn-red" data-nav="viagens">VER TODAS AS VIAGENS →</button><button class="btn" data-nav="graficos">ABRIR VISÃO GRÁFICA ↗</button><button class="btn" data-nav="ctes">CONSULTAR CT-e</button></div>';
