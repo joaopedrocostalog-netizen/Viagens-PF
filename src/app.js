@@ -1,3 +1,4 @@
+import {resolvePortalApi} from './site-config.mjs';
 import {renderUsersManagement,renderForcePasswordChange} from './admin-users.mjs';
 import {permittedView,reportTypesFor,secureReport,safeView} from './access-ui.mjs';
 import {buildInsights,extractRows,REPORT_TYPES} from './operational.mjs';
@@ -44,7 +45,8 @@ demo.pedidos=demo.ctes.map(p=>({...p,pedidoNumero:'PF-'+p.numero,cteNumero:p.num
 
 /* GitHub Pages = APENAS DEMONSTRAÇÃO, SEM AUTENTICAÇÃO REAL.
    Os dados reais DSS nunca devem ser servidos com a autenticação local do navegador. */
-const PUBLIC_DEMO=window.location?.hostname?.endsWith('.github.io')===true;
+const portalSettings=resolvePortalApi(window.location);
+const PUBLIC_DEMO=portalSettings.demoOnly;
 const DEMO_USERS_KEY='costalog_demo_users_v1';
 const TEMP_ADMIN_SALT='0586030c9088763dba9e1cde008cce5a';
 const TEMP_ADMIN_HASH='977b36fdad10f371180e01878f3d4331ae80c73e7b422eaeabb058ac48e65bdd';
@@ -121,7 +123,7 @@ async function demoChangeOwnPassword(currentPassword,newPassword){
 const state = {
  view:'painel', from:String(year)+'-01-01',to:String(year)+'-12-31',search:'',filter:'todos',page:1,
  dataset:demo, mode:'demo',error:'',loading:false,selected:null,connect:false,menu:false,
- apiUrl:((window.location?.hostname==='localhost'||window.location?.hostname==='127.0.0.1')?window.location.origin:(localStorage.getItem('costalog_api_url')||'')),token:'',importCount:0,
+ apiUrl:portalSettings.apiUrl,token:'',importCount:0,
  customer:'',vehicle:'',serviceType:'',sortKey:'',sortDir:'desc',alertPriority:'todos',
  hiddenColumns:readPrefs('costalog_visible_columns',{}),presets:readPrefs('costalog_filter_presets',{}),
  demoOnly:PUBLIC_DEMO,reportSelected:'viagens',reportMulti:false,autoRefresh:0,lastSync:null,prevDataset:null,lateDays:2,apiDiagnostics:null,adminUsers:[],adminUsersLoading:false,adminUsersError:'',adminResetUser:'',role:'operacional',user:null,permissions:{operacional:true,financeiro:false,admin:false}
@@ -402,7 +404,7 @@ async function portalLogin(){
   if(!res.ok)throw Error(data.error||'Não foi possível autenticar.');
   if(!data.token||!['operacional','financeiro','administrador'].includes(data.user?.role))throw Error('Resposta inválida do servidor de autenticação.');
   clearSession();
-  state.apiUrl=url;localStorage.setItem('costalog_api_url',url);
+  state.apiUrl=url;
   state.token=data.token;state.user=data.user;state.role=data.user.role;state.permissions=data.permissions;
   state.view='painel';state.connect=false;state.error='';state.dataset={viagens:[],pedidos:[],ctes:[],mdfes:[],sources:{}};
   state.mode='live';render();
@@ -503,7 +505,7 @@ function exportCsv(which){
 function parseCsv(content){const text=content.replace(/^\uFEFF/,'').replace(/\r/g,'');const rows=text.split('\n').filter(x=>x.trim());if(rows.length<2)return [];const sep=rows[0].includes(';')?';':',';function parseLine(l){const out=[];let token='',quoted=false;for(let i=0;i<l.length;i++){const c=l[i];if(c==='"'&&l[i+1]==='"'&&quoted){token+='"';i++;}else if(c==='"'){quoted=!quoted;}else if(c===sep&&!quoted){out.push(token);token='';}else token+=c;}out.push(token);return out;}const headers=parseLine(rows.shift()).map(normalKey);return rows.map((l,i)=>{const fields=parseLine(l);const v={};headers.forEach((h,j)=>v[h]=fields[j]||'');return normalizeMdfe(v,i);}).filter(x=>x.numero!=='—');}
 async function loadData(){
  const epoch=identityEpoch;
- if(!state.token){state.connect=true;state.loading=false;state.error='Para carregar os dados do DSS, informe o token de acesso do portal na janela Conectar API.';render();return;}
+ if(!state.token){state.connect=true;state.loading=false;state.error='Faça login com seu usuário do portal para consultar os dados do DSS.';render();return;}
  state.loading=true;state.connect=false;state.error='';render();
  try{
   const url=(state.apiUrl||window.location.origin).replace(/\/$/,'')+'/api/overview?from='+encodeURIComponent(state.from)+'&to='+encodeURIComponent(state.to);
