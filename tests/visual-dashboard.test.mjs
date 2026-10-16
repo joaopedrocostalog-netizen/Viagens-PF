@@ -19,8 +19,8 @@ test('Status e categoria gera matriz RODO/LS a partir de registros DSS sem inven
  assert(html.includes('STATUS &amp; CATEGORIA'));
  assert(html.includes('RODO'));
  assert(html.includes('LS'));
- assert(html.includes('Em viagem'));
- assert(html.includes('Concluídas'));
+ assert(html.includes('EM VIAGEM'));
+ assert(html.includes('CONCLUÍDAS'));
  assert(html.includes('ALERTAS & PENDÊNCIAS'));
  assert(!html.includes('R$ 5.100,00'),'Operação não exibe soma financeira');
 });
