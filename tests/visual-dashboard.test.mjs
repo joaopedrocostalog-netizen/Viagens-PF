@@ -54,3 +54,49 @@ test('Relatórios e telas vazias continuam utilizáveis sem dados',()=>{
  assert(renderReportsHeader(none,{...cfg,financeiro:false}).includes('HISTÓRICO DE VIAGENS'));
  assert(lineGraph([]).includes('Selecione um período'));
 });
+
+
+test('Gráficos de linha possuem áreas interativas com datas, valores e foco pelo teclado',()=>{
+ const html=lineGraph([{label:'2026-10-14',viagens:7},{label:'2026-10-15',viagens:12}]);
+ assert(html.includes('data-chart-point="line"'));
+ assert(html.includes('data-chart-index="0"'));
+ assert(html.includes('data-chart-index="1"'));
+ assert(html.includes('aria-label="14/10/2026 · Viagens: 7"'));
+ assert(html.includes('aria-label="15/10/2026 · Viagens: 12"'));
+ assert(html.includes('class="v-line-crosshair"'));
+ assert(html.includes('class="v-line-popup"'));
+ assert(html.includes('tabindex="0"'));
+ assert(html.includes('pointer-events="none"'));
+});
+test('Gráficos de rosca e barras mostram tooltip em hover, foco e toque',()=>{
+ const html=renderCharts(data,{...cfg,financeiro:false});
+ assert(html.includes('data-chart-point="donut"'),'Fatias acessíveis');
+ assert(html.includes('data-chart-point="legend"'),'Legenda com detalhes');
+ assert(html.includes('class="v-donut-tooltip"'),'Tooltip das fatias');
+ assert(html.includes('data-chart-point="bar"'),'Barras acessíveis');
+ assert(html.includes('class="v-bar-tooltip"'),'Tooltip das barras');
+ assert(html.includes('role="button"'),'Operáveis por toque e teclado');
+ assert(!html.includes('FRETES POR CLIENTE'));
+ assert(!html.includes('R$ 3.500,00'),'Tooltip operacional não contém frete');
+ const financial=renderCharts(data,{...cfg,financeiro:true});
+ assert(financial.includes('FRETES POR CLIENTE'));
+ assert(financial.includes('R$'));
+});
+test('Tooltip escapa categorias externas para prevenir injeção HTML',()=>{
+ const malicious={...data,viagens:[{...data.viagens[0],status:'<script>alert(1)</script>',cliente:'<img src=x onerror=alert(1)>',origem:'<b>Origem</b>'}]};
+ const html=renderCharts(malicious,{...cfg,financeiro:false});
+ assert(!html.includes('<script>'));
+ assert(!html.includes('<img src=x'));
+ assert(!html.includes('<b>Origem</b>'));
+ assert(html.includes('&lt;img')||html.includes('&lt;b&gt;'));
+});
+test('Gráficos com dados vazios ou somente uma categoria não exibem NaN e mantêm interatividade',()=>{
+ const emptyData={viagens:[],pedidos:[],mdfes:[],ctes:[]};
+ const html=renderCharts(emptyData,{...cfg,financeiro:false});
+ assert(html.includes('Sem registros'));
+ const justOne={...data,viagens:[data.viagens[0]],pedidos:[]};
+ const one=renderCharts(justOne,{...cfg,financeiro:false});
+ assert(one.includes('data-chart-point="donut"'));
+ assert(!one.includes('NaN'));
+ assert(!one.includes('undefined'));
+});
