@@ -422,3 +422,6 @@ body{background:#08090b;color:#f6f7f8}
 @media(hover:none){.v-chart-help{font-size:11px}.v-line-hit{cursor:pointer}.v-line-point[data-active="true"] .v-line-popup{opacity:1}}
 @media(prefers-reduced-motion:reduce){.v-line-crosshair,.v-line-halo,.v-line-popup,.v-line-dot,.v-donut-sector,.v-donut-tooltip,.v-h-fill{transition:none!important}}
 @media print{.v-line-hit,.v-line-crosshair,.v-line-popup,.v-donut-tooltip,.v-bar-tooltip,.v-legend-tooltip,.v-chart-help{display:none!important}}
+
+/* Dicas flutuantes podem ultrapassar a borda do cartão, sem serem cortadas. */
+.v-panel{overflow:visible}
