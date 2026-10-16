@@ -1,3 +1,4 @@
+import {renderHero,renderSummary,renderCharts,renderTripsHeader,renderReportsHeader} from './visual-dashboard.mjs';
 import {resolvePortalApi} from './site-config.mjs';
 import {renderUsersManagement,renderForcePasswordChange} from './admin-users.mjs';
 import {permittedView,reportTypesFor,secureReport,safeView} from './access-ui.mjs';
@@ -121,7 +122,7 @@ async function demoChangeOwnPassword(currentPassword,newPassword){
 }
 
 const state = {
- view:'painel', from:String(year)+'-01-01',to:String(year)+'-12-31',search:'',filter:'todos',page:1,
+ view:'painel', chartInterval:'mensal', from:String(year)+'-01-01',to:String(year)+'-12-31',search:'',filter:'todos',page:1,
  dataset:demo, mode:'demo',error:'',loading:false,selected:null,connect:false,menu:false,
  apiUrl:portalSettings.apiUrl,token:'',importCount:0,
  customer:'',vehicle:'',serviceType:'',sortKey:'',sortDir:'desc',alertPriority:'todos',
@@ -197,19 +198,32 @@ function button(action,label,extra){return '<button type="button" class="btn '+(
 function render(){
  state.view=safeView(state.role,state.view);
  const d=scoped(),stats=totals(d);
- const groupFor=x=>['faturamento','clientes','analises'].includes(x)?'FINANCEIRO':['administracao','integracoes'].includes(x)?'ACESSO RESTRITO':'OPERACIONAL';
- const visibleNav=navItems.filter(x=>x[0]!=='integracoes'&&permittedView(state.role,x[0]));
- const nav=visibleNav.map((x,i)=>(i===0||groupFor(x[0])!==groupFor(visibleNav[i-1][0])?'<div class="side-section-label">'+groupFor(x[0])+'</div>':'')+'<button class="side-link '+(state.view===x[0]?'active':'')+'" data-nav="'+x[0]+'">'+icon(x[1])+esc(x[2])+'</button>').join('');
- const buttons=tabs.filter(x=>x[0]!=='integracoes'&&permittedView(state.role,x[0])).map(x=>'<button class="tab '+(state.view===x[0]?'active':'')+'" role="tab" aria-selected="'+(state.view===x[0])+'" data-nav="'+x[0]+'">'+esc(x[1])+'</button>').join('');
- const message=state.mode==='live'?'<div class="info-strip '+(state.error?'error':'live')+'"><strong>Dados do DSS:</strong> '+(state.error?'A última sincronização falhou. Mantidos os últimos dados reais carregados; podem estar desatualizados. '+esc(state.error):'Consulta concluída. Os campos não disponibilizados pela API são exibidos como “—”.')+'</div>':'<div class="info-strip'+(state.error?' error':'')+'"><strong>DADOS DEMONSTRATIVOS:</strong> números fictícios usados apenas para visualizar o portal. Nenhuma informação real da COSTALOG está sendo exibida.'+(state.error?'<div>'+esc(state.error)+'</div>':'')+'</div>';
- root.innerHTML='<div class="layout">'+
-  (state.menu?'<button class="floating-close" data-action="menu" aria-label="Fechar menu"></button>':'')+
-  '<aside class="sidebar '+(state.menu?'open':'')+'"><div class="brand"><img class="brand-logo" src="./logo-costalog-sem-fundo-1024x876.png" alt="Logotipo COSTALOG" width="48" height="46"><div><div class="brand-name">COSTALOG</div><div class="brand-sub">A LOGÍSTICA IDEAL</div></div></div><div class="side-title">GESTÃO DE FROTA</div><nav class="side-nav">'+nav+'</nav><div class="side-bottom"><strong>VIAGENS & FRETES</strong>Inteligência operacional e financeira<br>Portal interno COSTALOG</div></aside>'+
-  '<main class="main"><header class="topbar"><div class="filter-row"><button class="btn btn-ghost btn-sm mobile-menu" data-action="menu" aria-label="Abrir menu">'+icon('menu')+'</button><strong>Viagens & Fretes</strong></div><div class="topbar-right"><span class="status '+(state.mode==='live'?'online':'')+'">'+(PUBLIC_DEMO?'Somente demonstração':state.mode==='live'?'DSS conectado':'Modo demonstração')+'</span>'+(state.user?'<span class="status online">'+esc(state.user.displayName||state.user.username)+' · '+esc(state.role)+'</span>'+button('logout','Sair','btn-ghost btn-sm'):button('connect','Entrar','btn-ghost btn-sm'))+'</div></header>'+
-  '<div class="content"><div class="heading"><div><h1>Controle de Viagens e Fretes</h1><p>Viagens, pedidos de frete, CT-e, MDF-e e análise de rentabilidade.</p></div><div class="heading-actions">'+button('csv',icon('download')+' Exportar CSV','btn-ghost')+button('print','Imprimir relatório','btn-ghost')+'</div></div><div class="tabbar" role="tablist">'+buttons+'</div>'+
-  message+operationalFilters(d,state)+renderFilters()+(state.loading?'<div class="info-strip">Consultando a API do DSS...</div>':'')+renderView(d,stats)+
-  '<p class="footer-note">COSTALOG · '+(PUBLIC_DEMO?'Ambiente de demonstração: dados e contas locais, sem conexão com API ou informações reais.':'Painel de viagens e fretes com acesso controlado.')+'</p></div></main></div>'+
-  (state.selected?renderDrawer(d):'')+(state.connect?renderConnect():'')+(state.user?.mustChangePassword?renderForcePasswordChange():'')+(state.adminResetUser&&state.permissions.admin?renderAdminPasswordReset(state.adminResetUser):'');
+ const allowed=navItems.filter(x=>x[0]!=='integracoes'&&permittedView(state.role,x[0]));
+ const PRIMARY=['painel','graficos','viagens','ctes','faturamento','relatorios'];
+ const secondary=allowed.filter(x=>!PRIMARY.includes(x[0]));
+ const tab=(x,cl)=>'<button type="button" class="'+cl+' '+(state.view===x[0]?'active':'')+'" data-nav="'+x[0]+'" aria-current="'+(state.view===x[0]?'page':'false')+'">'+icon(x[1])+'<span>'+esc(x[2])+'</span></button>';
+ const primary=allowed.filter(x=>PRIMARY.includes(x[0])).map(x=>tab(x,'v-nav-item')).join('');
+ const sub=secondary.map(x=>tab(x,'v-sub-item')).join('');
+ const message=state.mode==='live'?'<div class="info-strip '+(state.error?'error':'live')+'"><strong>DSS:</strong> '+(state.error?'Última atualização falhou. Mostrando dados reais anteriores, que podem estar desatualizados. '+esc(state.error):'Dados consultados no servidor. Campos ausentes são exibidos como “—”.')+'</div>':
+ '<div class="info-strip v-demo-notice"><strong>AMBIENTE DE DEMONSTRAÇÃO</strong> · Registros fictícios. A integração DSS utilizará estas mesmas telas quando o backend privado estiver configurado.</div>';
+ const detailedFilters=state.view!=='administracao'?'<details class="v-extra-filters"><summary>⚙ Filtros avançados <span>Cliente, placa, serviço e períodos rápidos</span></summary>'+operationalFilters(d,state)+'</details>':'';
+ const tools=['viagens','ctes','relatorios','faturamento'].includes(state.view)?
+  '<div class="v-heading-tools">'+button('csv',icon('download')+' CSV','btn-sm')+button('print','PDF / Imprimir','btn-sm btn-red')+'</div>':'';
+ const dateFilters=state.view==='administracao'?'':renderFilters();
+ root.innerHTML='<div class="layout v-app"><main class="main v-main">'+
+ '<header class="topbar v-topbar"><div class="v-topbrand"><img class="v-brand-logo" src="./logo-costalog-sem-fundo-1024x876.png" alt="Logotipo COSTALOG"><div><b>COSTALOG</b><small>A LOGÍSTICA IDEAL</small></div><i></i><strong>GESTÃO DE VIAGENS & FRETES</strong></div>'+
+ '<div class="topbar-right v-accountbar"><span class="v-environment '+(state.mode==='live'?'connected':'')+'">'+(state.mode==='live'?'● DSS':'● DEMO')+'</span>'+
+ (state.user?'<span class="v-username">'+esc(state.user.displayName||state.user.username)+' · '+esc(state.role)+'</span>'+button('logout','Sair','btn-sm btn-ghost'):button('connect','Entrar','btn-sm btn-ghost'))+'</div></header>'+
+ '<div class="v-menu-row"><nav class="v-main-nav" aria-label="Seções principais">'+primary+'</nav><div class="v-right-hint">'+(state.mode==='live'?'DADOS DO DSS':'DADOS DE TESTE')+'</div></div>'+
+ (sub?'<nav class="v-sub-nav" aria-label="Outras áreas">'+sub+'</nav>':'')+
+ '<div class="content v-content">'+renderHero(state.view,d,{from:state.from,to:state.to,mode:state.mode,financeiro:state.permissions.financeiro})+
+ '<div class="v-tools-row">'+dateFilters+tools+'</div>'+detailedFilters+message+
+ (state.loading?'<div class="info-strip">Consultando registros DSS...</div>':'')+
+ renderView(d,stats)+
+ '<footer class="v-footer">COSTALOG • Portal de inteligência operacional • '+(PUBLIC_DEMO?'Contas de demonstração somente neste navegador.':'Acesso baseado em permissões, dados DSS protegidos no servidor.')+'</footer></div></main></div>'+
+ (state.selected?renderDrawer(d):'')+(state.connect?renderConnect():'')+
+ (state.user?.mustChangePassword?renderForcePasswordChange():'')+
+ (state.adminResetUser&&state.permissions.admin?renderAdminPasswordReset(state.adminResetUser):'');
 }
 function renderFilters(){
  if(state.view==='integracoes')return '';
@@ -220,12 +234,13 @@ function renderFilters(){
 }
 function kpi(label,value,sub,cl){return '<article class="kpi"><div class="kpi-label">'+label+'</div><div class="kpi-value '+(cl||'')+'">'+value+'</div><div class="kpi-sub">'+sub+'</div></article>';}
 function renderView(d,s){
- if(state.view==='painel')return (state.permissions.financeiro?renderPainel(d,s):renderOperationalPanel(d))+renderInsightsStrip(d,state);
- if(state.view==='viagens')return renderViagens(d,s);
+ if(state.view==='painel')return renderSummary(d,{financeiro:state.permissions.financeiro,mode:state.mode,from:state.from,to:state.to});
+ if(state.view==='graficos')return renderCharts(d,{financeiro:state.permissions.financeiro,interval:state.chartInterval});
+ if(state.view==='viagens')return renderTripsHeader(d)+renderViagens(d,s);
  if(state.view==='ctes')return renderCtes(d);
  if(state.view==='clientes')return renderClientes(d,s);
  if(state.view==='mdfes')return renderMdfes(d,s);
- if(state.view==='relatorios')return renderReportHub(d,state);
+ if(state.view==='relatorios')return renderReportsHeader(d,{financeiro:state.permissions.financeiro,interval:state.chartInterval})+renderReportHub(d,state);
  if(state.view==='administracao'&&state.permissions.admin)return renderUsersManagement(state.adminUsers,state.adminUsersLoading,state.adminUsersError)+(PUBLIC_DEMO?'<p class="help">Demonstração: contas e senhas ficam somente neste navegador. Sem dados reais.</p>':'<p class="help">Os dados DSS são consultados automaticamente após o login e ao alterar as datas. A configuração da API é feita somente no servidor.</p>');
  if(ADVANCED_VIEWS.includes(state.view))return renderAdvanced(state.view,d,state);
  return renderIntegracoes();
@@ -571,6 +586,7 @@ async function comparePeriods(){
 }
 root.addEventListener('click',e=>{
  const nav=e.target.closest('[data-nav]');if(nav){if(state.user?.mustChangePassword)return;if(!permittedView(state.role,nav.dataset.nav))return;state.view=nav.dataset.nav;state.search='';state.filter='todos';state.sortKey='';state.page=1;state.menu=false;state.selected=null;render();if(state.view==='administracao'&&state.permissions.admin)loadAdminUsers();return;}
+ const graphInterval=e.target.closest('[data-chart-interval]');if(graphInterval){state.chartInterval=graphInterval.dataset.chartInterval;render();return;}
  const detail=e.target.closest('[data-detail]');if(detail){state.selected=detail.dataset.detail;render();return;}
  const sort=e.target.closest('[data-sort]');if(sort){const k=sort.dataset.sort;state.sortDir=state.sortKey===k&&state.sortDir==='asc'?'desc':'asc';state.sortKey=k;state.page=1;render();return;}
  const report=e.target.closest('[data-report-select]');if(report){state.reportSelected=report.dataset.reportSelect;state.reportMulti=false;render();return;}
