@@ -27,6 +27,8 @@ jobs:
           node --check src/access-ui.mjs
           node --check src/admin-users.mjs
           node --check src/site-config.mjs
+          node --check src/intelligence.mjs
+          node --check src/intelligence-ui.mjs
           node --check api/server.mjs
           node --check api/auth.mjs
           node --check api/access.mjs
@@ -46,7 +48,7 @@ jobs:
         run: |
           mkdir -p public_site/src
           cp index.html styles.css logo-costalog-sem-fundo-1024x876.png public_site/
-          cp src/app.js src/dss-mapping.mjs src/operational.mjs src/reporting.mjs src/advanced-ui.mjs src/visual-dashboard.mjs src/access-ui.mjs src/admin-users.mjs src/site-config.mjs public_site/src/
+          cp src/app.js src/dss-mapping.mjs src/operational.mjs src/reporting.mjs src/advanced-ui.mjs src/visual-dashboard.mjs src/access-ui.mjs src/admin-users.mjs src/site-config.mjs src/intelligence.mjs src/intelligence-ui.mjs public_site/src/
           touch public_site/.nojekyll
       - name: Enviar frontend
         uses: actions/upload-pages-artifact@v3
