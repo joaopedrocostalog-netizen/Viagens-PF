@@ -9,10 +9,12 @@ test('Painel e todas as novas páginas renderizam sem erro de JavaScript',async(
  globalThis.window={location:{protocol:'file:'}};
  await import('../src/app.js?smoke=1');
  assert(root.innerHTML.includes('COSTALOG'));
- assert(root.innerHTML.includes('Indicadores operacionais adicionais'));
- for(const view of ['pendencias','rotas','veiculos','motoristas','containers','faturamento','analises','administracao','relatorios','viagens','ctes','clientes','mdfes','integracoes']){
+ assert(root.innerHTML.includes('STATUS & CATEGORIA'),'Novo painel matriz deve renderizar');
+ assert(root.innerHTML.includes('v-matrix'),'Matriz operacional ausente');
+ assert(root.innerHTML.includes('data-nav="graficos"'),'Navegação de gráficos ausente');
+ for(const view of ['graficos','pendencias','rotas','veiculos','motoristas','containers','faturamento','analises','administracao','relatorios','viagens','ctes','clientes','mdfes','integracoes']){
   listeners.click({target:{closest(selector){return selector==='[data-nav]'?{dataset:{nav:view}}:null;}}});
-  assert(root.innerHTML.includes('Controle de Viagens e Fretes'),'sem cabeçalho na página '+view);
+  assert(root.innerHTML.includes('GESTÃO DE VIAGENS & FRETES'),'sem cabeçalho na página '+view);
   assert(!root.innerHTML.includes('undefinedundefined'),'concatenação suspeita em '+view);
  }
 });
