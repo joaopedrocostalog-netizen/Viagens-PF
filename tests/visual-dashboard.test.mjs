@@ -52,5 +52,5 @@ test('Relatórios e telas vazias continuam utilizáveis sem dados',()=>{
  assert(renderHero('painel',none,cfg).includes('DEMONSTRAÇÃO')===false);
  assert(renderTripsHeader(none).includes('TOTAL DE VIAGENS'));
  assert(renderReportsHeader(none,{...cfg,financeiro:false}).includes('HISTÓRICO DE VIAGENS'));
- assert(lineGraph([]).includes('Sem registros'));
+ assert(lineGraph([]).includes('Selecione um período'));
 });
