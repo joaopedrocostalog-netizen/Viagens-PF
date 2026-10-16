@@ -19,7 +19,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
       - name: Validar sintaxe JavaScript
-        run: node --check src/app.js && node --check src/dss-mapping.mjs && node --check src/operational.mjs && node --check src/reporting.mjs && node --check src/advanced-ui.mjs && node --check api/server.mjs && node --check api/auth.mjs && node --check api/access.mjs && node --check api/users.mjs && node --check src/access-ui.mjs && node --check src/admin-users.mjs && node --test tests/*.test.mjs
+        run: node --check src/app.js && node --check src/dss-mapping.mjs && node --check src/operational.mjs && node --check src/reporting.mjs && node --check src/advanced-ui.mjs && node --check api/server.mjs && node --check api/auth.mjs && node --check api/access.mjs && node --check api/users.mjs && node --check src/access-ui.mjs && node --check src/admin-users.mjs && node --check src/site-config.mjs && node --test tests/*.test.mjs
       - name: Configurar GitHub Pages
         uses: actions/configure-pages@v5
       - name: Preparar arquivos públicos
@@ -27,7 +27,7 @@ jobs:
           mkdir -p public_site
           cp index.html styles.css logo-costalog-sem-fundo-1024x876.png public_site/
           mkdir -p public_site/src
-          cp src/app.js src/dss-mapping.mjs src/operational.mjs src/reporting.mjs src/advanced-ui.mjs src/access-ui.mjs src/admin-users.mjs public_site/src/
+          cp src/app.js src/dss-mapping.mjs src/operational.mjs src/reporting.mjs src/advanced-ui.mjs src/access-ui.mjs src/admin-users.mjs src/site-config.mjs public_site/src/
           touch public_site/.nojekyll
       - name: Enviar frontend
         uses: actions/upload-pages-artifact@v3
