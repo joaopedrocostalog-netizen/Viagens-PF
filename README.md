@@ -213,3 +213,7 @@ Para evitar problemas de CORS/rede ao abrir o GitHub Pages enquanto o backend es
     node api/server.mjs
 
 Depois abra http://localhost:3001/ — neste endereço o frontend e a API usam a mesma origem, e o formulário de login preenche o endereço do servidor local automaticamente. Teste http://localhost:3001/api/health e verifique "accounts":true. Nunca compartilhe os arquivos .env e private/portal-users.json; o servidor serve apenas uma lista explícita de arquivos estáticos públicos. Para acessar de outros dispositivos, implante o portal com HTTPS e o backend privado.
+
+## Ativar integração DSS sem alterar o login
+
+Veja [INTEGRACAO_DSS.md](INTEGRACAO_DSS.md). O backend Node.js já trata `GET /listarViagens` e `GET /listarPedidosFrete` com filtros `data_inicio`/`data_fim`, autenticação DSS Basic Auth no servidor, login individual e projeção de informações por perfil. No GitHub Pages, o endereço HTTPS do backend é configurado **somente** em `src/site-config.mjs`; sem isso, o frontend permanece em demonstração, sem credenciais e sem dados reais. Nunca substitua a URL da API pelo endereço Swagger `/wsdss/docs`.
