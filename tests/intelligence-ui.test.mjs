@@ -16,7 +16,8 @@ test('Busca global gera resultados clicáveis, sem perfis de cliente para operac
 test('Painel personalizado respeita ordem, botão de mover e campos financeiros',()=>{
  const st=state(false);st.metricLayout=['pedidos','viagens','fretes'];st.showMetricOptions=true;
  const html=renderCustomDashboard(d,st);
- assert(html.indexOf('Pedidos de frete')<html.indexOf('Viagens'));
+ const grid=html.split('class="ins-metric-grid"')[1]||'';
+ assert(grid.indexOf('Pedidos de frete')<grid.indexOf('Viagens'));
  assert(html.includes('data-metric-toggle="viagens"'));
  assert(!html.includes('data-metric-toggle="fretes"'));
  const manager=renderCustomDashboard(d,{...st,permissions:{financeiro:true},metricLayout:['fretes','viagens']});
