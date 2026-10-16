@@ -85,19 +85,56 @@ export function renderSummary(d,settings){
  '<div class="v-bottom-actions"><button class="btn btn-red" data-nav="viagens">VER TODAS AS VIAGENS →</button><button class="btn" data-nav="graficos">ABRIR VISÃO GRÁFICA ↗</button><button class="btn" data-nav="ctes">CONSULTAR CT-e</button></div>';
 }
 function pct(n,total){return total?100*n/total:0;}
+function donutArc(start,end){
+ // SVG com rosca real, sem valores fabricados. Ângulos em graus.
+ const rad=degrees=>degrees*Math.PI/180;
+ const polar=(r,a)=>[(100+r*Math.cos(rad(a))).toFixed(2),(100+r*Math.sin(rad(a))).toFixed(2)];
+ const endAngle=Math.min(end,start+359.999);
+ const a=polar(91,start),b=polar(91,endAngle),c=polar(58,endAngle),d=polar(58,start);
+ return 'M '+a.join(' ')+' A 91 91 0 '+(endAngle-start>180?1:0)+' 1 '+b.join(' ')+
+  ' L '+c.join(' ')+' A 58 58 0 '+(endAngle-start>180?1:0)+' 0 '+d.join(' ')+' Z';
+}
 function donut(entries,label){
- const list=entries.filter(x=>x.value>0);
+ const list=entries.filter(x=>Number.isFinite(x.value)&&x.value>0);
  if(!list.length)return empty('Sem registros para distribuir');
  const total=list.reduce((sum,x)=>sum+x.value,0);
- let at=0;const gradients=list.map((x,i)=>{const start=pct(at,total);at+=x.value;return COLORS[i%COLORS.length]+' '+start+'% '+pct(at,total)+'%';});
- return '<div class="v-donut-layout"><div class="v-donut" style="background:conic-gradient('+gradients.join(',')+')"><div class="v-donut-hole"><strong>'+N(total)+'</strong><small>'+H(label)+'</small></div></div>'+
- '<div class="v-donut-legend">'+list.map((x,i)=>'<div><i style="background:'+COLORS[i%COLORS.length]+'"></i><span>'+H(x.name)+'</span><b>'+N(x.value)+' · '+pct(x.value,total).toFixed(0)+'%</b></div>').join('')+'</div></div>';
+ let angle=-90;
+ const segments=list.map((x,i)=>{
+  const size=360*x.value/total,start=angle;
+  angle+=size;
+  const percent=pct(x.value,total),formatted=percent.toFixed(1).replace('.',',')+'%';
+  const title=H(x.name),short=H(x.name.length>21?x.name.slice(0,20)+'…':x.name);
+  const color=COLORS[i%COLORS.length];
+  return '<g class="v-donut-slice" tabindex="0" role="button" data-chart-point="donut" data-chart-index="'+i+'" aria-label="'+H(x.name+' · '+N(x.value)+' viagens · '+formatted)+'">'+
+   '<path class="v-donut-sector" d="'+donutArc(start,angle)+'" fill="'+color+'"/>'+
+   '<g class="v-donut-tooltip" pointer-events="none"><rect x="36" y="69" width="128" height="62" rx="11" fill="#25262a" stroke="'+color+'" stroke-width="1.5"/>'+
+   '<text x="100" y="91" text-anchor="middle" fill="#f4f5f7" font-size="10" font-weight="700">'+short+'</text>'+
+   '<text x="100" y="111" text-anchor="middle" fill="'+color+'" font-size="13" font-weight="800">'+H(N(x.value)+' · '+formatted)+'</text></g></g>';
+ }).join('');
+ const legend=list.map((x,i)=>{
+  const percentage=pct(x.value,total).toFixed(1).replace('.',',')+'%';
+  return '<div class="v-donut-key" tabindex="0" role="button" data-chart-point="legend" data-chart-index="'+i+'" aria-label="'+H(x.name+' · '+N(x.value)+' · '+percentage)+'">'+
+   '<i style="background:'+COLORS[i%COLORS.length]+'"></i><span>'+H(x.name)+'</span><b>'+N(x.value)+' · '+percentage+'</b>'+
+   '<div class="v-legend-tooltip">'+H(x.name)+': '+N(x.value)+' viagens ('+percentage+')</div></div>';
+ }).join('');
+ return '<div class="v-donut-layout"><div class="v-donut-visual"><svg class="v-donut-svg" viewBox="0 0 200 200" role="group" aria-label="Distribuição de '+H(label)+' por situação">'+
+ '<circle cx="100" cy="100" r="91" fill="#2b2b30"/>'+
+ '<circle cx="100" cy="100" r="57" fill="#151618"/>'+
+ '<g class="v-donut-default" text-anchor="middle"><text x="100" y="99" fill="#f5f5f7" font-size="28" font-weight="800">'+N(total)+'</text>'+
+ '<text x="100" y="117" fill="#a3a4aa" font-size="10">'+H(label)+'</text></g>'+segments+'</svg></div>'+
+ '<div class="v-donut-legend">'+legend+'</div></div>';
 }
 function bars(rows,{money=false}={}){
  const values=rows.filter(r=>Number.isFinite(r.value)).slice(0,8);
  if(!values.length)return empty('Sem dados suficientes para este gráfico');
  const max=Math.max(1,...values.map(r=>r.value));
- return '<div class="v-h-bars">'+values.map((r,i)=>'<div class="v-h-row"><div class="v-h-label" title="'+H(r.name)+'">'+H(r.name)+'</div><div class="v-h-track"><span style="width:'+Math.max(0,100*r.value/max).toFixed(1)+'%;background:'+COLORS[i%COLORS.length]+'"></span></div><strong>'+H(money?B(r.value):N(r.value))+'</strong></div>').join('')+'</div>';
+ return '<div class="v-h-bars">'+values.map((r,i)=>{
+  const value=money?B(r.value):N(r.value),label=H(r.name),color=COLORS[i%COLORS.length];
+  return '<div class="v-h-row" role="button" tabindex="0" data-chart-point="bar" aria-label="'+label+' · '+H(value)+'">'+
+   '<div class="v-h-label" title="'+label+'">'+label+'</div>'+
+   '<div class="v-h-track"><span class="v-h-fill" style="width:'+Math.max(0,100*r.value/max).toFixed(1)+'%;background:'+color+'"></span></div>'+
+   '<strong>'+H(value)+'</strong><span class="v-bar-tooltip" role="presentation">'+label+' <b>'+H(value)+'</b></span></div>';
+ }).join('')+'</div>';
 }
 function monthKey(date){return String(date||'').slice(0,7);}
 export function timelineGroups(d,interval='mensal'){
@@ -124,13 +161,32 @@ export function lineGraph(series,metric='viagens',color='#ff3548'){
  const vals=series.map(v=>Number(v[metric])||0),max=Math.max(1,...vals),step=vals.length>1?innerW/(vals.length-1):0;
  const pt=(i,v)=>[L+(vals.length===1?innerW/2:i*step),T+innerH-innerH*v/max];
  const points=vals.map((v,i)=>pt(i,v).map(n=>n.toFixed(1)).join(',')).join(' ');
- const area=vals.map((v,i)=>pt(i,v).map(n=>n.toFixed(1)).join('L')).join(' '); // informational only, polygon uses closed coordinates below
  const polygon=[L+','+(T+innerH),points,(L+innerW)+','+(T+innerH)].join(' ');
  const grids=Array.from({length:5},(_,i)=>{const y=T+innerH*i/4;return '<line x1="'+L+'" y1="'+y+'" x2="'+(L+innerW)+'" y2="'+y+'" stroke="#292a2e" stroke-dasharray="4 5"/><text x="2" y="'+(y+3)+'" fill="#a3a4ad" font-size="11">'+H(N(Math.round(max*(1-i/4))))+'</text>';}).join('');
  const labels=series.map((d,i)=>'<text x="'+pt(i,0)[0]+'" y="'+(SVG_H-12)+'" text-anchor="middle" fill="#9c9da7" font-size="10">'+H(d.label.slice(5).replace('-','/'))+'</text>').join('');
- const markers=vals.map((v,i)=>'<circle cx="'+pt(i,v)[0]+'" cy="'+pt(i,v)[1]+'" r="3.7" fill="'+color+'" stroke="#141416" stroke-width="2"><title>'+H(series[i].label+' · '+N(v))+'</title></circle>').join('');
- return '<div class="v-svg-holder"><svg viewBox="0 0 '+W+' '+SVG_H+'" role="img" aria-label="Evolução de '+H(metric)+' por período"><defs><linearGradient id="vLineFade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="'+color+'" stop-opacity=".36"/><stop offset="1" stop-color="'+color+'" stop-opacity=".01"/></linearGradient></defs>'+grids+
- '<polygon fill="url(#vLineFade)" points="'+polygon+'"/><polyline points="'+points+'" fill="none" stroke="'+color+'" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>'+markers+labels+'</svg></div>';
+ const metricName=metric==='viagens'?'Viagens':metric==='pedidos'?'Pedidos':metric==='ctes'?'CT-e':metric;
+ const markers=vals.map((v,i)=>{
+  const [x,y]=pt(i,v),date=series[i].label;
+  const dateLabel=/^\d{4}-\d{2}-\d{2}$/.test(date)?date.slice(8)+'/'+date.slice(5,7)+'/'+date.slice(0,4):
+   /^\d{4}-\d{2}$/.test(date)?date.slice(5,7)+'/'+date.slice(0,4):date;
+  // Pop-up sempre dentro da área SVG, mesmo no último ponto.
+  const popupX=Math.min(W-168,Math.max(8,x-78));
+  const popupY=y<100?y+15:y-87;
+  const width=vals.length===1?innerW:Math.min(step,innerW);
+  const hitX=vals.length===1?L:x-width/2;
+  return '<g class="v-line-point" tabindex="0" role="button" data-chart-point="line" data-chart-index="'+i+'" aria-label="'+H(dateLabel+' · '+metricName+': '+N(v))+'">'+
+   '<rect class="v-line-hit" x="'+hitX.toFixed(1)+'" y="'+T+'" width="'+width.toFixed(1)+'" height="'+innerH+'" fill="transparent" pointer-events="all"/>'+
+   '<line class="v-line-crosshair" x1="'+x+'" y1="'+T+'" x2="'+x+'" y2="'+(T+innerH)+'" stroke="'+color+'" stroke-width="1.2" stroke-dasharray="4 4"/>'+
+   '<circle class="v-line-halo" cx="'+x+'" cy="'+y+'" r="10" fill="'+color+'" opacity=".16"/>'+
+   '<circle class="v-line-dot" cx="'+x+'" cy="'+y+'" r="4.5" fill="'+color+'" stroke="#141416" stroke-width="2"/>'+
+   '<g class="v-line-popup" pointer-events="none" transform="translate('+popupX.toFixed(1)+' '+popupY.toFixed(1)+')">'+
+   '<rect width="157" height="67" rx="9" fill="#26272c" stroke="'+color+'" stroke-width="1.3"/>'+
+   '<text x="12" y="23" fill="#babdc6" font-size="11">'+H(dateLabel)+'</text>'+
+   '<text x="12" y="48" fill="#fff" font-size="13" font-weight="800">'+H(metricName+': '+N(v))+'</text></g></g>';
+ }).join('');
+ return '<div class="v-svg-holder"><svg class="v-line-svg" viewBox="0 0 '+W+' '+SVG_H+'" role="group" aria-label="Evolução de '+H(metric)+' por período"><defs><linearGradient id="vLineFade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="'+color+'" stop-opacity=".36"/><stop offset="1" stop-color="'+color+'" stop-opacity=".01"/></linearGradient></defs>'+grids+
+ '<polygon fill="url(#vLineFade)" points="'+polygon+'"/><polyline points="'+points+'" fill="none" stroke="'+color+'" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>'+markers+labels+'</svg>'+
+ '<p class="v-chart-help">Passe o mouse ou toque nos pontos para ver os valores. Use Tab e Enter pelo teclado.</p></div>';
 }
 export function renderCharts(d,settings){
  const trips=d.viagens||[],orders=d.pedidos||[],fin=!!settings.financeiro,groups=timelineGroups(d,settings.interval||'mensal');
