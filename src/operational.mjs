@@ -41,11 +41,12 @@ export function monthsOverview(viagens,pedidos,year){
  });
 }
 export function makeAlerts(data,{asOf=new Date().toISOString().slice(0,10),lateDays=2}={}){
- const trips=data.allViagens||data.viagens||[],orders=data.pedidos||[];
+ const trips=data.viagens||[],orders=data.pedidos||[];
  const alerts=[];
  const push=(type,level,recordId,title,detail,view,refDate)=>alerts.push({type,level,recordId,title,detail,view,refDate});
  for(const p of orders){
   if(!p.isCte)push('cte_pendente','high',p.id,'Pedido sem número de CT-e','PF '+(p.pedidoNumero||p.id)+' • '+p.cliente,'ctes',p.data);
+  if(p.isCte&&!p.viagemId)push('cte_sem_rv','warning',p.id,'CT-e sem RV localizada na consulta','CT-e '+(p.cteNumero||p.numero)+' • PF '+(p.pedidoNumero||p.id),'ctes',p.data);
   if(p.rvReferencia&&!p.viagemId)push('rv_nao_localizada','warning',p.id,'RV não localizada na consulta','PF '+(p.pedidoNumero||p.id)+' • referência '+p.rvReferencia,'ctes',p.data);
   if(p.ambiguous)push('rv_ambigua','warning',p.id,'Vínculo da RV ambíguo','PF '+(p.pedidoNumero||p.id),'ctes',p.data);
   if(p.entregaConcluida===true&&p.comprovanteEntrega===false)push('comprovante_pendente','high',p.id,'Entrega sem comprovante','PF '+(p.pedidoNumero||p.id)+' • '+p.cliente,'ctes',p.data);
@@ -53,6 +54,10 @@ export function makeAlerts(data,{asOf=new Date().toISOString().slice(0,10),lateD
   if(ok(p.ocorrencia))push('ocorrencia','info',p.id,'Ocorrência registrada','PF '+(p.pedidoNumero||p.id)+' • '+String(p.ocorrencia).slice(0,85),'ctes',p.data);
  }
  for(const v of trips){
+  // Não concluir que a viagem não tem pedido: ele pode ter sido emitido fora das datas consultadas.
+  if(data.sources?.pedidos===true&&!orders.some(p=>p.viagemId===v.id)){
+   push('rv_sem_pedido','info',v.id,'RV sem pedido PF localizado','RV '+v.numero+' • confira também outros períodos de emissão','viagens',v.data);
+  }
   const status=realStatus(v),complete=/encerr|conclu|finaliz|entreg/.test(status);
   const active=/inici|transito|andamento|viagem|rota|rodando/.test(status) && !complete;
   if(v.data&&!v.dataTermino&&active){
