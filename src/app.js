@@ -637,7 +637,28 @@ async function comparePeriods(){
  state.prevDataset={...previous,allViagens:previous.viagens,viagens,pedidos,ctes:previous.ctes.filter(matches),mdfes:previous.mdfes};render();
  }catch(err){alert('Não foi possível obter o período anterior: '+err.message);}
 }
+function activateChartPoint(hit){
+ if(!hit || typeof hit.getAttribute!=='function')return;
+ const wasActive=hit.getAttribute('data-active')==='true';
+ // Não altera os dados nem re-renderiza todo o portal ao tocar num ponto.
+ if(typeof root.querySelectorAll==='function'){
+  root.querySelectorAll('[data-chart-point][data-active="true"]').forEach(node=>node.removeAttribute('data-active'));
+ }
+ if(!wasActive){
+  hit.setAttribute('data-active','true');
+  if(hit.dataset?.chartPoint==='legend'){
+   const layout=hit.closest('.v-donut-layout');
+   const index=hit.dataset.chartIndex;
+   if(layout&&index!==undefined){
+    const slices=layout.querySelectorAll('[data-chart-point="donut"]');
+    for(const slice of slices)if(slice.dataset.chartIndex===index)slice.setAttribute('data-active','true');
+   }
+  }
+ }
+}
 root.addEventListener('click',e=>{
+ const point=e.target.closest('[data-chart-point]');
+ if(point){activateChartPoint(point);return;}
  const searchHit=e.target.closest('[data-search-result]');
  if(searchHit){
   const raw=searchHit.dataset.searchResult||'',pos=raw.indexOf(':');
@@ -794,6 +815,10 @@ root.addEventListener('input',e=>{
   const start=e.target.selectionStart;state.search=e.target.value;state.page=1;render();
   const input=document.getElementById('searchInput');if(input){input.focus();input.setSelectionRange(start,start);}
  }
+});
+root.addEventListener('keydown',e=>{
+ const point=e.target?.closest?.('[data-chart-point]');
+ if(point&&(e.key==='Enter'||e.key===' ')){e.preventDefault();activateChartPoint(point);}
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(state.selected||state.connect)){state.selected=null;state.connect=false;render();}});
 loadMetricPreferences();
