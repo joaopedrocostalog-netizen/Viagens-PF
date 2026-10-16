@@ -117,7 +117,7 @@ export function renderComparison(data,state){
  const windows=comparisonWindows(anchor,selected);
  let comparison=state.comparison;
  if(state.mode==='demo'){
-  comparison={interval:selected,anchor:state.to,current:subsetPeriod(state.dataset,windows.current),previous:subsetPeriod(state.dataset,windows.previous),source:'demo'};
+  comparison={interval:selected,anchor,current:subsetPeriod(state.dataset,windows.current),previous:subsetPeriod(state.dataset,windows.previous),source:'demo'};
  }
  const ready=comparison&&comparison.interval===selected&&comparison.anchor===anchor;
  const financial=!!state.permissions.financeiro;
