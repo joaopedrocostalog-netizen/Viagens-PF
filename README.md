@@ -217,3 +217,31 @@ Depois abra http://localhost:3001/ — neste endereço o frontend e a API usam a
 ## Ativar integração DSS sem alterar o login
 
 Veja [INTEGRACAO_DSS.md](INTEGRACAO_DSS.md). O backend Node.js já trata `GET /listarViagens` e `GET /listarPedidosFrete` com filtros `data_inicio`/`data_fim`, autenticação DSS Basic Auth no servidor, login individual e projeção de informações por perfil. No GitHub Pages, o endereço HTTPS do backend é configurado **somente** em `src/site-config.mjs`; sem isso, o frontend permanece em demonstração, sem credenciais e sem dados reais. Nunca substitua a URL da API pelo endereço Swagger `/wsdss/docs`.
+
+
+## Inteligência operacional — módulos da interface (outubro 2026)
+
+As seguintes melhorias foram integradas diretamente às telas COSTALOG, mantendo a navegação preta/vermelha, a demonstração identificada e as políticas de acesso financeiro.
+
+**Pesquisa global unificada:** campo de busca disponível no topo das áreas operacionais. Pesquisa nos registros carregados de RV, PF/CT-e, placa, cliente, container e referências MDF-e. O resultado abre a ficha do registro, ou o perfil do cliente somente para Financeiro/Administrador. O sistema não faz busca na base DSS inteira: consulta apenas os dados já carregados para o período selecionado, e não divulga valores financeiros no perfil Operacional.
+
+**Central inteligente de alertas:** filtros por prioridade e tipo, links para a RV ou PF envolvida, alertas de CT-e não numerado, CT-e sem RV encontrada, RV sem pedido localizado, entrega sem comprovante, ocorrências, RV sem data de término, desvio de KM e, somente para Financeiro, liberações sem número de fatura. Alertas são **indícios de conferência**, não conclusões fiscais: documentos podem estar em outro período de emissão, e ausência de informação não é prova de irregularidade.
+
+**Perfil detalhado dos clientes:** Financeiro/Administrador pode selecionar um cliente e consultar quantidade de RVs, pedidos, CT-e, tipos de rotas, volume mensal, valores de fretes que foram efetivamente informados nos pedidos e detalhes clicáveis de RV/PF. **Valor do frete não significa valor faturado ou recebido.** Se um campo monetário estiver ausente, o sistema mostra “—” e não inventa zero. O agrupamento atual é por nome (até uma futura identificação estável do cliente).
+
+**Comparativos de períodos:** nova aba Comparativos, disponível para Operacional e Financeiro, com seleção de dia, semana ou mês e data de referência. Com backend ligado, o botão Consultar os dois períodos busca cada intervalo em \`/api/overview\`, sob as mesmas permissões do usuário. Dados financeiros só para Financeiro/Admin. Na demonstração, o comparativo trabalha exclusivamente com as amostras locais já incluídas no projeto. Valores ausentes e percentual de variação quando a base é zero aparecem como “—”.
+
+**Meu Painel:** o usuário pode escolher quais cartões aparecerão e alterar sua ordem usando setas. A seleção e a ordem são salvas no navegador por nome do usuário, papel e ambiente (demonstração ou backend corporativo), sem persistir dados de clientes ou viagens. Cartões financeiros nunca aparecem para Operacional.
+
+**Rotas e motoristas:** indicadores de viagens, pedidos, CT-e, placas distintas, origem/destino, quilômetros conhecidos e médias calculadas apenas a partir de registros que incluem quilômetros, com fichas clicáveis. Motoristas são vinculados pelos IDs fornecidos pelo DSS, evitando agrupar homônimos. Sem dados de GPS, tempo de condução ou jornada: métricas medem **volume de registros**, não desempenho humano ou produtividade trabalhista.
+
+### Arquivos e teste
+
+- \`src/intelligence.mjs\`: normalização de agrupamentos, pesquisa, comparativos, indicadores e métricas seguras.
+- \`src/intelligence-ui.mjs\`: interfaces e interações dos seis módulos, integrada em \`src/app.js\`.
+- \`src/operational.mjs\`: regras de alertas operacionais.
+- \`src/access-ui.mjs\`: acesso às telas por perfil.
+- \`tests/intelligence.test.mjs\` e \`tests/intelligence-ui.test.mjs\`: testes de cálculos, estados vazios, permissões e componentes.
+- \`.github/workflows/pages.yml\`: valida os novos módulos e publica apenas os arquivos estáticos, sem Basic Auth, senhas ou cadastro privado.
+
+A API DSS real continua sendo chamada **somente pelo backend autenticado**; o frontend não consulta diretamente \`/wsdss/docs\`. A configuração de HTTPS e o gerenciamento de usuários corporativos são documentados em [INTEGRACAO_DSS.md](INTEGRACAO_DSS.md).
