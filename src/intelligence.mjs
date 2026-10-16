@@ -172,9 +172,8 @@ export function dashboardMetrics(data,{financial=false}={}){
 export const DEFAULT_METRICS=['viagens','andamento','concluidas','pedidos','ctes','sem_rv','entregas','km'];
 export function normalizedLayout(saved,{financial=false}={}){
  const allowed=new Set(DASH_METRICS.filter(m=>financial||!m.financial).map(m=>m.id));
- const order=Array.isArray(saved)?saved.filter(x=>allowed.has(x)):[];
- const unique=[...new Set(order)];
- return unique.length?unique:DEFAULT_METRICS.filter(x=>allowed.has(x));
+ if(Array.isArray(saved))return [...new Set(saved.filter(x=>allowed.has(x)))];
+ return DEFAULT_METRICS.filter(x=>allowed.has(x));
 }
 export function reorderMetric(layout,id,direction,{financial=false}={}){
  const arr=normalizedLayout(layout,{financial}),i=arr.indexOf(id),j=i+direction;
