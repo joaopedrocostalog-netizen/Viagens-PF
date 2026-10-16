@@ -21,7 +21,7 @@ test('Status e categoria gera matriz RODO/LS a partir de registros DSS sem inven
  assert(html.includes('LS'));
  assert(html.includes('EM VIAGEM'));
  assert(html.includes('CONCLUÍDAS'));
- assert(html.includes('ALERTAS & PENDÊNCIAS'));
+ assert(html.includes('ALERTAS &amp; PENDÊNCIAS'));
  assert(!html.includes('R$ 5.100,00'),'Operação não exibe soma financeira');
 });
 test('Financeiro pode ver total de fretes, mas não rotula como recebimento',()=>{
