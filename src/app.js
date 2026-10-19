@@ -700,6 +700,17 @@ root.addEventListener('click',e=>{
   render();return;
  }
  const nav=e.target.closest('[data-nav]');if(nav){if(state.user?.mustChangePassword)return;if(!permittedView(state.role,nav.dataset.nav))return;state.view=nav.dataset.nav;state.clientSelected='';state.routeSelected='';state.driverSelected='';state.globalQuery='';state.search='';state.filter='todos';state.sortKey='';state.page=1;state.menu=false;state.selected=null;render();if(state.view==='administracao'&&state.permissions.admin)loadAdminUsers();return;}
+ const sorter=e.target.closest('[data-sort-metric]');
+ if(sorter){
+  const [kind,key]=(sorter.dataset.sortMetric||'').split(':');
+  const allowed={rotas:['name','count','km','kmPerTrip','vehicles','drivers'],motoristas:['name','trips','orders','ctes','km','kmPerTrip','routes']};
+  if(allowed[kind]?.includes(key)){
+   state.tableSort||={};
+   const prev=state.tableSort[kind];
+   state.tableSort[kind]={key,direction:prev?.key===key&&prev.direction==='desc'?'asc':'desc'};
+   render();
+  }return;
+ }
  const graphInterval=e.target.closest('[data-chart-interval]');if(graphInterval){state.chartInterval=graphInterval.dataset.chartInterval;render();return;}
  const detail=e.target.closest('[data-detail]');if(detail){state.selected=detail.dataset.detail;render();return;}
  const sort=e.target.closest('[data-sort]');if(sort){const k=sort.dataset.sort;state.sortDir=state.sortKey===k&&state.sortDir==='asc'?'desc':'asc';state.sortKey=k;state.page=1;render();return;}
