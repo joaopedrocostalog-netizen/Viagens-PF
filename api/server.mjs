@@ -345,6 +345,35 @@ const server=http.createServer(async(req,res)=>{
   if(!user.permissions.admin)return reply(res,403,{error:'Somente administradores podem consultar diagnósticos.'},origin);
   return reply(res,200,{status:'ok',configured:!!(base&&dssCredentialsReady()),lastSuccess:apiStats.lastSuccess,lastFailure:apiStats.lastFailure,counters:{...apiStats},cacheEntries:CACHE.size,cacheSeconds:cacheMaxAge/1000,periodStoreEnabled:periodStore.enabled,periodStoreType:env.MARIADB_ENABLED==='true'?'mariadb':env.DSS_PERIOD_CACHE_DIR?'file':'disabled'},origin);
  }
+ if(url.pathname==='/api/records'){
+  if(!user)return reply(res,401,{error:'Sessão inválida ou expirada'},origin);
+  if(user.mustChangePassword)return reply(res,403,{error:'Altere sua senha antes de consultar registros.'},origin);
+  if(!allowedRate(req))return reply(res,429,{error:'Muitas consultas. Tente novamente.'},origin);
+  const from=url.searchParams.get('from')||'',to=url.searchParams.get('to')||'',kind=url.searchParams.get('kind')||'viagens';
+  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(from)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(to)||from>to)return reply(res,400,{error:'Período inválido'},origin);
+  if(!['viagens','pedidos'].includes(kind))return reply(res,400,{error:'Tipo inválido'},origin);
+  const page=Math.max(1,Number.parseInt(url.searchParams.get('page')||'1',10)||1);
+  const size=Math.min(100,Math.max(1,Number.parseInt(url.searchParams.get('page_size')||'15',10)||15));
+  const search=String(url.searchParams.get('search')||'').trim().toLocaleLowerCase('pt-BR').slice(0,100);
+  const sortField=url.searchParams.get('sort')||'',sortDir=url.searchParams.get('direction')==='asc'?1:-1;
+  const permittedSort=kind==='viagens'?['data_inicio','nro_rv','cliente_nome','placa_veiculo']:['nro_pf','nro_cte','total_frete'];
+  if(sortField&&!permittedSort.includes(sortField))return reply(res,400,{error:'Ordenação inválida'},origin);
+  const months=monthWindows(from,to);
+  if(months.length>12)return reply(res,400,{error:'Selecione no máximo 12 meses'},origin);
+  const source=[];
+  for(const month of months){
+   const cachedMonth=await periodStore.read(month.from,month.to);
+   if(!cachedMonth)return reply(res,409,{error:'Dados deste período ainda não sincronizados. Use Atualizar dados da DSS.',missingPeriod:month},origin);
+   source.push(cachedMonth[kind]||[]);
+  }
+  // Primeiro aplicar projeção por perfil, antes de pesquisar, ordenar ou devolver registros.
+  const scoped=projectOverview({data:{viagens:kind==='viagens'?mergeDssRows(source,kind):[],pedidos:kind==='pedidos'?mergeDssRows(source,kind):[],ctes:[],mdfes:[],rotas:[],programacoes:[],ocorrencias:[],sources:{}}},user.role).data[kind];
+  let rows=scoped;
+  if(search)rows=rows.filter(record=>Object.values(record).some(v=>(typeof v==='string'||typeof v==='number')&&String(v).toLocaleLowerCase('pt-BR').includes(search)));
+  if(sortField)rows=[...rows].sort((a,b)=>{const x=a[sortField],y=b[sortField];return (String(x??'').localeCompare(String(y??''),'pt-BR',{numeric:true}))*sortDir;});
+  const total=rows.length,pages=Math.max(1,Math.ceil(total/size));
+  return reply(res,200,{kind,from,to,page:Math.min(page,pages),pageSize:size,total,pages,rows:rows.slice((Math.min(page,pages)-1)*size,Math.min(page,pages)*size),source:'cache'},origin,req.headers['accept-encoding']||'');
+ }
  if(url.pathname!=='/api/overview')return reply(res,404,{error:'Rota não encontrada'},origin);
  if(!user)return reply(res,401,{error:'Sessão inválida ou expirada'},origin);
  if(user.mustChangePassword)return reply(res,403,{error:'Altere sua senha provisória antes de consultar o DSS.',code:'PASSWORD_CHANGE_REQUIRED'},origin);
