@@ -87,3 +87,12 @@ Desative \`RENDER_FREE_BOOTSTRAP\`, use armazenamento persistente apropriado, se
 ## Consultas DSS intermitentes (outubro de 2026)
 
 Logs reais mostraram sucessos de 6–17 segundos com milhares de RVs/PFs, alternando com respostas que excedem 20 segundos. O backend agora reutiliza chamadas simultâneas **do mesmo período** e permite configurar timeout até 38 segundos. Para usar 32 segundos, no Render > Environment altere `DSS_TIMEOUT_MS=32000` e faça redeploy. O frontend tem limite próprio próximo de 45 segundos; não aumente acima de 38000. Períodos diferentes ainda geram consultas distintas e podem sobrecarregar o DSS. Em `Render > Logs`, verifique `[DSS] serviço viagens` e `[DSS] serviço pedidos`. O portal jamais deve mostrar dados de períodos distintos como se fossem atuais.
+
+
+## Integração /listarMotoristas
+
+O backend tenta consultar automaticamente `/listarMotoristas` no mesmo domínio DSS usando as credenciais já configuradas no Render. Essa consulta é opcional, não utiliza datas e não interrompe as viagens nem pedidos quando falha. Armazena em cache apenas a associação entre `motorista_id` e nome, durante 15 minutos; CPF e outros dados da resposta não são enviados ao portal.
+
+O formato exato da resposta ainda **não foi confirmado**. Pressupostos iniciais: HTTP GET, objeto contendo `registros`, identificador `motorista_id`, nome `motorista_nome`. Se o Swagger mostrar estrutura diferente, configure no Render `DSS_MOTORISTAS_PATH`, `DSS_MOTORISTAS_DATA_PATH`, `DSS_MOTORISTAS_ID_FIELD` e `DSS_MOTORISTAS_NAME_FIELD` de acordo com os campos reais. Se a operação exigir POST ou parâmetros, será necessário adaptar o código. Para desativar a consulta opcional temporariamente, configure `DSS_MOTORISTAS_PATH` com valor vazio no Render.
+
+Veja em **Render > Logs** a mensagem `[DSS] motoristas: catálogo atualizado` ou `[DSS] listarMotoristas indisponível`. Se houver divergência, envie somente o status HTTP e um exemplo da **estrutura sem dados pessoais**, não a resposta integral com CPF ou outros dados.
