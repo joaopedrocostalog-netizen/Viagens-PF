@@ -48,7 +48,7 @@ function config(name){
 }
 const cfg=Object.fromEntries(['viagens','pedidos','ctes','mdfes'].map(k=>[k,config(k)]));
 /** Catálogo opcional de motoristas. Uma falha aqui não invalida viagens/pedidos. */
-const driversPath=env.DSS_MOTORISTAS_PATH||'';
+const driversPath=env.DSS_MOTORISTAS_PATH??'/listarMotoristas';
 let driverCatalog={expires:0,items:[],status:'disabled'};
 async function driverNames(){
  if(!driversPath)return driverCatalog.items;
