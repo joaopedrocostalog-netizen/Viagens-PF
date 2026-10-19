@@ -425,3 +425,7 @@ body{background:#08090b;color:#f6f7f8}
 
 /* Dicas flutuantes podem ultrapassar a borda do cartão, sem serem cortadas. */
 .v-panel{overflow:visible}
+
+.ins-sort-head{background:none;border:0;color:#b4b7c3;font-size:inherit;font-weight:800;display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;padding:3px}
+.ins-sort-head span{color:#ff455b}
+.ins-sort-head:hover,.ins-sort-head:focus-visible{color:#fff;text-decoration:underline;text-decoration-color:#ff455b}
