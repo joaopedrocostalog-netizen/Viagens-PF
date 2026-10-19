@@ -26,8 +26,8 @@ export function createMariaDbPeriodStore({env=process.env,connect}={}){
    check(from,to);
    try{
     const db=await getPool();
-    const [rows]=await db.execute('SELECT payload_json, expires_at FROM '+TABLE+' WHERE period_from=? AND period_to=? LIMIT 1',[from,to]);
-    if(!rows.length||new Date(rows[0].expires_at).getTime()<=Date.now())return null;
+    const [rows]=await db.execute('SELECT payload_json FROM '+TABLE+' WHERE period_from=? AND period_to=? AND expires_at>UTC_TIMESTAMP() LIMIT 1',[from,to]);
+    if(!rows.length)return null;
     const payload=JSON.parse(rows[0].payload_json);
     if(!payload||typeof payload!=='object'||!Array.isArray(payload.viagens)||!Array.isArray(payload.pedidos))return null;
     return payload;
