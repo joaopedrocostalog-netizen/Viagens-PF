@@ -621,13 +621,8 @@ function exportAdvanced(type,format){
 }
 let refreshTimer=null;
 let identityEpoch=0;
-function activateRefresh(){
- if(refreshTimer)clearInterval(refreshTimer);
- return; // Modo manual
- if(state.autoRefresh>0)refreshTimer=setInterval(()=>{
-  // Atualização automática desativada: usuário controla as consultas.
- },state.autoRefresh*60000);
-}
+function activateRefresh(){if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null;}state.autoRefresh=0;}
+
 async function comparePeriods(){
  if(state.mode!=='live'||!state.apiUrl||!state.token){alert('Conecte a API DSS para comparar períodos reais.');return;}
  const start=Date.parse(state.from+'T12:00:00Z'),end=Date.parse(state.to+'T12:00:00Z');
@@ -780,7 +775,7 @@ root.addEventListener('change',e=>{
   return;
  }
  if(e.target.id==='from'){state.from=e.target.value>localToday()?localToday():e.target.value;if(state.from>state.to)state.to=state.from;state.page=1;render();}
- if(e.target.id==='to'){state.to=e.target.value>localToday()?localToday():e.target.value;if(state.to<state.from)state.from=state.to;state.page=1;if(state.mode==='live')loadData();else render();}
+ if(e.target.id==='to'){state.to=e.target.value>localToday()?localToday():e.target.value;if(state.to<state.from)state.from=state.to;state.page=1;render();}
  if(e.target.id==='compareCustom'){state.compareCustom=e.target.checked;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;}
  if(['compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo'].includes(e.target.id)){state[e.target.id]=e.target.value;state.compareCustom=true;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;}
  if(e.target.id==='compareAnchorInput'){
@@ -799,10 +794,10 @@ root.addEventListener('change',e=>{
  if(e.target.id==='filterPlate'){state.vehicle=e.target.value;state.page=1;render();}
  if(e.target.id==='filterType'){state.serviceType=e.target.value;state.page=1;render();}
  if(e.target.id==='sortDir'){state.sortDir=e.target.value;state.page=1;render();}
- if(e.target.id==='autoRefresh'){state.autoRefresh=Number(e.target.value);activateRefresh();render();}
+ if(e.target.id==='autoRefresh'){state.autoRefresh=0;activateRefresh();render();}
  if(e.target.id==='reportSelected'){state.reportSelected=e.target.value;render();}
  if(e.target.id==='reportMulti'){state.reportMulti=e.target.value==='all';render();}
- if(e.target.id==='savedPreset'&&e.target.value){const preset=state.presets[e.target.value];if(!preset)return;Object.assign(state,preset,{page:1,prevDataset:null});if(state.mode==='live')loadData();else render();}
+ if(e.target.id==='savedPreset'&&e.target.value){const preset=state.presets[e.target.value];if(!preset)return;Object.assign(state,preset,{page:1,prevDataset:null});render();}
  if(e.target.id==='quickPeriod'&&e.target.value){
   const now=new Date(),today=new Date(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()));
   const iso=x=>x.toISOString().slice(0,10);let from,to;
@@ -811,7 +806,7 @@ root.addEventListener('change',e=>{
   if(e.target.value==='this-year'){from=new Date(Date.UTC(now.getFullYear(),0,1));to=today;}
   if(e.target.value==='last-90'){from=new Date(today.getTime()-89*86400000);to=today;}
   state.from=iso(from);state.to=iso(to);state.page=1;state.prevDataset=null;
-  if(state.mode==='live')loadData();else render();
+  render();
  }
  if(e.target.dataset.columnToggle){
   const [view,key]=e.target.dataset.columnToggle.split(':'),old=state.hiddenColumns[view]||[];
