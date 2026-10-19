@@ -530,7 +530,7 @@ async function fetchPeriodComparison(){
  try{
   const get=async range=>{
    const url=state.apiUrl.replace(/\/$/,'')+'/api/overview?from='+range.from+'&to='+range.to;
-   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);
+   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),180000);
    try{
     const res=await fetch(url,{headers:{Authorization:'Bearer '+state.token},credentials:'omit',signal:controller.signal});
     if(!res.ok){let reason='HTTP '+res.status;try{reason=(await res.json()).error||reason;}catch{}throw Error(reason);}
@@ -577,7 +577,7 @@ async function loadData(){
  state.loading=true;state.connect=false;state.error='';render();
  try{
   const url=(state.apiUrl||window.location.origin).replace(/\/$/,'')+'/api/overview?from='+encodeURIComponent(state.from)+'&to='+encodeURIComponent(state.to);
-  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),45000);
+  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),180000);
   let response;try{response=await fetch(url,{headers:state.token?{'Authorization':'Bearer '+state.token}:{},credentials:'omit',signal:controller.signal});}finally{clearTimeout(timer);}
   if(!response.ok){let message='HTTP '+response.status;try{const b=await response.json();message=b.error||message;}catch{}
    if(response.status===401){clearSession();state.connect=true;message='Sessão encerrada ou expirada. Entre novamente com seu usuário e sua senha do portal.';}
@@ -590,7 +590,7 @@ async function loadData(){
  }catch(err){
   if(epoch!==identityEpoch && state.token)return;
   const alreadyLive=state.mode==='live';if(!alreadyLive){state.mode='demo';state.dataset=demo;}
-  state.error='API indisponível: '+(err.name==='AbortError'?'tempo limite de 45 segundos':err.message)+(alreadyLive?'. Dados anteriores mantidos.':'. Exibindo somente dados fictícios.');
+  state.error='API indisponível: '+(err.name==='AbortError'?'tempo limite de 180 segundos':err.message)+(alreadyLive?'. Dados anteriores mantidos.':'. Exibindo somente dados fictícios.');
  }finally{if(epoch===identityEpoch || !state.token){state.loading=false;render();}}
 }
 
