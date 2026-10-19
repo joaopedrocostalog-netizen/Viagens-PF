@@ -588,27 +588,67 @@ function exportCsv(which){
  const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='costalog_'+name+'_'+state.from+'_'+state.to+(state.mode==='demo'?'_DEMO':'')+'.csv';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);
 }
 function parseCsv(content){const text=content.replace(/^\uFEFF/,'').replace(/\r/g,'');const rows=text.split('\n').filter(x=>x.trim());if(rows.length<2)return [];const sep=rows[0].includes(';')?';':',';function parseLine(l){const out=[];let token='',quoted=false;for(let i=0;i<l.length;i++){const c=l[i];if(c==='"'&&l[i+1]==='"'&&quoted){token+='"';i++;}else if(c==='"'){quoted=!quoted;}else if(c===sep&&!quoted){out.push(token);token='';}else token+=c;}out.push(token);return out;}const headers=parseLine(rows.shift()).map(normalKey);return rows.map((l,i)=>{const fields=parseLine(l);const v={};headers.forEach((h,j)=>v[h]=fields[j]||'');return normalizeMdfe(v,i);}).filter(x=>x.numero!=='—');}
+// Carrega mês a mês: evita respostas de 80 mil registros em uma única conexão HTTP.
+function splitMonths(from,to){
+ const result=[];let y=Number(from.slice(0,4)),m=Number(from.slice(5,7));
+ while(y<Number(to.slice(0,4))||(y===Number(to.slice(0,4))&&m<=Number(to.slice(5,7)))){
+  const first=[y,String(m).padStart(2,'0'),'01'].join('-');
+  const last=new Date(Date.UTC(y,m,0)).toISOString().slice(0,10);
+  result.push({from:result.length?first:from,to:last<to?last:to});
+  if(result.length>12)throw Error('Selecione no máximo 12 meses.');
+  if(++m===13){m=1;y++;}
+ }
+ return result;
+}
+async function fetchDssWindow(range,token){
+ const url=(state.apiUrl||window.location.origin).replace(/\\/$/,'')+'/api/overview?from='+encodeURIComponent(range.from)+'&to='+encodeURIComponent(range.to);
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),90000);
+ try{
+  const response=await fetch(url,{headers:{Authorization:'Bearer '+token},credentials:'omit',signal:controller.signal});
+  if(!response.ok){
+   let message=response.status===502?'HTTP 502 no período '+range.from+' a '+range.to:'HTTP '+response.status;
+   try{const b=await response.json();message=b.error||message;}catch{}
+   if(response.status===401)throw Error('Sessão expirada. Entre novamente no portal.');
+   throw Error(message);
+  }
+  const body=await response.json();
+  if(!body?.data||!Array.isArray(body.data.viagens)||!Array.isArray(body.data.pedidos))throw Error('Resposta DSS incompleta em '+range.from+' a '+range.to);
+  return body;
+ }finally{clearTimeout(timer);}
+}
 async function loadData(){
  const epoch=identityEpoch;
- if(!state.token){state.connect=true;state.loading=false;state.error='Faça login com seu usuário do portal para consultar os dados do DSS.';render();return;}
+ if(!state.token){state.connect=true;state.loading=false;state.error='Faça login para consultar a DSS.';render();return;}
+ const requestFrom=state.from,requestTo=state.to,token=state.token;
  state.loading=true;state.connect=false;state.error='';render();
  try{
-  const url=(state.apiUrl||window.location.origin).replace(/\/$/,'')+'/api/overview?from='+encodeURIComponent(state.from)+'&to='+encodeURIComponent(state.to);
-  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),180000);
-  let response;try{response=await fetch(url,{headers:state.token?{'Authorization':'Bearer '+state.token}:{},credentials:'omit',signal:controller.signal});}finally{clearTimeout(timer);}
-  if(!response.ok){let message=response.status===502?'HTTP 502: falha na consulta DSS ou no proxy do Render. Consulte os logs no mesmo horário.':'HTTP '+response.status;try{const b=await response.json();message=b.error||message;}catch{}
-   if(response.status===401){clearSession();state.connect=true;message='Sessão encerrada ou expirada. Entre novamente com seu usuário e sua senha do portal.';}
-   else if(response.status===503){message='O backend precisa ser configurado no servidor privado: '+message;}
-   throw new Error(message);}
-  const data=await response.json();
-  if(epoch!==identityEpoch)return;
-  if(!data||!data.data)throw new Error('Formato de resposta desconhecido');
-  state.dataset=normalizePayload(data);state.loadedRange={from:state.from,to:state.to};state.mode='live';state.error='';state.page=1;state.comparison=null;state.lastSync=data.updatedAt||new Date().toISOString();state.prevDataset=null;
+  const windows=splitMonths(requestFrom,requestTo),results=new Array(windows.length);
+  // Máximo duas requisições simultâneas, evitando sobrecarregar o DSS/Render Free.
+  let next=0;
+  const worker=async()=>{
+   while(next<windows.length){
+    const index=next++;
+    results[index]=await fetchDssWindow(windows[index],token);
+   }
+  };
+  await Promise.all(Array.from({length:Math.min(2,windows.length)},worker));
+  if(epoch!==identityEpoch||state.from!==requestFrom||state.to!==requestTo)return;
+  // Só substitui os dados depois que TODOS os meses forem recebidos com sucesso.
+  const data={mode:'live',updatedAt:new Date().toISOString(),data:{
+   viagens:results.flatMap(x=>x.data.viagens||[]),pedidos:results.flatMap(x=>x.data.pedidos||[]),
+   ctes:results.flatMap(x=>x.data.ctes||[]),mdfes:results.flatMap(x=>x.data.mdfes||[]),
+   rotas:results.flatMap(x=>x.data.rotas||[]),programacoes:results.flatMap(x=>x.data.programacoes||[]),
+   ocorrencias:results.flatMap(x=>x.data.ocorrencias||[]),
+   sources:results.reduce((acc,x)=>({...acc,...x.data.sources}),{})
+  }};
+  state.dataset=normalizePayload(data);state.loadedRange={from:requestFrom,to:requestTo};state.mode='live';state.error='';
+  state.page=1;state.comparison=null;state.lastSync=data.updatedAt;state.prevDataset=null;
  }catch(err){
-  if(epoch!==identityEpoch && state.token)return;
-  const alreadyLive=state.mode==='live';if(!alreadyLive){state.mode='demo';state.dataset=demo;state.loadedRange=null;}
-  state.error='API indisponível: '+(err.name==='AbortError'?'tempo limite de 180 segundos':err.message)+(alreadyLive?'. Dados anteriores mantidos.':'. Exibindo somente dados fictícios.');
- }finally{if(epoch===identityEpoch || !state.token){state.loading=false;render();}}
+  if(epoch!==identityEpoch)return;
+  const alreadyLive=state.mode==='live';
+  if(!alreadyLive){state.mode='demo';state.dataset=demo;state.loadedRange=null;}
+  state.error='API indisponível: '+(err.name==='AbortError'?'tempo limite na consulta mensal':err.message)+(alreadyLive?'. Dados anteriores mantidos.':'. Exibindo somente dados fictícios.');
+ }finally{if(epoch===identityEpoch){state.loading=false;render();}}
 }
 
 function exportAdvanced(type,format){
