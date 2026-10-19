@@ -36,8 +36,13 @@ export function renderGlobalSearch(state,data){
  '</div>':q?'<p class="ins-hint">Digite pelo menos dois caracteres.</p>':'')+'</section>';
 }
 const metricDescription={km:'Somente quilômetros informados pelo DSS',fretes:'Soma de fretes dos pedidos, não valor recebido',abastecimento:'Custo parcial de abastecimento, não lucro',sem_rv:'RV não localizada entre as viagens consultadas',fatura:'Não implica inadimplência'};
+let cachedDashboardMetrics=null;
 export function renderCustomDashboard(data,state){
- const metrics=dashboardMetrics(data,{financial:!!state.permissions.financeiro});
+ const financial=!!state.permissions.financeiro;
+ if(!cachedDashboardMetrics||cachedDashboardMetrics.data!==data||cachedDashboardMetrics.financial!==financial){
+  cachedDashboardMetrics={data,financial,metrics:dashboardMetrics(data,{financial})};
+ }
+ const metrics=cachedDashboardMetrics.metrics;
  const visible=normalizedLayout(state.metricLayout,{financial:!!state.permissions.financeiro});
  const byId=new Map(metrics.map(m=>[m.id,m]));
  const options=metrics.map(m=>'<label class="ins-metric-option"><input type="checkbox" data-metric-toggle="'+m.id+'" '+(visible.includes(m.id)?'checked':'')+'> '+esc(m.label)+'</label>').join('');
