@@ -1,5 +1,5 @@
 import {renderGlobalSearch,renderCustomDashboard,renderCustomerProfiles,renderDriverRouteDetails,renderAlertsHub,renderComparison} from './intelligence-ui.mjs';
-import {normalizedLayout,reorderMetric,comparisonWindows} from './intelligence.mjs';
+import {normalizedLayout,reorderMetric,comparisonWindows,subsetPeriod} from './intelligence.mjs';
 import {renderHero,renderSummary,renderCharts,renderTripsHeader,renderReportsHeader} from './visual-dashboard.mjs';
 import {resolvePortalApi} from './site-config.mjs';
 import {renderUsersManagement,renderForcePasswordChange} from './admin-users.mjs';
@@ -538,7 +538,11 @@ async function fetchPeriodComparison(){
     return normalizePayload(await res.json());
    }finally{clearTimeout(timer);}
   };
-  const [current,previous]=await Promise.all([get(windows.current),get(windows.previous)]);
+  // Reutilizar somente dados reais cujo intervalo completo foi carregado com sucesso.
+  // Nunca tratar dados de uma consulta parcial ou antiga como cobertura completa.
+  const covered=range=>state.loadedRange&&state.loadedRange.from<=range.from&&state.loadedRange.to>=range.to&&state.mode==='live';
+  const getOrReuse=range=>covered(range)?Promise.resolve(subsetPeriod(state.dataset,range)):get(range);
+  const [current,previous]=await Promise.all([getOrReuse(windows.current),getOrReuse(windows.previous)]);
   if(seq!==comparisonSeq||identity!==identityEpoch||state.compareInterval!==interval||state.compareAnchor!==anchor)return;
   const matches=r=>(!state.customer||r.cliente===state.customer)&&(!state.vehicle||r.placa===state.vehicle);
   const filter=d=>{
@@ -587,10 +591,10 @@ async function loadData(){
   const data=await response.json();
   if(epoch!==identityEpoch)return;
   if(!data||!data.data)throw new Error('Formato de resposta desconhecido');
-  state.dataset=normalizePayload(data);state.mode='live';state.error='';state.page=1;state.comparison=null;state.lastSync=data.updatedAt||new Date().toISOString();state.prevDataset=null;
+  state.dataset=normalizePayload(data);state.loadedRange={from:state.from,to:state.to};state.mode='live';state.error='';state.page=1;state.comparison=null;state.lastSync=data.updatedAt||new Date().toISOString();state.prevDataset=null;
  }catch(err){
   if(epoch!==identityEpoch && state.token)return;
-  const alreadyLive=state.mode==='live';if(!alreadyLive){state.mode='demo';state.dataset=demo;}
+  const alreadyLive=state.mode==='live';if(!alreadyLive){state.mode='demo';state.dataset=demo;state.loadedRange=null;}
   state.error='API indisponível: '+(err.name==='AbortError'?'tempo limite de 180 segundos':err.message)+(alreadyLive?'. Dados anteriores mantidos.':'. Exibindo somente dados fictícios.');
  }finally{if(epoch===identityEpoch || !state.token){state.loading=false;render();}}
 }
