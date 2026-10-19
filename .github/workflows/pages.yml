@@ -32,6 +32,7 @@ jobs:
           node --check api/render-bootstrap.mjs
           node --check api/dss-periods.mjs
           node --check api/period-store.mjs
+          node --check api/mariadb-store.mjs
           node --check api/server.mjs
           node --check api/auth.mjs
           node --check api/access.mjs
