@@ -353,7 +353,8 @@ const server=http.createServer(async(req,res)=>{
  if(!dssCredentialsReady())return reply(res,503,{error:'Basic Auth do DSS não configurado no backend. Informe DSS_USERNAME e DSS_PASSWORD no arquivo .env privado.'},origin);
  const from=url.searchParams.get('from')||'',to=url.searchParams.get('to')||'';
  if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)return reply(res,400,{error:'Intervalo de datas inválido'},origin);
- const forceRefresh=url.searchParams.get('refresh')==='1';
+ const refreshMode=url.searchParams.get('refresh')||'';
+ const forceRefresh=refreshMode==='1'||refreshMode==='recent';
  const cacheKey=from+'|'+to+(forceRefresh?'|refresh':'');
  const cached=forceRefresh?null:cacheGet(cacheKey);
  if(cached){apiStats.cached++;return reply(res,200,projectOverview({...cached,cacheHit:true},user.role),origin,req.headers['accept-encoding']||'');}
@@ -369,7 +370,11 @@ const server=http.createServer(async(req,res)=>{
    for(let offset=0;offset<windows.length;offset+=3){
     const batch=windows.slice(offset,offset+3);
     const results=await Promise.all(batch.map(async window=>{
-     let result=forceRefresh?null:await periodStore.read(window.from,window.to);
+     // Modo incremental: períodos encerrados anteriores aos dois meses mais recentes usam cache,
+     // quando disponível. Meses recentes sempre buscam a DSS.
+     const recentBoundary=new Date(Date.UTC(Number(to.slice(0,4)),Number(to.slice(5,7))-2,1)).toISOString().slice(0,10);
+     const refreshWindow=refreshMode==='1'||(refreshMode==='recent'&&window.to>=recentBoundary);
+     let result=refreshWindow?null:await periodStore.read(window.from,window.to);
      if(result){
       console.info('[DSS] mês reutilizado do cache privado',window.from,window.to);
      }else{
