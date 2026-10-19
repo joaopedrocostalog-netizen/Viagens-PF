@@ -183,8 +183,9 @@ function scoped(){
  const pedidos=d.pedidos.filter(p=>inRange(p.data)&&matches(p)&&(!state.serviceType||p.tipoServico===state.serviceType));
  const ctes=d.ctes.filter(c=>inRange(c.data)&&matches(c)&&(!state.serviceType||c.tipoServico===state.serviceType));
  const mdfes=d.mdfes.filter(x=>inRange(x.data)&&(!state.vehicle||x.placa===state.vehicle));
+ const ocorrencias=(d.ocorrencias||[]).filter(x=>inRange(x.data)&&(!state.vehicle||x.placa===state.vehicle));
  if(state.serviceType)viagens=viagens.filter(v=>pedidos.some(p=>p.viagemId===v.id));
- return {viagens,allViagens:d.viagens,ctes,pedidos,mdfes,sources:d.sources};
+ return {viagens,allViagens:d.viagens,ctes,pedidos,mdfes,ocorrencias,sources:d.sources};
 }
 function totals(data){
  const trips=data.viagens;const ctes=data.ctes;
@@ -197,8 +198,8 @@ function totals(data){
  const mismatched=data.sources.mdfes?data.mdfes.filter(m=>m.viagemId&&!data.allViagens.some(t=>t.id===m.viagemId)):null;
  return {revenue:revenueKnown.length?revenue:null,cost:costsKnown.length?cost:null,profit:completeMoney?revenue-cost:null,margin:completeMoney&&revenue?pct((revenue-cost)/revenue*100):'—',orphan,mismatched,linked,completeMoney,revenueCount:revenueKnown.length,costCount:costsKnown.length};
 }
-const navItems=[['painel','home','Painel geral'],['graficos','chart','Visão gráfica'],['comparativos','chart','Comparativos'],['viagens','truck','Viagens / RV'],['ctes','doc','Pedidos / CT-e'],['entregas','doc','Entregas'],['pendencias','shield','Pendências'],['rotas','chart','Rotas'],['veiculos','truck','Frota'],['motoristas','home','Motoristas'],['mdfes','shield','MDF-e'],['relatorios','doc','Relatórios'],['faturamento','doc','Faturamento'],['clientes','chart','Clientes / Fretes'],['analises','chart','Análises financeiras'],['administracao','cog','Administração'],['integracoes','cog','Integração DSS']];
-const tabs=[['painel','Painel'],['viagens','Viagens'],['ctes','Pedidos / CT-e'],['entregas','Entregas'],['pendencias','Pendências'],['rotas','Rotas'],['veiculos','Frota'],['motoristas','Motoristas'],['mdfes','MDF-e'],['relatorios','Relatórios'],['faturamento','Faturamento'],['clientes','Clientes'],['analises','Análises financeiras'],['administracao','Administração'],['integracoes','Integração']];
+const navItems=[['painel','home','Painel geral'],['graficos','chart','Visão gráfica'],['comparativos','chart','Comparativos'],['viagens','truck','Viagens / RV'],['ctes','doc','Pedidos / CT-e'],['entregas','doc','Entregas'],['pendencias','shield','Pendências'],['rotas','chart','Rotas'],['veiculos','truck','Frota'],['motoristas','home','Motoristas'],['ocorrencias','shield','Ocorrências'],['mdfes','shield','MDF-e'],['relatorios','doc','Relatórios'],['faturamento','doc','Faturamento'],['clientes','chart','Clientes / Fretes'],['analises','chart','Análises financeiras'],['administracao','cog','Administração'],['integracoes','cog','Integração DSS']];
+const tabs=[['painel','Painel'],['viagens','Viagens'],['ctes','Pedidos / CT-e'],['entregas','Entregas'],['pendencias','Pendências'],['rotas','Rotas'],['veiculos','Frota'],['motoristas','Motoristas'],['ocorrencias','Ocorrências'],['mdfes','MDF-e'],['relatorios','Relatórios'],['faturamento','Faturamento'],['clientes','Clientes'],['analises','Análises financeiras'],['administracao','Administração'],['integracoes','Integração']];
 function button(action,label,extra){return '<button type="button" class="btn '+(extra||'')+'" data-action="'+action+'">'+label+'</button>';}
 function render(){
  state.view=safeView(state.role,state.view);
@@ -234,12 +235,20 @@ function render(){
 function renderFilters(){
  if(state.view==='integracoes')return '';
  return '<div class="filters"><div class="filter"><label for="from">De</label><input class="control" id="from" type="date" max="'+localToday()+'" value="'+attr(state.from)+'"></div><div class="filter"><label for="to">Até</label><input class="control" id="to" type="date" max="'+localToday()+'" value="'+attr(state.to)+'"></div>'+
- (['viagens','ctes','clientes','mdfes',...ADVANCED_VIEWS].includes(state.view)?'<div class="filter grow"><label for="searchInput">Buscar registros</label><input id="searchInput" class="control full" type="search" placeholder="Número, placa, cliente ou situação..." value="'+attr(state.search)+'"></div>':'')+
+ (['viagens','ctes','clientes','mdfes','ocorrencias',...ADVANCED_VIEWS].includes(state.view)?'<div class="filter grow"><label for="searchInput">Buscar registros</label><input id="searchInput" class="control full" type="search" placeholder="Número, placa, cliente ou situação..." value="'+attr(state.search)+'"></div>':'')+
  (['viagens','ctes','mdfes'].includes(state.view)?'<div class="filter"><label for="statusFilter">Situação</label><select id="statusFilter" class="control"><option value="todos">Todas</option><option value="vinculado" '+(state.filter==='vinculado'?'selected':'')+'>Vinculados</option><option value="pendente" '+(state.filter==='pendente'?'selected':'')+'>Sem vínculo</option></select></div>':'')+
  (state.mode==='live'&&!PUBLIC_DEMO?'<div class="filter"><label>Consulta DSS</label><button type="button" class="btn btn-red" data-action="refresh" '+(state.loading?'disabled':'')+'>'+(state.loading?'Consultando DSS...':'Atualizar dados da DSS')+'</button></div>':'')+
  '</div>';
 }
 function kpi(label,value,sub,cl){return '<article class="kpi"><div class="kpi-label">'+label+'</div><div class="kpi-value '+(cl||'')+'">'+value+'</div><div class="kpi-sub">'+sub+'</div></article>';}
+function renderOcorrencias(d){
+ const all=d.ocorrencias||[],q=String(state.search||'').toLocaleLowerCase('pt-BR');
+ const rows=all.filter(o=>!q||[o.id,o.data,o.placa,o.descricao,o.tipo,o.relato,o.status,o.envolvido].some(x=>String(x||'').toLocaleLowerCase('pt-BR').includes(q))).slice(0,300);
+ return '<section class="ins-module"><h2>OCORRÊNCIAS INTERNAS DSS</h2><p>Registros de motoristas e veículos no período consultado. Até 300 resultados por página de visualização.</p>'+
+ (rows.length?'<div class="ins-responsive-table"><table><thead><tr><th>Data</th><th>ID</th><th>Placa</th><th>Tipo</th><th>Descrição / relato</th><th>Status</th><th>Providência</th></tr></thead><tbody>'+
+ rows.map(o=>'<tr><td>'+esc(o.data)+'</td><td>'+esc(o.id)+'</td><td>'+esc(o.placa)+'</td><td>'+esc(o.tipo)+'</td><td>'+esc(o.descricao||o.relato)+'</td><td>'+esc(o.status)+'</td><td>'+esc(o.providencia)+'</td></tr>').join('')+'</tbody></table></div>':
+ '<p class="help">Nenhuma ocorrência carregada. A consulta complementar é feita apenas para períodos de até um mês e pode estar indisponível na DSS.</p>')+'</section>';
+}
 function renderView(d,s){
  if(state.view==='painel')return renderCustomDashboard(d,state)+renderSummary(d,{financeiro:state.permissions.financeiro,mode:state.mode,from:state.from,to:state.to,showCards:false});
  if(state.view==='comparativos')return renderComparison(d,state);
@@ -249,6 +258,7 @@ function renderView(d,s){
  if(state.view==='clientes')return renderCustomerProfiles(d,state);
  if(state.view==='mdfes')return renderMdfes(d,s);
  if(state.view==='pendencias')return renderAlertsHub(d,state);
+ if(state.view==='ocorrencias')return renderOcorrencias(d);
  if(state.view==='rotas'||state.view==='motoristas')return renderDriverRouteDetails(d,state,state.view);
  if(state.view==='relatorios')return renderReportsHeader(d,{financeiro:state.permissions.financeiro,interval:state.chartInterval})+renderReportHub(d,state);
  if(state.view==='administracao'&&state.permissions.admin)return renderUsersManagement(state.adminUsers,state.adminUsersLoading,state.adminUsersError)+(PUBLIC_DEMO?'<p class="help">Demonstração: contas e senhas ficam somente neste navegador. Sem dados reais.</p>':'<p class="help">Os dados DSS são consultados automaticamente após o login e ao alterar as datas. A configuração da API é feita somente no servidor.</p>');
