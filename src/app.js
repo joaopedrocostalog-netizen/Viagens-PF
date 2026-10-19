@@ -338,8 +338,10 @@ function paginate(list){const pageCount=Math.max(1,Math.ceil(list.length/15));st
 function paging(p){return '<div class="pagination"><span>'+number(p.total)+' registros · Página '+state.page+' de '+p.pages+'</span><div class="pagination-actions"><button class="btn btn-sm" data-action="prev" '+(state.page<=1?'disabled':'')+'>Anterior</button><button class="btn btn-sm" data-action="next" '+(state.page>=p.pages?'disabled':'')+'>Próxima</button></div></div>';}
 function renderViagens(d,s){
  let rows=searchRows(d.viagens);
- if(state.filter==='vinculado')rows=rows.filter(v=>d.ctes.some(c=>c.viagemId===v.id)||d.mdfes.some(m=>m.viagemId===v.id));
- if(state.filter==='pendente')rows=rows.filter(v=>!d.ctes.some(c=>c.viagemId===v.id)&&!d.mdfes.some(m=>m.viagemId===v.id));
+ if(state.filter==='vinculado'||state.filter==='pendente'){
+  const connectedIds=new Set([...d.ctes,...d.mdfes].map(x=>x.viagemId).filter(Boolean));
+  rows=rows.filter(v=>state.filter==='vinculado'?connectedIds.has(v.id):!connectedIds.has(v.id));
+ }
  const cols=[
   {key:'numero',label:'Nº RV',detail:'viagens'},{key:'data',label:'Início',format:'date'},{key:'dataTermino',label:'Término',format:'date'},
   {key:'cliente',label:'Cliente'},{key:'placa',label:'Placa'},{key:'motoristaId',label:'Motorista ID'},
@@ -410,7 +412,21 @@ function renderDrawer(d){
  const secureKeys=new Set(['custo','receita','abastecimento','custoAbastecimentoKm','adiantamento','proventos','liquido','valor','valorReceber','valorAverbacao','valorIcmsIss','freteSemIcms','valorMercadorias','numeroFatura','liberadoFaturamento','statusPagamentoSaldo','dataPagamentoSaldo','contratoVf']);
  const rows=Object.entries(item).filter(([k])=>!['id','isCte'].includes(k)&&(state.permissions.financeiro||!secureKeys.has(k))).map(([k,v])=>'<div class="detail-line"><span>'+esc(({numero:'Número',data:'Data',cliente:'Cliente',abastecimento:'Abastecimento (R$)',nroMdf:'MDF-e informado',rvReferencia:'RV referenciada',pedidoNumero:'Pedido de frete',cteNumero:'Número CT-e',placa:'Placa',origem:'Origem',destino:'Destino',receita:'Receita',custo:'Custo',status:'Situação',viagemId:'Viagem',valor:'Valor',chave:'Chave CT-e'}[k]||k))+'</span><b>'+(['receita','custo','valor'].includes(k)?money(v):k==='data'?dateBR(v):esc(v===null||v===''?'—':v))+'</b></div>').join('');
  let related='';
- if(kind==='viagens'){const cs=d.ctes.filter(c=>c.viagemId===id),ms=d.mdfes.filter(m=>m.viagemId===id);related='<h3 class="drawer-section">Documentos relacionados</h3><p class="help">CT-e identificados: '+cs.map(x=>esc(x.numero)).join(', ')+(cs.length?'':'nenhum')+'</p><p class="help">MDF-e vinculados: '+ms.map(x=>esc(x.numero)).join(', ')+(ms.length?'':'nenhum')+'</p>';}
+ if(kind==='viagens'){
+  const cs=d.ctes.filter(c=>c.viagemId===id),ms=d.mdfes.filter(m=>m.viagemId===id),orders=d.pedidos.filter(p=>p.viagemId===id);
+  // Ocorrências não possuem RV no schema DSS: placa + intervalo é somente contexto, nunca vínculo confirmado.
+  const incidents=(d.ocorrencias||[]).filter(o=>item.placa&&o.placa===item.placa&&o.data&&item.data&&o.data>=item.data&&o.data<=(item.dataTermino||item.data)).slice(0,20);
+  related='<h3 class="drawer-section">Visão 360° da viagem</h3>'+
+   '<p class="help">Motorista: '+esc(item.motoristaNome||item.motoristaId||'Não informado')+' · Veículo: '+esc(item.placa||'Não informado')+'</p>'+
+   '<p class="help">Trajeto: '+esc(item.origem||'—')+' → '+esc(item.destino||'—')+'</p>'+
+   '<p class="help">KM previsto: '+esc(item.kmPrevisto??'—')+' · KM rodado: '+esc(item.kmRodados??'—')+'</p>'+
+   '<h3 class="drawer-section">Documentos vinculados</h3>'+
+   '<p class="help">Pedidos de frete: '+orders.length+' · '+orders.slice(0,15).map(p=>esc(p.numero)).join(', ')+'</p>'+
+   '<p class="help">CT-e identificados: '+cs.map(x=>esc(x.numero)).join(', ')+(cs.length?'':'nenhum')+'</p>'+
+   '<p class="help">MDF-e vinculados: '+ms.map(x=>esc(x.numero)).join(', ')+(ms.length?'':'nenhum')+'</p>'+
+   '<h3 class="drawer-section">Ocorrências da mesma placa no intervalo</h3>'+
+   '<p class="help">Contexto por placa e data — não confirma relação com esta viagem: '+(incidents.length?incidents.map(o=>esc(o.data)+' · '+esc(o.descricao||o.tipo||o.status||'Ocorrência')).join(' | '):'nenhuma encontrada nos dados carregados')+'</p>';
+ }
  return '<div class="overlay" data-action="close-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Detalhes do registro"><div class="drawer-top"><h2>Detalhes · '+esc(item.numero)+'</h2>'+button('close',icon('close'),'btn-sm')+'</div>'+rows+related+'</aside></div>';
 }
 function renderConnect(){
@@ -606,7 +622,7 @@ function splitMonths(from,to){
 }
 async function fetchDssWindow(range,token){
  // O botão Atualizar deve ir à DSS mesmo que o MariaDB tenha uma cópia válida.
- const url=(state.apiUrl||window.location.origin).replace(/\/$/,'')+'/api/overview?from='+encodeURIComponent(range.from)+'&to='+encodeURIComponent(range.to)+'&refresh=1';
+ const url=(state.apiUrl||window.location.origin).replace(/\/$/,'')+'/api/overview?from='+encodeURIComponent(range.from)+'&to='+encodeURIComponent(range.to)+'&refresh=recent';
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),90000);
  try{
   const response=await fetch(url,{headers:{Authorization:'Bearer '+token},credentials:'omit',signal:controller.signal});
