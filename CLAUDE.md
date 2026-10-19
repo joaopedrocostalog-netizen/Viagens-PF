@@ -52,3 +52,11 @@
 - O backend renova os **dois meses mais recentes do intervalo solicitado** e tenta aproveitar períodos anteriores do cache privado/MariaDB. Se não houver cache, consulta a DSS normalmente. Uma atualização histórica integral pode continuar sendo solicitada com `refresh=1` pela API autorizada. O cache não significa sincronização em tempo real.
 - Ao abrir detalhes de uma viagem, a interface exibe dados da RV, documentos/pedidos vinculados e ocorrências que coincidem por **placa e período**; estas são apenas contexto, não vínculo comprovado. Valores financeiros continuam condicionados ao perfil de acesso.
 - A tabela de viagens já pagina no navegador em grupos de 15 registros. **Paginação server-side real ainda não foi implementada**; isso exigirá endpoints adicionais com autorização, filtros e contagens consistentes, sem quebrar relatórios completos.
+
+
+## Paginação de registros no backend (implementação inicial)
+
+- Endpoint privado `GET /api/records?kind=viagens&from=2026-10-01&to=2026-10-19&page=1&page_size=15&search=texto&sort=data_inicio&direction=desc`. Também suporta `kind=pedidos`.
+- Requer o token do portal e respeita projeção dos campos de cada perfil. Páginas de 1 a 100 registros, total de registros e páginas. Busca e ordenação executadas no servidor **sobre dados mensais já sincronizados**.
+- Retorna HTTP 409 se um mês do intervalo ainda não estiver no armazenamento persistente. Não consulta a DSS automaticamente, preservando atualização manual.
+- A interface ainda usa o carregamento completo do `/api/overview` para relatórios, métricas e gráficos. A troca da tabela para a paginação do backend deve ser feita gradualmente, garantindo coerência dos filtros, detalhes e permissões; **não anunciar paginação integral do site até essa segunda etapa**.
