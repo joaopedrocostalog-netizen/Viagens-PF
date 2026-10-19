@@ -29,6 +29,7 @@ jobs:
           node --check src/site-config.mjs
           node --check src/intelligence.mjs
           node --check src/intelligence-ui.mjs
+          node --check api/render-bootstrap.mjs
           node --check api/server.mjs
           node --check api/auth.mjs
           node --check api/access.mjs
