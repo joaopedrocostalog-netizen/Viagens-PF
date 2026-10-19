@@ -245,3 +245,8 @@ As seguintes melhorias foram integradas diretamente às telas COSTALOG, mantendo
 - \`.github/workflows/pages.yml\`: valida os novos módulos e publica apenas os arquivos estáticos, sem Basic Auth, senhas ou cadastro privado.
 
 A API DSS real continua sendo chamada **somente pelo backend autenticado**; o frontend não consulta diretamente \`/wsdss/docs\`. A configuração de HTTPS e o gerenciamento de usuários corporativos são documentados em [INTEGRACAO_DSS.md](INTEGRACAO_DSS.md).
+
+
+### Teste DSS no Render Free
+
+Confira [RENDER_FREE.md](RENDER_FREE.md) para criar o Web Service Node, configurar a senha privada do administrador temporário, verificar `/api/health`, consultar o DSS e conectar o GitHub Pages somente após a validação. O Render Free **não** conserva contas e senhas após a perda do disco efêmero.
