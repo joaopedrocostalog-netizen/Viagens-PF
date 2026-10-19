@@ -51,7 +51,7 @@ function config(name){
 const cfg=Object.fromEntries(['viagens','pedidos','ctes','mdfes'].map(k=>[k,config(k)]));
 /** Catálogo opcional de motoristas. Uma falha aqui não invalida viagens/pedidos. */
 const driversPath=env.DSS_MOTORISTAS_PATH??'/listarMotoristas';
-const optionalCatalogs=[{name:'rotas',path:env.DSS_ROTAS_PATH??'/listarRotas',fields:['rota_id','km_previsto_rota','dsc_rota','cidade_origem_rota','cidade_destino_rota']},
+const optionalCatalogs=[{name:'ocorrencias',path:env.DSS_OCORRENCIAS_PATH??'/listarOcorrencias',fields:['ocorrencia_id','data_ocorrencia','descricao','veiculo_id','placa_veiculo','ocorrencia_de','relato','causa_raiz','providencia_tomada','responsavel_atendimento','envolvido','data','status']},{name:'rotas',path:env.DSS_ROTAS_PATH??'/listarRotas',fields:['rota_id','km_previsto_rota','dsc_rota','cidade_origem_rota','cidade_destino_rota']},
  {name:'programacoes',path:env.DSS_PROGRAMACOES_PATH??'/listarProgramacoes',fields:['programacao_id','nro_programacao','rv_id','nro_rv','pf_id','motorista_id','veiculo_id','data_emissao','nro_cte','total_frete_pedido_frete']}];
 const optionalCache=new Map();
 async function optionalCatalog(c,from,to){
@@ -60,7 +60,7 @@ async function optionalCatalog(c,from,to){
  if(saved&&saved.expires>Date.now())return saved.rows;
  const url=new URL(c.path.startsWith('/')?c.path.slice(1):c.path,base.endsWith('/')?base:base+'/');
  if(url.origin!==new URL(base).origin)throw Error('Origem de catálogo inválida');
- if(c.name==='programacoes'){
+ if(c.name==='programacoes'||c.name==='ocorrencias'){
   const format=d=>d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4);
   url.searchParams.set('data_inicio',format(from));url.searchParams.set('data_fim',format(to));
  }
@@ -354,6 +354,11 @@ const server=http.createServer(async(req,res)=>{
     if(!catalog.path)continue;
     try{
      if(catalog.name==='rotas')data.rotas=await optionalCatalog(catalog,from,to);
+     else if(catalog.name==='ocorrencias'){
+      // Consulta adicional limitada a um mês para evitar atrasar o painel principal.
+      if(monthWindows(from,to).length>1)continue;
+      data.ocorrencias=await optionalCatalog(catalog,from,to);
+     }
      else{
       // Programacoes sao enriquecimento opcional e muito custoso em periodos longos.
       if(monthWindows(from,to).length>1)continue;
@@ -373,7 +378,7 @@ const server=http.createServer(async(req,res)=>{
     try{const names=await driverNames();attachDriverNames(data,names);}
     catch(err){driverCatalog.expires=Date.now()+60_000;console.warn('[DSS] listarMotoristas indisponível:',err.name||'Error',String(err.message).slice(0,120));attachDriverNames(data,driverCatalog.items);}
    }
-   const payload={mode:'live',updatedAt:new Date().toISOString(),cacheHit:false,data:{viagens:data.viagens||[],pedidos:data.pedidos||[],ctes:data.ctes||[],mdfes:data.mdfes||[],rotas:data.rotas||[],programacoes:data.programacoes||[],sources:{viagens:true,pedidos:true,ctes:!!cfg.ctes.path,mdfes:!!cfg.mdfes.path}}};
+   const payload={mode:'live',updatedAt:new Date().toISOString(),cacheHit:false,data:{viagens:data.viagens||[],pedidos:data.pedidos||[],ctes:data.ctes||[],mdfes:data.mdfes||[],rotas:data.rotas||[],programacoes:data.programacoes||[],ocorrencias:data.ocorrencias||[],sources:{viagens:true,pedidos:true,ctes:!!cfg.ctes.path,mdfes:!!cfg.mdfes.path}}};
    cachePut(cacheKey,payload);
    apiStats.success++;apiStats.lastSuccess=payload.updatedAt;
    console.info('[DSS] consulta concluída','período',from,to,'duração(ms)',Date.now()-started,'RVs',payload.data.viagens.length,'PFs',payload.data.pedidos.length);
