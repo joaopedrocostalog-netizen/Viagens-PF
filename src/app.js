@@ -526,6 +526,7 @@ async function fetchPeriodComparison(){
  if(state.mode!=='live'||!state.apiUrl||!state.token)return;
  const interval=state.compareInterval,anchor=state.compareAnchor;
  const windows=state.compareCustom?{current:{from:state.compareCurrentFrom,to:state.compareCurrentTo},previous:{from:state.comparePreviousFrom,to:state.comparePreviousTo}}:comparisonWindows(anchor,interval);
+ if(windows.current.from>windows.current.to||windows.previous.from>windows.previous.to){state.comparisonError='Corrija os períodos: a data inicial não pode superar a final.';render();return;}
  const seq=++comparisonSeq,identity=identityEpoch;
  state.comparisonLoading=true;state.comparisonError='';state.comparison=null;render();
  try{
@@ -780,6 +781,7 @@ root.addEventListener('change',e=>{
  }
  if(e.target.id==='from'){state.from=e.target.value>localToday()?localToday():e.target.value;if(state.from>state.to)state.to=state.from;state.page=1;render();}
  if(e.target.id==='to'){state.to=e.target.value>localToday()?localToday():e.target.value;if(state.to<state.from)state.from=state.to;state.page=1;if(state.mode==='live')loadData();else render();}
+ if(e.target.id==='compareCustom'){state.compareCustom=e.target.checked;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;}
  if(['compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo'].includes(e.target.id)){state[e.target.id]=e.target.value;state.compareCustom=true;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;}
  if(e.target.id==='compareAnchorInput'){
   state.compareAnchor=e.target.value;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;
