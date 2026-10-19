@@ -372,7 +372,9 @@ const server=http.createServer(async(req,res)=>{
     const results=await Promise.all(batch.map(async window=>{
      // Modo incremental: períodos encerrados anteriores aos dois meses mais recentes usam cache,
      // quando disponível. Meses recentes sempre buscam a DSS.
-     const recentBoundary=new Date(Date.UTC(Number(to.slice(0,4)),Number(to.slice(5,7))-2,1)).toISOString().slice(0,10);
+     const syncTo=url.searchParams.get('sync_to')||to;
+     const anchor=/^\d{4}-\d{2}-\d{2}$/.test(syncTo)&&syncTo>=to?syncTo:to;
+     const recentBoundary=new Date(Date.UTC(Number(anchor.slice(0,4)),Number(anchor.slice(5,7))-2,1)).toISOString().slice(0,10);
      const refreshWindow=refreshMode==='1'||(refreshMode==='recent'&&window.to>=recentBoundary);
      let result=refreshWindow?null:await periodStore.read(window.from,window.to);
      if(result){
