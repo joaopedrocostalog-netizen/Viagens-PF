@@ -82,3 +82,8 @@ Como alternativa, mantenha a URL da API vazia no GitHub Pages até o backend est
 ## 6. Para passar a produção
 
 Desative \`RENDER_FREE_BOOTSTRAP\`, use armazenamento persistente apropriado, senha individual por funcionário, proteção do serviço contra acessos não autorizados, domínios HTTPS corporativos, políticas de backup e retenção de dados. A versão Free é adequada apenas para validar integração e interface, não para dados corporativos sensíveis em uso diário.
+
+
+## Consultas DSS intermitentes (outubro de 2026)
+
+Logs reais mostraram sucessos de 6–17 segundos com milhares de RVs/PFs, alternando com respostas que excedem 20 segundos. O backend agora reutiliza chamadas simultâneas **do mesmo período** e permite configurar timeout até 38 segundos. Para usar 32 segundos, no Render > Environment altere `DSS_TIMEOUT_MS=32000` e faça redeploy. O frontend tem limite próprio próximo de 45 segundos; não aumente acima de 38000. Períodos diferentes ainda geram consultas distintas e podem sobrecarregar o DSS. Em `Render > Logs`, verifique `[DSS] serviço viagens` e `[DSS] serviço pedidos`. O portal jamais deve mostrar dados de períodos distintos como se fossem atuais.
