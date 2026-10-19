@@ -58,9 +58,10 @@ async function driverNames(){
  const req=await fetch(endpoint,{headers:{Accept:'application/json',...dssAuthHeaders()},signal:AbortSignal.timeout(Math.min(timeout,12000)),redirect:'error'});
  if(!req.ok)throw Error('listarMotoristas HTTP '+req.status);
  const raw=await req.json();
+ if(typeof raw?.status==='number'&&raw.status!==200)throw Error('listarMotoristas status DSS '+raw.status);
  const rows=listFrom(getPath(raw,env.DSS_MOTORISTAS_DATA_PATH||'registros'));
  if(!Array.isArray(rows))throw Error('listarMotoristas: registros não encontrados, confira DATA_PATH');
- const idField=env.DSS_MOTORISTAS_ID_FIELD||'motorista_id',nameField=env.DSS_MOTORISTAS_NAME_FIELD||'motorista_nome';
+ const idField=env.DSS_MOTORISTAS_ID_FIELD||'id',nameField=env.DSS_MOTORISTAS_NAME_FIELD||'nome_motorista';
  const names=new Map();
  for(const item of rows){
   const id=String(item?.[idField]??'').trim(),name=String(item?.[nameField]??'').trim();
