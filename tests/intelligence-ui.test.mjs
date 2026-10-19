@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {renderGlobalSearch,renderCustomDashboard,renderCustomerProfiles,renderDriverRouteDetails,renderAlertsHub,renderComparison} from '../src/intelligence-ui.mjs';
+import {renderGlobalSearch,renderCustomDashboard,renderCustomerProfiles,renderDriverRouteDetails,renderAlertsHub,renderComparison,sortedMetricRows} from '../src/intelligence-ui.mjs';
 const d={viagens:[
 {id:'rv7',numero:'720',cliente:'Cliente Alfa',origem:'Santos',destino:'Campinas',placa:'ABC-1234',data:'2026-10-14',status:'Concluída',motoristaId:'11',kmRodados:100,kmPrevisto:95},
 {id:'rv8',numero:'721',cliente:'Cliente Alfa',origem:'Santos',destino:'Campinas',placa:'DEF-1234',data:'2026-10-15',status:'Em andamento',motoristaId:'11',kmRodados:null}],
@@ -55,4 +55,15 @@ test('Comparativo preserva dados fictícios separados e não exibe fretes operac
  assert(!html.includes('Fretes informados'));
  const financial=renderComparison(d,state(true));
  assert(financial.includes('Fretes informados'));
+});
+
+test('Ordenação de motoristas e rotas funciona por maior número de CT-e e KM, sem colocar ausentes em primeiro',()=>{
+ const rows=[{name:'A',ctes:2,km:50},{name:'B',ctes:8,km:null},{name:'C',ctes:4,km:100}];
+ assert.deepEqual(sortedMetricRows(rows,'ctes','desc').map(x=>x.name),['B','C','A']);
+ assert.deepEqual(sortedMetricRows(rows,'ctes','asc').map(x=>x.name),['A','C','B']);
+ assert.deepEqual(sortedMetricRows(rows,'km','desc').map(x=>x.name),['C','A','B']);
+ const markup=renderDriverRouteDetails(d,{...state(false),tableSort:{motoristas:{key:'ctes',direction:'desc'}}},'motoristas');
+ assert(markup.includes('data-sort-metric="motoristas:ctes"'));
+ assert(markup.includes('data-sort-metric="motoristas:km"'));
+ assert(markup.includes('data-sort-metric="motoristas:orders"'));
 });
