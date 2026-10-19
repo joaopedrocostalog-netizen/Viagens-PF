@@ -207,7 +207,7 @@ const tabs=[['painel','Painel'],['viagens','Viagens'],['ctes','Pedidos / CT-e'],
 function button(action,label,extra){return '<button type="button" class="btn '+(extra||'')+'" data-action="'+action+'">'+label+'</button>';}
 function render(){
  state.view=safeView(state.role,state.view);
- const d=scoped(),stats=totals(d);
+ const d=scoped();
  const allowed=navItems.filter(x=>x[0]!=='integracoes'&&permittedView(state.role,x[0]));
  const PRIMARY=['painel','graficos','comparativos','viagens','ctes','faturamento','relatorios'];
  const secondary=allowed.filter(x=>!PRIMARY.includes(x[0]));
