@@ -53,7 +53,7 @@ let driverCatalog={expires:0,items:[],status:'disabled'};
 async function driverNames(){
  if(!driversPath)return driverCatalog.items;
  if(Date.now()<driverCatalog.expires)return driverCatalog.items;
- const endpoint=new URL(driversPath.replace(/^\\//,''),base.replace(/\\/?$/,'/'));
+ const endpoint=new URL(driversPath.startsWith('/')?driversPath.slice(1):driversPath,base.endsWith('/')?base:base+'/');
  if(endpoint.origin!==new URL(base).origin)throw Error('Origem de motoristas inválida');
  const req=await fetch(endpoint,{headers:{Accept:'application/json',...dssAuthHeaders()},signal:AbortSignal.timeout(Math.min(timeout,12000)),redirect:'error'});
  if(!req.ok)throw Error('listarMotoristas HTTP '+req.status);
@@ -64,7 +64,7 @@ async function driverNames(){
  const names=new Map();
  for(const item of rows){
   const id=String(item?.[idField]??'').trim(),name=String(item?.[nameField]??'').trim();
-  if(id&&name&&name.toLowerCase()!=='null'&&!/^motorista\\s*(id)?\\s*\\d+$/i.test(name)&&name.length<=150){
+  if(id&&name&&name.toLowerCase()!=='null'&&!name.toLowerCase().startsWith('motorista id ')&&name.length<=150){
    if(names.has(id)&&names.get(id)!==name)names.set(id,null);
    else if(!names.has(id))names.set(id,name);
   }
