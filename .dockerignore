@@ -2,10 +2,13 @@
 .github
 .env
 .env.*
-!.env.example
-src
+*.log
+node_modules
 tests
-index.html
-styles.css
-*.png
+coverage
+dist
+private
+secrets
 README.md
+# The Dockerfile requires index.html, styles.css, logo PNG, src/ and api/.
+# Do not ignore the frontend assets or source modules.
