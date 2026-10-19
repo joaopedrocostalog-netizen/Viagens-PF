@@ -52,6 +52,8 @@ export function projectOverview(raw,role){
   pedidos:(payload.pedidos||[]).map(x=>operationalOnly?project(x,OP_ORDERS):Object.fromEntries(Object.entries(x).filter(([k])=>!PII.has(k)))),
   ctes:(payload.ctes||[]).map(x=>operationalOnly?project(x,OP_ORDERS):Object.fromEntries(Object.entries(x).filter(([k])=>!PII.has(k)))),
   mdfes:(payload.mdfes||[]).map(x=>operationalOnly?project(x,['nro_mdf','numero','numeroMDFe','nroMDFe','nrMDFe','data_emissao','data','rv_id','viagemId','idViagem','rv_viagem','placa_veiculo','placa','status','situacao']):Object.fromEntries(Object.entries(x).filter(([k])=>!PII.has(k)))),
+  rotas:(payload.rotas||[]).map(x=>project(x,['rota_id','km_previsto_rota','dsc_rota','cidade_origem_rota','cidade_destino_rota'])),
+  programacoes:(payload.programacoes||[]).map(x=>project(x,['programacao_id','nro_programacao','rv_id','nro_rv','pf_id','motorista_id','veiculo_id','data_emissao','nro_cte','total_frete_pedido_frete'])),
   sources:payload.sources
  };
  return {...raw,permissions,role,data:cleaned};
