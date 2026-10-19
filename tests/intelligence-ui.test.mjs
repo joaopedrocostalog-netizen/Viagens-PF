@@ -6,7 +6,7 @@ const d={viagens:[
 {id:'rv8',numero:'721',cliente:'Cliente Alfa',origem:'Santos',destino:'Campinas',placa:'DEF-1234',data:'2026-10-15',status:'Em andamento',motoristaId:'11',kmRodados:null}],
 pedidos:[{id:'p1',numero:'PF10',pedidoNumero:'PF10',cteNumero:'1000',isCte:true,cliente:'Cliente Alfa',placa:'ABC-1234',data:'2026-10-14',motoristaId:'11',motoristaNome:'Motorista Teste',valor:1400,viagemId:'rv7',entregaConcluida:true,comprovanteEntrega:false}],
 mdfes:[],sources:{viagens:true,pedidos:true,ctes:true,mdfes:false}};
-const state=(financial=false)=>({permissions:{financeiro:financial},role:financial?'financeiro':'operacional',user:{username:'teste'},metricLayout:null,showMetricOptions:false,globalQuery:'Alfa',clientSelected:'',routeSelected:'',driverSelected:'',alertPriority:'todos',alertKind:'todos',compareInterval:'mensal',compareAnchor:'2026-10-16',to:'2026-10-31',mode:'demo',dataset:d,lateDays:2});
+const state=(financial=false)=>({permissions:{financeiro:financial},role:financial?'financeiro':'operacional',user:{username:'teste'},metricLayout:null,showMetricOptions:false,globalQuery:'Alfa',clientSelected:'',routeSelected:'',driverSelected:'',alertPriority:'todos',alertKind:'todos',compareInterval:'mensal',compareAnchor:'2026-10-16',compareCurrentFrom:'2026-10-01',compareCurrentTo:'2026-10-16',comparePreviousFrom:'2026-09-01',comparePreviousTo:'2026-09-30',to:'2026-10-31',mode:'demo',dataset:d,lateDays:2});
 test('Busca global gera resultados clicáveis, sem perfis de cliente para operacional',()=>{
  const op=renderGlobalSearch(state(false),d),fin=renderGlobalSearch(state(true),d);
  assert(op.includes('data-search-result="viagens:rv7"'));
@@ -50,7 +50,11 @@ test('Central de alertas possui tipos/filtros e ação para abrir registro',()=>
 test('Comparativo preserva dados fictícios separados e não exibe fretes operacionais',()=>{
  const html=renderComparison(d,state(false));
  assert(html.includes('COMPARATIVO DE PERÍODOS'));
- assert(html.includes('compareAnchorInput'));
+ assert(html.includes('compareCurrentFrom'));
+ assert(html.includes('compareCurrentTo'));
+ assert(html.includes('comparePreviousFrom'));
+ assert(html.includes('comparePreviousTo'));
+ assert(!html.includes('data-compare-interval'));
  assert(html.includes('Viagens'));
  assert(!html.includes('Fretes informados'));
  const financial=renderComparison(d,state(true));
