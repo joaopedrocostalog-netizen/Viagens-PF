@@ -101,3 +101,10 @@ Veja em **Render > Logs** a mensagem `[DSS] motoristas: catálogo atualizado` ou
 ## Campos confirmados para Viagens, Rotas e Programações
 
 O esquema do DSS informa para `listarViagens` os campos `total_km_rodados`, `km_previsto` e `valor_total_abastecido`. Para `listarRotas`, há `rota_id` e `km_previsto_rota`, que representa distância **prevista**, jamais distância realizada. A consulta opcional `listarRotas` pode preencher a previsão de uma RV pelo `rota_id`, somente quando o `km_previsto` da viagem está ausente. A consulta opcional `listarProgramacoes` utiliza `data_inicio` e `data_fim` por data de emissão; seus dados documentais são mantidos separados dos fretes de pedidos para não gerar somas duplicadas. As consultas opcionais não invalidam RVs e PFs se falharem. Para desabilitá-las temporariamente no Render, deixe `DSS_ROTAS_PATH` e/ou `DSS_PROGRAMACOES_PATH` vazios.
+
+
+## Cache mensal privado (primeira etapa de sincronização)
+
+O backend agora suporta `DSS_PERIOD_CACHE_DIR` (pasta privada de armazenamento) e `DSS_PERIOD_CACHE_HOURS` (validade padrão: 24 horas). Quando configurados, os resultados de viagens/pedidos de um mesmo período são guardados apenas após consulta integral concluída. Em novas consultas desse mesmo período, o backend reutiliza o arquivo até expirar. O cache bruto pode conter informações comerciais e pessoais: armazene **somente em volume privado protegido**, nunca no GitHub, em GitHub Pages nem numa pasta pública. No Render Free, o disco local é efêmero: **não é cache persistente entre deploys ou reinícios**. Não configure um caminho supondo que seja armazenamento durável. Para sincronização persistente real e controle de retenção/auditoria, será necessária a conexão de um banco durável como PostgreSQL.
+
+As variáveis são opcionais: sem elas, o portal continua como antes. A atualização da DSS permanece manual pelo botão. O cache tem validade e **não é uma atualização em tempo real**; estabeleça a validade conforme a necessidade operacional. É possível verificar se está habilitado no campo `periodStoreEnabled` de `/api/status`, acessível apenas para administradores autenticados.
