@@ -579,7 +579,7 @@ async function loadData(){
   const url=(state.apiUrl||window.location.origin).replace(/\/$/,'')+'/api/overview?from='+encodeURIComponent(state.from)+'&to='+encodeURIComponent(state.to);
   const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),180000);
   let response;try{response=await fetch(url,{headers:state.token?{'Authorization':'Bearer '+state.token}:{},credentials:'omit',signal:controller.signal});}finally{clearTimeout(timer);}
-  if(!response.ok){let message='HTTP '+response.status;try{const b=await response.json();message=b.error||message;}catch{}
+  if(!response.ok){let message=response.status===502?'HTTP 502: falha na consulta DSS ou no proxy do Render. Consulte os logs no mesmo horário.':'HTTP '+response.status;try{const b=await response.json();message=b.error||message;}catch{}
    if(response.status===401){clearSession();state.connect=true;message='Sessão encerrada ou expirada. Entre novamente com seu usuário e sua senha do portal.';}
    else if(response.status===503){message='O backend precisa ser configurado no servidor privado: '+message;}
    throw new Error(message);}
