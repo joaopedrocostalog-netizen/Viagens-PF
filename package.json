@@ -1,0 +1,8 @@
+{
+  "name": "costalog-viagens-pf",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=20"},
+  "dependencies": {"mysql2": "^3.15.3"},
+  "scripts": {"start": "node api/server.mjs", "test": "node --test tests/*.test.mjs"}
+}
