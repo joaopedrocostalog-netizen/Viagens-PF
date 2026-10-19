@@ -7,7 +7,7 @@ const n=v=>v===null||v===undefined?'—':fmt.format(v);
 const curr=v=>v===null||v===undefined?'—':money.format(v);
 const date=s=>/^\d{4}-\d{2}-\d{2}$/.test(s||'')?s.slice(8)+'/'+s.slice(5,7)+'/'+s.slice(0,4):'—';
 export function sortedMetricRows(rows,key='trips',direction='desc'){
- const numeric=new Set(['trips','orders','ctes','km','kmPerTrip','routes','count','vehicles','drivers']);
+ const numeric=new Set(['trips','orders','ctes','km','kmPerTrip','routes','count','vehicles','drivers','tripCount','orderCount','cteCount','fretesValor']);
  const dir=direction==='asc'?1:-1;
  return [...rows].sort((a,b)=>{
   const x=a[key],y=b[key];
@@ -16,7 +16,7 @@ export function sortedMetricRows(rows,key='trips',direction='desc'){
  });
 }
 const sortTableHeader=(label,key,state,kind)=>{
- const current=state.tableSort?.[kind]||{key:kind==='rotas'?'count':'trips',direction:'desc'};
+ const current=state.tableSort?.[kind]||{key:kind==='rotas'?'count':kind==='clientes'?'tripCount':'trips',direction:'desc'};
  return '<th><button type="button" class="ins-sort-head" data-sort-metric="'+esc(kind+':'+key)+'" aria-label="Ordenar por '+esc(label)+'" aria-sort="'+(current.key===key?(current.direction==='asc'?'ascending':'descending'):'none')+'">'+esc(label)+' <span>'+ (current.key===key?(current.direction==='asc'?'▲':'▼'):'↕')+'</span></button></th>';
 };
 
@@ -78,8 +78,8 @@ export function renderCustomerProfiles(data,state){
    '<p class="ins-hint">Fretes = valores informados nos pedidos DSS. Não representam faturas pagas nem lucro do cliente. Dados limitados ao período consultado.</p></section>';
  }
  return '<section class="ins-module"><div class="ins-toolbar"><div><h2>CARTEIRA DE CLIENTES</h2><p>Selecione um cliente para ver viagens, pedidos e histórico</p></div>'+badge(n(profiles.length)+' clientes','violet')+'</div>'+
- (profiles.length?'<div class="ins-responsive-table"><table><thead><tr><th>Cliente</th><th>RVs</th><th>Pedidos</th><th>CT-e</th><th>Fretes</th><th>Último registro</th></tr></thead><tbody>'+
- profiles.map(p=>'<tr><td><button class="ins-link" data-client-open="'+esc(p.name)+'">'+esc(p.name)+'</button></td><td>'+n(p.tripCount)+'</td><td>'+n(p.orderCount)+'</td><td>'+n(p.cteCount)+'</td><td>'+curr(p.fretesValor)+'</td><td>'+date(p.lastDate)+'</td></tr>').join('')+'</tbody></table></div>':empty('Nenhum cliente encontrado no período selecionado.'))+
+ (profiles.length?'<div class="ins-responsive-table"><table><thead><tr>'+sortTableHeader('Cliente','name',state,'clientes')+''+sortTableHeader('RVs','tripCount',state,'clientes')+''+sortTableHeader('Pedidos','orderCount',state,'clientes')+''+sortTableHeader('CT-e','cteCount',state,'clientes')+''+sortTableHeader('Fretes','fretesValor',state,'clientes')+''+sortTableHeader('Último registro','lastDate',state,'clientes')+'</tr></thead><tbody>'+
+ sortedMetricRows(profiles,state.tableSort?.clientes?.key||'tripCount',state.tableSort?.clientes?.direction||'desc').map(p=>'<tr><td><button class="ins-link" data-client-open="'+esc(p.name)+'">'+esc(p.name)+'</button></td><td>'+n(p.tripCount)+'</td><td>'+n(p.orderCount)+'</td><td>'+n(p.cteCount)+'</td><td>'+curr(p.fretesValor)+'</td><td>'+date(p.lastDate)+'</td></tr>').join('')+'</tbody></table></div>':empty('Nenhum cliente encontrado no período selecionado.'))+
  '<p class="ins-hint">Dados do DSS, agregados pelo nome do cliente. Empresas homônimas podem precisar de identificação adicional quando o cadastro fornecer ID consistente.</p></section>';
 }
 export function renderDriverRouteDetails(data,state,view){
