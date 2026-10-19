@@ -29,7 +29,7 @@ test('backend DSS converte filtros para dd/mm/aaaa, lê registros e mantém aute
  t.after(()=>new Promise(resolve=>upstream.close(resolve)));
  const port=32500+(process.pid%10000);
  const child=spawn(process.execPath,['api/server.mjs'],{env:{...process.env,PORT:String(port),PORTAL_ACCESS_TOKEN:'local-test-token',PORTAL_ALLOW_LEGACY_TOKEN:'true',PORTAL_ALLOWED_ORIGINS:'http://127.0.0.1',DSS_BASE_URL:'http://127.0.0.1:'+uport+'/wsdss',
-  DSS_AUTH_TYPE:'basic',DSS_USERNAME:user,DSS_PASSWORD:pass,DSS_AUTH_HEADER:'',DSS_AUTH_VALUE:'',DSS_VIAGENS_PATH:'/listarViagens',DSS_PEDIDOS_PATH:'/listarPedidosFrete',DSS_CTES_PATH:'',DSS_MDFES_PATH:'',DSS_MOTORISTAS_PATH:'/listarMotoristas',DSS_MOTORISTAS_ID_FIELD:'id',DSS_MOTORISTAS_NAME_FIELD:'nome_motorista'},
+  DSS_AUTH_TYPE:'basic',DSS_USERNAME:user,DSS_PASSWORD:pass,DSS_AUTH_HEADER:'',DSS_AUTH_VALUE:'',DSS_VIAGENS_PATH:'/listarViagens',DSS_PEDIDOS_PATH:'/listarPedidosFrete',DSS_CTES_PATH:'',DSS_MDFES_PATH:'',DSS_ROTAS_PATH:'',DSS_PROGRAMACOES_PATH:'',DSS_MOTORISTAS_PATH:'/listarMotoristas',DSS_MOTORISTAS_ID_FIELD:'id',DSS_MOTORISTAS_NAME_FIELD:'nome_motorista'},
   stdio:['ignore','pipe','pipe']});
  t.after(()=>child.kill('SIGTERM'));
  await waitPort(port);
