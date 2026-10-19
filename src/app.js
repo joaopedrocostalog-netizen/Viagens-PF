@@ -125,7 +125,7 @@ async function demoChangeOwnPassword(currentPassword,newPassword){
 }
 
 const state = {
- view:'painel', chartInterval:'mensal', compareInterval:'mensal',compareAnchor:new Date().toISOString().slice(0,10), from:String(year)+'-01-01',to:localToday(),search:'',filter:'todos',page:1,
+  compareCustom:false,compareCurrentFrom:String(year)+'-10-01',compareCurrentTo:localToday(),comparePreviousFrom:String(year)+'-09-01',comparePreviousTo:String(year)+'-09-30',view:'painel', chartInterval:'mensal', compareInterval:'mensal',compareAnchor:new Date().toISOString().slice(0,10), from:String(year)+'-01-01',to:localToday(),search:'',filter:'todos',page:1,
  dataset:demo, mode:'demo',error:'',loading:false,selected:null,connect:false,menu:false,
  apiUrl:portalSettings.apiUrl,token:'',importCount:0,
  globalQuery:'',clientSelected:'',routeSelected:'',driverSelected:'',alertKind:'todos',
@@ -433,7 +433,7 @@ async function portalLogin(){
   state.view='painel';state.connect=false;state.error='';state.dataset={viagens:[],pedidos:[],ctes:[],mdfes:[],sources:{}};
   state.mode='live';loadMetricPreferences();render();
   if(state.user.mustChangePassword)return;
-  await loadData();
+  // Dados DSS são carregados apenas ao clicar em Atualizar.
   if(state.permissions.admin)loadAdminUsers();
  }catch(err){const offline=err instanceof TypeError||/failed to fetch|networkerror|load failed/i.test(err.message||'');alert(offline?'Não foi possível conectar à API. Se está no mesmo computador, inicie o backend no PowerShell com node api/server.mjs e abra http://localhost:3001/ (não o endereço GitHub Pages). Verifique http://localhost:3001/api/health.': 'Login não autorizado: '+err.message);}
 }
@@ -525,7 +525,7 @@ let comparisonSeq=0;
 async function fetchPeriodComparison(){
  if(state.mode!=='live'||!state.apiUrl||!state.token)return;
  const interval=state.compareInterval,anchor=state.compareAnchor;
- const windows=comparisonWindows(anchor,interval);
+ const windows=state.compareCustom?{current:{from:state.compareCurrentFrom,to:state.compareCurrentTo},previous:{from:state.comparePreviousFrom,to:state.comparePreviousTo}}:comparisonWindows(anchor,interval);
  const seq=++comparisonSeq,identity=identityEpoch;
  state.comparisonLoading=true;state.comparisonError='';state.comparison=null;render();
  try{
@@ -543,14 +543,14 @@ async function fetchPeriodComparison(){
   const covered=range=>state.loadedRange&&state.loadedRange.from<=range.from&&state.loadedRange.to>=range.to&&state.mode==='live';
   const getOrReuse=range=>covered(range)?Promise.resolve(subsetPeriod(state.dataset,range)):get(range);
   const [current,previous]=await Promise.all([getOrReuse(windows.current),getOrReuse(windows.previous)]);
-  if(seq!==comparisonSeq||identity!==identityEpoch||state.compareInterval!==interval||state.compareAnchor!==anchor)return;
+  if(seq!==comparisonSeq||identity!==identityEpoch)return;
   const matches=r=>(!state.customer||r.cliente===state.customer)&&(!state.vehicle||r.placa===state.vehicle);
   const filter=d=>{
    const pedidos=d.pedidos.filter(p=>matches(p)&&(!state.serviceType||p.tipoServico===state.serviceType));
    const viagens=d.viagens.filter(v=>matches(v)&&(!state.serviceType||pedidos.some(p=>p.viagemId===v.id)));
    return {...d,viagens,pedidos,ctes:pedidos.filter(p=>p.isCte)};
   };
-  state.comparison={anchor,interval,current:filter(current),previous:filter(previous),source:'DSS'};
+  state.comparison={anchor,interval,custom:!!state.compareCustom,currentRange:windows.current,previousRange:windows.previous,current:filter(current),previous:filter(previous),source:'DSS'};
  }catch(err){
   if(seq===comparisonSeq&&identity===identityEpoch)state.comparisonError='Não foi possível consultar ambos os períodos no DSS: '+err.message;
  }finally{
@@ -622,8 +622,9 @@ let refreshTimer=null;
 let identityEpoch=0;
 function activateRefresh(){
  if(refreshTimer)clearInterval(refreshTimer);
+ return; // Modo manual
  if(state.autoRefresh>0)refreshTimer=setInterval(()=>{
-  if(state.mode==='live'&&state.token&&!state.loading&&document.visibilityState==='visible')loadData();
+  // Atualização automática desativada: usuário controla as consultas.
  },state.autoRefresh*60000);
 }
 async function comparePeriods(){
@@ -777,8 +778,9 @@ root.addEventListener('change',e=>{
   else render();
   return;
  }
- if(e.target.id==='from'){state.from=e.target.value>localToday()?localToday():e.target.value;if(state.from>state.to)state.to=state.from;state.page=1;if(state.mode==='live')loadData();else render();}
+ if(e.target.id==='from'){state.from=e.target.value>localToday()?localToday():e.target.value;if(state.from>state.to)state.to=state.from;state.page=1;render();}
  if(e.target.id==='to'){state.to=e.target.value>localToday()?localToday():e.target.value;if(state.to<state.from)state.from=state.to;state.page=1;if(state.mode==='live')loadData();else render();}
+ if(['compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo'].includes(e.target.id)){state[e.target.id]=e.target.value;state.compareCustom=true;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;}
  if(e.target.id==='compareAnchorInput'){
   state.compareAnchor=e.target.value;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;
  }
@@ -839,4 +841,4 @@ root.addEventListener('keydown',e=>{
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(state.selected||state.connect)){state.selected=null;state.connect=false;render();}});
 loadMetricPreferences();
 render();
-if(!PUBLIC_DEMO&&window.location.protocol!=='file:'&&state.apiUrl&&state.token)loadData();
+// Nenhuma consulta automática ao abrir o portal.
