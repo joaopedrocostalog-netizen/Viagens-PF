@@ -128,19 +128,19 @@ export function renderAlertsHub(data,state){
 export function renderComparison(data,state){
  const selected=state.compareInterval||'mensal';
  const anchor=state.compareAnchor||state.to;
- const windows=comparisonWindows(anchor,selected);
+ const windows=state.compareCustom?{current:{from:state.compareCurrentFrom,to:state.compareCurrentTo},previous:{from:state.comparePreviousFrom,to:state.comparePreviousTo}}:comparisonWindows(anchor,selected);
  let comparison=state.comparison;
  if(state.mode==='demo'){
   comparison={interval:selected,anchor,current:subsetPeriod(state.dataset,windows.current),previous:subsetPeriod(state.dataset,windows.previous),source:'demo'};
  }
- const ready=comparison&&comparison.interval===selected&&comparison.anchor===anchor;
+ const ready=comparison&&comparison.interval===selected&&comparison.anchor===anchor&&!!comparison.custom===!!state.compareCustom&&(!state.compareCustom||(comparison.currentRange?.from===windows.current.from&&comparison.currentRange?.to===windows.current.to&&comparison.previousRange?.from===windows.previous.from&&comparison.previousRange?.to===windows.previous.to));
  const financial=!!state.permissions.financeiro;
  const lines=ready?comparePeriodMetrics(comparison.current,comparison.previous,{financial}):[];
  const moneyFmt=metric=>metric.unit==='money';
  const val=(x,isMoney)=>x===null?'—':isMoney?curr(x):n(x);
  return '<section class="ins-module"><div class="ins-toolbar"><div><h2>COMPARATIVO DE PERÍODOS</h2><p>Variação diária, semanal ou mensal com períodos equivalentes</p></div>'+
  '<div class="ins-interval">'+[['diario','Dia'],['semanal','Semana'],['mensal','Mês']].map(([k,label])=>'<button class="'+(selected===k?'selected':'')+'" data-compare-interval="'+k+'">'+label+'</button>').join('')+'</div></div>'+
- '<div class="ins-compare-anchor"><label for="compareAnchorInput">Data de referência</label><input id="compareAnchorInput" class="control" type="date" value="'+esc(anchor)+'"></div><div class="ins-period-label"><div><small>PERÍODO ATUAL</small><strong>'+date(windows.current.from)+' a '+date(windows.current.to)+'</strong></div><div><small>ANTERIOR</small><strong>'+date(windows.previous.from)+' a '+date(windows.previous.to)+'</strong></div></div>'+
+ '<div class="ins-compare-anchor"><label><input type="checkbox" id="compareCustom" '+(state.compareCustom?'checked':'')+'> Escolher dois períodos</label></div>'+(state.compareCustom?'<div class="ins-compare-anchor"><label>Período A: de <input type="date" id="compareCurrentFrom" value="'+esc(windows.current.from)+'"></label><label>Até <input type="date" id="compareCurrentTo" value="'+esc(windows.current.to)+'"></label><label>Período B: de <input type="date" id="comparePreviousFrom" value="'+esc(windows.previous.from)+'"></label><label>Até <input type="date" id="comparePreviousTo" value="'+esc(windows.previous.to)+'"></label></div>':'<div class="ins-compare-anchor"><label for="compareAnchorInput">Data de referência</label><input id="compareAnchorInput" class="control" type="date" value="'+esc(anchor)+'"></div>')+'<div class="ins-period-label"><div><small>PERÍODO ATUAL</small><strong>'+date(windows.current.from)+' a '+date(windows.current.to)+'</strong></div><div><small>ANTERIOR</small><strong>'+date(windows.previous.from)+' a '+date(windows.previous.to)+'</strong></div></div>'+
  (state.mode==='live'&&!ready?'<div class="ins-compare-init"><p>Consulte os dois períodos no DSS para comparar registros reais. Essa consulta é protegida pelo perfil de acesso.</p><button class="btn btn-red" data-ins-action="load-comparison">Consultar os dois períodos</button></div>':'')+
  (state.comparisonLoading?'<p class="ins-hint">Consultando DSS...</p>':'')+
  (state.comparisonError?'<p class="ins-inline-error">'+esc(state.comparisonError)+'</p>':'')+
