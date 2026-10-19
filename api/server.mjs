@@ -350,7 +350,7 @@ const server=http.createServer(async(req,res)=>{
   if(user.mustChangePassword)return reply(res,403,{error:'Altere sua senha antes de consultar registros.'},origin);
   if(!allowedRate(req))return reply(res,429,{error:'Muitas consultas. Tente novamente.'},origin);
   const from=url.searchParams.get('from')||'',to=url.searchParams.get('to')||'',kind=url.searchParams.get('kind')||'viagens';
-  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(from)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(to)||from>to)return reply(res,400,{error:'Período inválido'},origin);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)return reply(res,400,{error:'Período inválido'},origin);
   if(!['viagens','pedidos'].includes(kind))return reply(res,400,{error:'Tipo inválido'},origin);
   const page=Math.max(1,Number.parseInt(url.searchParams.get('page')||'1',10)||1);
   const size=Math.min(100,Math.max(1,Number.parseInt(url.searchParams.get('page_size')||'15',10)||15));
