@@ -21,7 +21,7 @@ export function canReport(role,type){
 }
 export const OP_TRIPS=Object.freeze([
  'rv_id','nro_rv','tipo_rv','cliente_nome','cidade_inicial','cidade_final','status_rv',
- 'data_inicio','data_termino','veiculo_id','motorista_id','carreta1_id','carreta2_id',
+ 'data_inicio','data_termino','veiculo_id','motorista_id','motorista_nome','carreta1_id','carreta2_id',
  'carreta3_id','rota_mdf','km_previsto','nro_mdf','total_km_rodados',
  'programacao_id','nro_programacao','rota_id','empresa','cliente_predominante',
  'nro_container','placa_veiculo','proprietario','created_on'
