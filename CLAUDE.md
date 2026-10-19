@@ -44,3 +44,11 @@
 - `RENDER_FREE.md`: parâmetros DSS e notas de migração MariaDB.
 - `package.json`: dependência `mysql2` e comandos de execução.
 - `tests/mariadb-store.test.mjs`: testes de acesso isolado ao cache.
+
+
+## Melhorias recentes: atualização incremental e visão 360°
+
+- O frontend continua consultando a API por mês. Ao clicar em **Atualizar dados da DSS**, envia `refresh=recent&sync_to=<data final do intervalo total>`.
+- O backend renova os **dois meses mais recentes do intervalo solicitado** e tenta aproveitar períodos anteriores do cache privado/MariaDB. Se não houver cache, consulta a DSS normalmente. Uma atualização histórica integral pode continuar sendo solicitada com `refresh=1` pela API autorizada. O cache não significa sincronização em tempo real.
+- Ao abrir detalhes de uma viagem, a interface exibe dados da RV, documentos/pedidos vinculados e ocorrências que coincidem por **placa e período**; estas são apenas contexto, não vínculo comprovado. Valores financeiros continuam condicionados ao perfil de acesso.
+- A tabela de viagens já pagina no navegador em grupos de 15 registros. **Paginação server-side real ainda não foi implementada**; isso exigirá endpoints adicionais com autorização, filtros e contagens consistentes, sem quebrar relatórios completos.
