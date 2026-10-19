@@ -534,7 +534,7 @@ async function fetchPeriodComparison(){
    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),180000);
    try{
     const res=await fetch(url,{headers:{Authorization:'Bearer '+state.token},credentials:'omit',signal:controller.signal});
-    if(!res.ok){let reason='HTTP '+res.status;try{reason=(await res.json()).error||reason;}catch{}throw Error(reason);}
+    if(!res.ok){let reason='HTTP '+res.status;try{reason=(await res.json()).error||reason;}catch{}if(res.status===401)throw Error('Sua sessão no Render expirou ou foi reiniciada após um deploy. Faça login novamente e repita o comparativo.');throw Error(reason);}
     return normalizePayload(await res.json());
    }finally{clearTimeout(timer);}
   };
