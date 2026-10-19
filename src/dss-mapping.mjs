@@ -147,7 +147,8 @@ export function normalizeOverview(raw){
  });
  const hasMdfeApi=!!payload.sources?.mdfes;
  const mdfes=hasMdfeApi?validArray(payload.mdfes).map(mapMdfe):referencesMdfe(viagens,pedidos);
- return {viagens,pedidos,ctes,mdfes,sources:{
+ const ocorrencias=validArray(payload.ocorrencias).map(o=>({id:s(o.ocorrencia_id),data:isoDate(o.data_ocorrencia)||isoDate(o.data),descricao:s(o.descricao),placa:s(o.placa_veiculo),veiculoId:id(o.veiculo_id),tipo:s(o.ocorrencia_de),relato:s(o.relato),causa:s(o.causa_raiz),providencia:s(o.providencia_tomada),responsavel:s(o.responsavel_atendimento),envolvido:s(o.envolvido),status:s(o.status)}));
+ return {viagens,pedidos,ctes,mdfes,ocorrencias,sources:{
   ...payload.sources,
   viagens:true,pedidos:true,ctes:true,mdfes:hasMdfeApi,mdfeReferences:!hasMdfeApi
  }};
