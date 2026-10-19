@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-test('GitHub Pages aceita administrador temporário, troca senha e gerencia usuários DEMO sem API',async()=>{
+import {resolvePortalApi} from '../src/site-config.mjs';
+test('GitHub Pages aceita administrador temporário, troca senha e gerencia usuários DEMO sem API',async(t)=>{
+ if(!resolvePortalApi({hostname:'joaopedrocostalog-netizen.github.io',origin:'https://joaopedrocostalog-netizen.github.io'}).demoOnly)return t.skip('Modo de demonstração desativado pelo backend configurado.');
  const db=new Map(),events={},fields={
   loginUser:{value:'admin'},loginPassword:{value:'CL-cwfK6_CoN6lKAUZeM5sPnsE'},
   currentPortalPassword:{value:'CL-cwfK6_CoN6lKAUZeM5sPnsE'},
