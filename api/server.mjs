@@ -214,6 +214,18 @@ async function queryDss(name,from,to){
  if(Number.isInteger(v?.qtd_registros)&&v.qtd_registros>list.length)throw Error('DSS '+name+' indicou '+v.qtd_registros+' registros, mas retornou '+list.length+'. Verifique a paginação antes de gerar relatórios.');
  return list;
 }
+// Repetir apenas falhas transitórias de transporte ou resposta inválida; não repetir 401/403.
+async function queryDssResilient(name,from,to){
+ try{return await queryDss(name,from,to);}
+ catch(error){
+  const message=String(error?.message||'');
+  const retry=/não é JSON|conteúdo inválido|tempo limite|falha de conexão|HTTP 50[0234]/i.test(message);
+  if(!retry)throw error;
+  console.warn('[DSS] repetindo serviço',name,'período',from,to,'causa',message.slice(0,130));
+  await new Promise(resolve=>setTimeout(resolve,800));
+  return queryDss(name,from,to);
+ }
+}
 /** Frontend local no MESMO servidor e origem da API.
  * Lista explícita: nunca servir .env, private/, api/ ou outros arquivos do disco.
  */
@@ -343,7 +355,7 @@ const server=http.createServer(async(req,res)=>{
    for(let offset=0;offset<windows.length;offset+=3){
     const batch=windows.slice(offset,offset+3);
     const results=await Promise.all(batch.map(async window=>{
-     const result=await Promise.all(Object.keys(cfg).filter(name=>cfg[name].path).map(async name=>[name,await queryDss(name,window.from,window.to)]));
+     const result=await Promise.all(Object.keys(cfg).filter(name=>cfg[name].path).map(async name=>[name,await queryDssResilient(name,window.from,window.to)]));
      console.info('[DSS] mês concluído',window.from,window.to);
      return result;
     }));
