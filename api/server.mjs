@@ -353,8 +353,9 @@ const server=http.createServer(async(req,res)=>{
  if(!dssCredentialsReady())return reply(res,503,{error:'Basic Auth do DSS não configurado no backend. Informe DSS_USERNAME e DSS_PASSWORD no arquivo .env privado.'},origin);
  const from=url.searchParams.get('from')||'',to=url.searchParams.get('to')||'';
  if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)return reply(res,400,{error:'Intervalo de datas inválido'},origin);
- const cacheKey=from+'|'+to;
- const cached=cacheGet(cacheKey);
+ const forceRefresh=url.searchParams.get('refresh')==='1';
+ const cacheKey=from+'|'+to+(forceRefresh?'|refresh':'');
+ const cached=forceRefresh?null:cacheGet(cacheKey);
  if(cached){apiStats.cached++;return reply(res,200,projectOverview({...cached,cacheHit:true},user.role),origin,req.headers['accept-encoding']||'');}
  const started=Date.now();
  let pending=INFLIGHT.get(cacheKey);
@@ -368,7 +369,7 @@ const server=http.createServer(async(req,res)=>{
    for(let offset=0;offset<windows.length;offset+=3){
     const batch=windows.slice(offset,offset+3);
     const results=await Promise.all(batch.map(async window=>{
-     let result=await periodStore.read(window.from,window.to);
+     let result=forceRefresh?null:await periodStore.read(window.from,window.to);
      if(result){
       console.info('[DSS] mês reutilizado do cache privado',window.from,window.to);
      }else{
