@@ -19,7 +19,7 @@ const base=env.DSS_BASE_URL||'';
 const origins=(env.PORTAL_ALLOWED_ORIGINS||'').split(',').map(s=>s.trim()).filter(Boolean);
 const timeout=Math.min(38000,Math.max(1000,Number(env.DSS_TIMEOUT_MS||32000)));
 const cacheMaxAge=Math.min(3600000,Math.max(0,Number(env.API_CACHE_SECONDS??60)*1000));
-const CACHE=new Map(),CACHE_LIMIT=24;
+const CACHE=new Map(),CACHE_LIMIT=3; // Render Free: evitar manter dezenas de respostas DSS enormes em memória.
 const INFLIGHT=new Map(); // Reutilizar consultas idênticas que chegam ao mesmo tempo.
 const rateTable=new Map();
 const rateLimit=Math.max(10,Number(env.PORTAL_REQUESTS_PER_MINUTE||120));
@@ -39,7 +39,9 @@ function cacheGet(key){
 }
 function cachePut(key,data){
  if(!cacheMaxAge)return;
- if(CACHE.size>=CACHE_LIMIT)CACHE.delete(CACHE.keys().next().value);
+ // Uma única consulta pode ter dezenas de milhares de linhas: cache com no máximo 3 períodos.
+ if(CACHE.has(key))CACHE.delete(key);
+ while(CACHE.size>=CACHE_LIMIT)CACHE.delete(CACHE.keys().next().value);
  CACHE.set(key,{time:Date.now(),data});
 }
 function config(name){
