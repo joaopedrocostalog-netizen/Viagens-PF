@@ -116,7 +116,16 @@ async function queryDss(name,from,to){
  const headers={Accept:'application/json',...dssAuthHeaders()};
  let body;
  if(c.method==='POST'){headers['Content-Type']='application/json';body=(c.body||'{}').replaceAll('{{from}}',from).replaceAll('{{to}}',to);JSON.parse(body);}
- const r=await fetch(url,{method:c.method,headers,body,signal:AbortSignal.timeout(timeout),redirect:'error'});
+ let r;
+ const startedAt=Date.now();
+ try{
+  r=await fetch(url,{method:c.method,headers,body,signal:AbortSignal.timeout(timeout),redirect:'error'});
+ }catch(err){
+  const reason=err?.name==='TimeoutError'||err?.name==='AbortError'?'tempo limite':'falha de conexão';
+  console.error('[DSS] serviço',name,reason,'após',Date.now()-startedAt,'ms','tipo',err?.name||'Error');
+  throw Error('Serviço '+name+': '+reason+' após '+Math.round((Date.now()-startedAt)/1000)+'s. Verifique acesso de rede, liberação de IP/VPN e desempenho do DSS.');
+ }
+ console.info('[DSS] serviço',name,'HTTP',r.status,'em',Date.now()-startedAt,'ms');
  if(!r.ok){
   if(r.status===401)throw Error('DSS recusou o usuário ou senha (HTTP 401). Confira DSS_USERNAME e DSS_PASSWORD no servidor privado.');
   if(r.status===403)throw Error('DSS negou acesso à operação (HTTP 403). Confira permissões e o módulo tms_integr_prog_pg_motorista.');
@@ -249,7 +258,7 @@ const server=http.createServer(async(req,res)=>{
  if(cached){apiStats.cached++;return reply(res,200,projectOverview({...cached,cacheHit:true},user.role),origin);}
  const started=Date.now();
  try{
-  const result=await Promise.all(Object.keys(cfg).map(async name=>[name,await queryDss(name,from,to)]));
+  const result=await Promise.all(Object.keys(cfg).filter(name=>cfg[name].path).map(async name=>[name,await queryDss(name,from,to)]));
   const data=Object.fromEntries(result);
   const payload={mode:'live',updatedAt:new Date().toISOString(),cacheHit:false,data:{viagens:data.viagens||[],pedidos:data.pedidos||[],ctes:data.ctes||[],mdfes:data.mdfes||[],sources:{viagens:true,pedidos:true,ctes:!!cfg.ctes.path,mdfes:!!cfg.mdfes.path}}};
   cachePut(cacheKey,payload);
