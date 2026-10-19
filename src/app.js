@@ -196,8 +196,8 @@ function totals(data){
  const mismatched=data.sources.mdfes?data.mdfes.filter(m=>m.viagemId&&!data.allViagens.some(t=>t.id===m.viagemId)):null;
  return {revenue:revenueKnown.length?revenue:null,cost:costsKnown.length?cost:null,profit:completeMoney?revenue-cost:null,margin:completeMoney&&revenue?pct((revenue-cost)/revenue*100):'—',orphan,mismatched,linked,completeMoney,revenueCount:revenueKnown.length,costCount:costsKnown.length};
 }
-const navItems=[['painel','home','Painel geral'],['graficos','chart','Visão gráfica'],['comparativos','chart','Comparativos'],['viagens','truck','Viagens / RV'],['ctes','doc','Pedidos / CT-e'],['entregas','doc','Entregas'],['pendencias','shield','Pendências'],['rotas','chart','Rotas'],['veiculos','truck','Frota'],['motoristas','home','Motoristas'],['containers','doc','Containers'],['mdfes','shield','MDF-e'],['relatorios','doc','Relatórios'],['faturamento','doc','Faturamento'],['clientes','chart','Clientes / Fretes'],['analises','chart','Análises financeiras'],['administracao','cog','Administração'],['integracoes','cog','Integração DSS']];
-const tabs=[['painel','Painel'],['viagens','Viagens'],['ctes','Pedidos / CT-e'],['entregas','Entregas'],['pendencias','Pendências'],['rotas','Rotas'],['veiculos','Frota'],['motoristas','Motoristas'],['containers','Containers'],['mdfes','MDF-e'],['relatorios','Relatórios'],['faturamento','Faturamento'],['clientes','Clientes'],['analises','Análises financeiras'],['administracao','Administração'],['integracoes','Integração']];
+const navItems=[['painel','home','Painel geral'],['graficos','chart','Visão gráfica'],['comparativos','chart','Comparativos'],['viagens','truck','Viagens / RV'],['ctes','doc','Pedidos / CT-e'],['entregas','doc','Entregas'],['pendencias','shield','Pendências'],['rotas','chart','Rotas'],['veiculos','truck','Frota'],['motoristas','home','Motoristas'],['mdfes','shield','MDF-e'],['relatorios','doc','Relatórios'],['faturamento','doc','Faturamento'],['clientes','chart','Clientes / Fretes'],['analises','chart','Análises financeiras'],['administracao','cog','Administração'],['integracoes','cog','Integração DSS']];
+const tabs=[['painel','Painel'],['viagens','Viagens'],['ctes','Pedidos / CT-e'],['entregas','Entregas'],['pendencias','Pendências'],['rotas','Rotas'],['veiculos','Frota'],['motoristas','Motoristas'],['mdfes','MDF-e'],['relatorios','Relatórios'],['faturamento','Faturamento'],['clientes','Clientes'],['analises','Análises financeiras'],['administracao','Administração'],['integracoes','Integração']];
 function button(action,label,extra){return '<button type="button" class="btn '+(extra||'')+'" data-action="'+action+'">'+label+'</button>';}
 function render(){
  state.view=safeView(state.role,state.view);
@@ -703,7 +703,7 @@ root.addEventListener('click',e=>{
  const sorter=e.target.closest('[data-sort-metric]');
  if(sorter){
   const [kind,key]=(sorter.dataset.sortMetric||'').split(':');
-  const allowed={rotas:['name','count','km','kmPerTrip','vehicles','drivers'],motoristas:['name','trips','orders','ctes','km','kmPerTrip','routes']};
+  const allowed={rotas:['name','count','km','kmPerTrip','vehicles','drivers'],motoristas:['name','trips','orders','ctes','km','kmPerTrip','routes'],clientes:['name','tripCount','orderCount','cteCount','fretesValor','lastDate']};
   if(allowed[kind]?.includes(key)){
    state.tableSort||={};
    const prev=state.tableSort[kind];
