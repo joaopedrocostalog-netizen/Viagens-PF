@@ -78,18 +78,21 @@ export function routeStats(trips,orders=[]){
 }
 export function driverStats(trips,orders){
  const drivers=new Map();
+ const knownName=name=>{const v=str(name);return v&&!/^motorista\s*(id)?\s*\d+$/i.test(v)&&v!=='Não informado'?v:'';};
  const get=(id,name)=>{
   const key=str(id)||('nome:'+norm(name||'Não informado'));
-  if(!drivers.has(key))drivers.set(key,{id:key,name:str(name)||('Motorista ID '+str(id||'não informado')),trips:[],orders:[],kmKnown:0,km:0});
-  const d=drivers.get(key);if(str(name))d.name=str(name);return d;
+  const display=knownName(name);
+  if(!drivers.has(key))drivers.set(key,{id:key,name:display||('Nome não informado · ID '+(str(id)||'indisponível')),nameKnown:!!display,trips:[],orders:[],kmKnown:0,km:0});
+  const d=drivers.get(key);if(display){d.name=display;d.nameKnown=true;}
+  return d;
  };
- // Use os IDs do DSS para evitar unir motoristas homônimos.
- for(const p of orders||[])if(p.motoristaId||p.motoristaNome)get(p.motoristaId,p.motoristaNome).orders.push(p);
- for(const v of trips||[])if(v.motoristaId){
-  const d=get(v.motoristaId,'');d.trips.push(v);
+ // Primeiro pedidos: eles podem conter nome e ID. Depois RVs pelo mesmo ID.
+ for(const p of orders||[])if(p.motoristaId||knownName(p.motoristaNome))get(p.motoristaId,p.motoristaNome).orders.push(p);
+ for(const v of trips||[])if(v.motoristaId||knownName(v.motoristaNome)){
+  const d=get(v.motoristaId,v.motoristaNome);d.trips.push(v);
   if(known(v.kmRodados)){d.kmKnown++;d.km+=v.kmRodados;}
  }
- return [...drivers.values()].map(d=>({id:d.id,name:d.name,trips:d.trips.length,orders:d.orders.length,ctes:d.orders.filter(p=>p.isCte).length,
+ return [...drivers.values()].map(d=>({id:d.id,name:d.name,nameKnown:d.nameKnown,trips:d.trips.length,orders:d.orders.length,ctes:d.orders.filter(p=>p.isCte).length,
   km:d.kmKnown?d.km:null,kmKnown:d.kmKnown,kmPerTrip:d.kmKnown?d.km/d.kmKnown:null,routes:distinct(d.trips.map(v=>str(v.origem)+' → '+str(v.destino)))}))
  .sort((a,b)=>b.trips-a.trips||b.orders-a.orders||a.name.localeCompare(b.name,'pt-BR'));
 }
