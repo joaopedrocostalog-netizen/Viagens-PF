@@ -566,7 +566,7 @@ async function fetchPeriodComparison(){
    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),180000);
    try{
     const res=await fetch(url,{headers:{Authorization:'Bearer '+state.token},credentials:'omit',signal:controller.signal});
-    if(!res.ok){let reason='HTTP '+res.status;try{reason=(await res.json()).error||reason;}catch{}if(res.status===401)throw Error('Sua sessão no Render expirou ou foi reiniciada após um deploy. Faça login novamente e repita o comparativo.');throw Error(reason);}
+    if(!res.ok){let reason='HTTP '+res.status;try{reason=(await res.json()).error||reason;}catch{}if(res.status===401)throw Error('O servidor recusou a sessão (HTTP 401). Entre novamente no portal e tente outra vez. Se persistir, verifique os logs de autenticação do backend.');throw Error(reason);}
     return normalizePayload(await res.json());
    }finally{clearTimeout(timer);}
   };
@@ -579,7 +579,8 @@ async function fetchPeriodComparison(){
   const matches=r=>(!state.customer||r.cliente===state.customer)&&(!state.vehicle||r.placa===state.vehicle);
   const filter=d=>{
    const pedidos=d.pedidos.filter(p=>matches(p)&&(!state.serviceType||p.tipoServico===state.serviceType));
-   const viagens=d.viagens.filter(v=>matches(v)&&(!state.serviceType||pedidos.some(p=>p.viagemId===v.id)));
+   const allowedTripIds=state.serviceType?new Set(pedidos.map(p=>p.viagemId).filter(Boolean)):null;
+   const viagens=d.viagens.filter(v=>matches(v)&&(!allowedTripIds||allowedTripIds.has(v.id)));
    return {...d,viagens,pedidos,ctes:pedidos.filter(p=>p.isCte)};
   };
   state.comparison={anchor,interval,custom:!!state.compareCustom,currentRange:windows.current,previousRange:windows.previous,current:filter(current),previous:filter(previous),source:'DSS'};
