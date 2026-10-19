@@ -620,9 +620,9 @@ function splitMonths(from,to){
  }
  return result;
 }
-async function fetchDssWindow(range,token){
+async function fetchDssWindow(range,token,syncTo){
  // O botão Atualizar deve ir à DSS mesmo que o MariaDB tenha uma cópia válida.
- const url=(state.apiUrl||window.location.origin).replace(/\/$/,'')+'/api/overview?from='+encodeURIComponent(range.from)+'&to='+encodeURIComponent(range.to)+'&refresh=recent';
+ const url=(state.apiUrl||window.location.origin).replace(/\/$/,'')+'/api/overview?from='+encodeURIComponent(range.from)+'&to='+encodeURIComponent(range.to)+'&refresh=recent&sync_to='+encodeURIComponent(syncTo);
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),90000);
  try{
   const response=await fetch(url,{headers:{Authorization:'Bearer '+token},credentials:'omit',signal:controller.signal});
@@ -649,7 +649,7 @@ async function loadData(){
   const worker=async()=>{
    while(next<windows.length){
     const index=next++;
-    results[index]=await fetchDssWindow(windows[index],token);
+    results[index]=await fetchDssWindow(windows[index],token,requestTo);
     if(epoch===identityEpoch){
      const loaded=results.filter(Boolean).length;
      state.loadingProgress='Consultando DSS: '+loaded+' de '+windows.length+' meses';
