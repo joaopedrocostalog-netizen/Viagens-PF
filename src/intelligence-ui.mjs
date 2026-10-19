@@ -6,6 +6,20 @@ const money=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
 const n=v=>v===null||v===undefined?'—':fmt.format(v);
 const curr=v=>v===null||v===undefined?'—':money.format(v);
 const date=s=>/^\d{4}-\d{2}-\d{2}$/.test(s||'')?s.slice(8)+'/'+s.slice(5,7)+'/'+s.slice(0,4):'—';
+export function sortedMetricRows(rows,key='trips',direction='desc'){
+ const numeric=new Set(['trips','orders','ctes','km','kmPerTrip','routes','count','vehicles','drivers']);
+ const dir=direction==='asc'?1:-1;
+ return [...rows].sort((a,b)=>{
+  const x=a[key],y=b[key];
+  if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;
+  return numeric.has(key)?dir*(x-y):dir*String(x).localeCompare(String(y),'pt-BR',{numeric:true});
+ });
+}
+const sortTableHeader=(label,key,state,kind)=>{
+ const current=state.tableSort?.[kind]||{key:kind==='rotas'?'count':'trips',direction:'desc'};
+ return '<th><button type="button" class="ins-sort-head" data-sort-metric="'+esc(kind+':'+key)+'" aria-label="Ordenar por '+esc(label)+'" aria-sort="'+(current.key===key?(current.direction==='asc'?'ascending':'descending'):'none')+'">'+esc(label)+' <span>'+ (current.key===key?(current.direction==='asc'?'▲':'▼'):'↕')+'</span></button></th>';
+};
+
 const badge=(value,cl='red')=>'<span class="ins-badge '+cl+'">'+esc(value)+'</span>';
 const empty=message=>'<div class="ins-empty"><span>◇</span><p>'+esc(message)+'</p></div>';
 const cards=items=>'<div class="ins-kpi-row">'+items.map(x=>'<div class="ins-kpi"><div>'+esc(x.label)+'</div><strong>'+esc(x.value)+'</strong><small>'+esc(x.note||'')+'</small></div>').join('')+'</div>';
@@ -80,8 +94,8 @@ export function renderDriverRouteDetails(data,state,view){
    {label:'Placas distintas',value:n(route.vehicles)},{label:'Motoristas ID',value:n(route.drivers)}])+
    (relevant.length?'<div class="ins-responsive-table"><table><thead><tr><th>RV</th><th>Início</th><th>Cliente</th><th>Placa</th><th>KM rodados</th></tr></thead><tbody>'+
     relevant.map(v=>'<tr><td><button class="ins-link" data-profile-detail="viagens:'+esc(v.id)+'">'+esc(v.numero)+'</button></td><td>'+date(v.data)+'</td><td>'+esc(v.cliente)+'</td><td>'+esc(v.placa||'—')+'</td><td>'+n(v.kmRodados)+'</td></tr>').join('')+'</tbody></table></div>':'')+'</div>':'')+
-  (routes.length?'<div class="ins-responsive-table"><table><thead><tr><th>Origem → Destino</th><th>RVs</th><th>KM informados</th><th>KM médio*</th><th>Veículos</th><th>Motoristas</th></tr></thead><tbody>'+
-  routes.map(r=>'<tr><td><button class="ins-link" data-route-open="'+esc(r.name)+'">'+esc(r.name)+'</button></td><td>'+n(r.count)+'</td><td>'+n(r.km)+'</td><td>'+n(r.kmPerTrip)+'</td><td>'+n(r.vehicles)+'</td><td>'+n(r.drivers)+'</td></tr>').join('')+'</tbody></table></div>':empty('Sem viagens com dados de rota'))+
+  (routes.length?'<div class="ins-responsive-table"><table><thead><tr>'+sortTableHeader('Origem → Destino','name',state,'rotas')+''+sortTableHeader('RVs','count',state,'rotas')+''+sortTableHeader('KM informados','km',state,'rotas')+''+sortTableHeader('KM médio*','kmPerTrip',state,'rotas')+''+sortTableHeader('Veículos','vehicles',state,'rotas')+''+sortTableHeader('Motoristas','drivers',state,'rotas')+'</tr></thead><tbody>'+
+  sortedMetricRows(routes,state.tableSort?.rotas?.key||'count',state.tableSort?.rotas?.direction||'desc').map(r=>'<tr><td><button class="ins-link" data-route-open="'+esc(r.name)+'">'+esc(r.name)+'</button></td><td>'+n(r.count)+'</td><td>'+n(r.km)+'</td><td>'+n(r.kmPerTrip)+'</td><td>'+n(r.vehicles)+'</td><td>'+n(r.drivers)+'</td></tr>').join('')+'</tbody></table></div>':empty('Sem viagens com dados de rota'))+
   '<p class="ins-hint">* KM médio apenas entre RVs com KM registrado. Não são estimativas de percurso por GPS. Sem dados de tempo de condução ou produtividade laboral.</p></section>';
  }
  const related=driver?{trips:trips.filter(v=>v.motoristaId&&String(v.motoristaId)===driver.id),orders:orders.filter(p=>p.motoristaId&&String(p.motoristaId)===driver.id)}:null;
@@ -90,9 +104,9 @@ export function renderDriverRouteDetails(data,state,view){
  cards([{label:'RVs com ID',value:n(driver.trips)},{label:'Pedidos PF',value:n(driver.orders)},{label:'CT-e numerados',value:n(driver.ctes)},{label:'KM conhecidos',value:driver.km===null?'—':n(driver.km)+' km'}])+
  '<div class="ins-profile-columns"><div><h3>RVs identificadas</h3>'+(related.trips.length?related.trips.map(v=>'<div class="ins-info-row"><button class="ins-link" data-profile-detail="viagens:'+esc(v.id)+'">RV '+esc(v.numero)+'</button><span>'+date(v.data)+'</span></div>').join(''):empty('Nenhuma RV identificada para este ID'))+'</div>'+
  '<div><h3>Pedidos identificados</h3>'+(related.orders.length?related.orders.map(p=>'<div class="ins-info-row"><button class="ins-link" data-profile-detail="ctes:'+esc(p.id)+'">'+esc(p.pedidoNumero||p.numero)+'</button><span>'+date(p.data)+'</span></div>').join(''):empty('Nenhum pedido identificado'))+'</div></div></div>':'')+
- (drivers.length?'<div class="ins-responsive-table"><table><thead><tr><th>Motorista (ID DSS)</th><th>RVs</th><th>Pedidos</th><th>CT-e</th><th>KM conhecidos</th><th>KM médio*</th><th>Rotas distintas</th></tr></thead><tbody>'+
- drivers.map(d=>'<tr><td><button class="ins-link" data-driver-open="'+esc(d.id)+'">'+esc(d.name)+'</button></td><td>'+n(d.trips)+'</td><td>'+n(d.orders)+'</td><td>'+n(d.ctes)+'</td><td>'+n(d.km)+'</td><td>'+n(d.kmPerTrip)+'</td><td>'+n(d.routes)+'</td></tr>').join('')+'</tbody></table></div>':empty('Sem registros de motorista disponíveis'))+
- '<p class="ins-hint">A contagem depende do ID do motorista nas RVs e PFs; registros sem vínculo não são inferidos. * KM médio usa apenas viagens com informação de KM.</p></section>';
+ (drivers.length?'<div class="ins-responsive-table"><table><thead><tr>'+sortTableHeader('Motorista','name',state,'motoristas')+''+sortTableHeader('RVs','trips',state,'motoristas')+''+sortTableHeader('Pedidos','orders',state,'motoristas')+''+sortTableHeader('CT-e','ctes',state,'motoristas')+''+sortTableHeader('KM conhecidos','km',state,'motoristas')+''+sortTableHeader('KM médio*','kmPerTrip',state,'motoristas')+''+sortTableHeader('Rotas distintas','routes',state,'motoristas')+'</tr></thead><tbody>'+
+ sortedMetricRows(drivers,state.tableSort?.motoristas?.key||'trips',state.tableSort?.motoristas?.direction||'desc').map(d=>'<tr><td><button class="ins-link" data-driver-open="'+esc(d.id)+'">'+esc(d.name)+'</button></td><td>'+n(d.trips)+'</td><td>'+n(d.orders)+'</td><td>'+n(d.ctes)+'</td><td>'+n(d.km)+'</td><td>'+n(d.kmPerTrip)+'</td><td>'+n(d.routes)+'</td></tr>').join('')+'</tbody></table></div>':empty('Sem registros de motorista disponíveis'))+
+ '<p class="ins-hint">Clique nos cabeçalhos para ordenar por mais CT-e, pedidos, viagens, KM ou motorista. “Nome não informado” significa que nenhum nome confiável foi retornado no período. A contagem depende do ID do motorista nas RVs e PFs; registros sem vínculo não são inferidos. * KM médio usa apenas viagens com informação de KM.</p></section>';
 }
 export function renderAlertsHub(data,state){
  const financial=!!state.permissions.financeiro;
