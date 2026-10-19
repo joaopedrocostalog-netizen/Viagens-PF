@@ -10,6 +10,7 @@ import {fileURLToPath} from 'node:url';
 import {timingSafeEqual} from 'node:crypto';
 import {configuredUsers,login,authenticate,logout,listAccounts,createAccount,updateAccount,changeOwnPassword,AccountError} from './auth.mjs';
 import {projectOverview,permissionsFor} from './access.mjs';
+import {monthWindows,mergeDssRows} from './dss-periods.mjs';
 const env=process.env;
 const useAccounts=configuredUsers();
 const allowLegacy=env.PORTAL_ALLOW_LEGACY_TOKEN==='true';
@@ -261,8 +262,15 @@ const server=http.createServer(async(req,res)=>{
  let pending=INFLIGHT.get(cacheKey);
  if(!pending){
   pending=(async()=>{
-   const result=await Promise.all(Object.keys(cfg).filter(name=>cfg[name].path).map(async name=>[name,await queryDss(name,from,to)]));
-   const data=Object.fromEntries(result);
+   const windows=monthWindows(from,to);
+   if(windows.length>12)throw Error('Período muito longo: selecione até 12 meses.');
+   const combined=Object.fromEntries(Object.keys(cfg).map(k=>[k,[]]));
+   for(const window of windows){
+    const result=await Promise.all(Object.keys(cfg).filter(name=>cfg[name].path).map(async name=>[name,await queryDss(name,window.from,window.to)]));
+    for(const [name,rows] of result)combined[name].push(rows||[]);
+    console.info('[DSS] mês concluído',window.from,window.to);
+   }
+   const data=Object.fromEntries(Object.entries(combined).map(([name,groups])=>[name,mergeDssRows(groups,name)]));
    const payload={mode:'live',updatedAt:new Date().toISOString(),cacheHit:false,data:{viagens:data.viagens||[],pedidos:data.pedidos||[],ctes:data.ctes||[],mdfes:data.mdfes||[],sources:{viagens:true,pedidos:true,ctes:!!cfg.ctes.path,mdfes:!!cfg.mdfes.path}}};
    cachePut(cacheKey,payload);
    apiStats.success++;apiStats.lastSuccess=payload.updatedAt;
