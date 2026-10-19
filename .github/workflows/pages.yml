@@ -30,6 +30,7 @@ jobs:
           node --check src/intelligence.mjs
           node --check src/intelligence-ui.mjs
           node --check api/render-bootstrap.mjs
+          node --check api/dss-periods.mjs
           node --check api/server.mjs
           node --check api/auth.mjs
           node --check api/access.mjs
