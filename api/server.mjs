@@ -331,10 +331,16 @@ const server=http.createServer(async(req,res)=>{
    const windows=monthWindows(from,to);
    if(windows.length>12)throw Error('Período muito longo: selecione até 12 meses.');
    const combined=Object.fromEntries(Object.keys(cfg).map(k=>[k,[]]));
-   for(const window of windows){
-    const result=await Promise.all(Object.keys(cfg).filter(name=>cfg[name].path).map(async name=>[name,await queryDss(name,window.from,window.to)]));
-    for(const [name,rows] of result)combined[name].push(rows||[]);
-    console.info('[DSS] mês concluído',window.from,window.to);
+   // Lotes de ate 3 meses: impede que dez meses sejam processados em serie
+   // sem disparar dezenas de chamadas simultaneas ao DSS.
+   for(let offset=0;offset<windows.length;offset+=3){
+    const batch=windows.slice(offset,offset+3);
+    const results=await Promise.all(batch.map(async window=>{
+     const result=await Promise.all(Object.keys(cfg).filter(name=>cfg[name].path).map(async name=>[name,await queryDss(name,window.from,window.to)]));
+     console.info('[DSS] mês concluído',window.from,window.to);
+     return result;
+    }));
+    for(const result of results)for(const [name,rows] of result)combined[name].push(rows||[]);
    }
    const data=Object.fromEntries(Object.entries(combined).map(([name,groups])=>[name,mergeDssRows(groups,name)]));
    for(const catalog of optionalCatalogs){
@@ -342,6 +348,8 @@ const server=http.createServer(async(req,res)=>{
     try{
      if(catalog.name==='rotas')data.rotas=await optionalCatalog(catalog,from,to);
      else{
+      // Programacoes sao enriquecimento opcional e muito custoso em periodos longos.
+      if(monthWindows(from,to).length>1)continue;
       const windows=monthWindows(from,to);
       const sets=[];
       sets.push(...await Promise.all(windows.map(win=>optionalCatalog(catalog,win.from,win.to))));
