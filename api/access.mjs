@@ -5,7 +5,7 @@ export const ROLE_PERMISSIONS=Object.freeze({
   administrador:Object.freeze({operacional:true,financeiro:true,admin:true})
 });
 export function permissionsFor(role){return ROLE_PERMISSIONS[role]||null;}
-export const OPERATIONAL_VIEWS=Object.freeze(['painel','viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','containers','mdfes','relatorios']);
+export const OPERATIONAL_VIEWS=Object.freeze(['painel','viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','ocorrencias','containers','mdfes','relatorios']);
 export const FINANCIAL_VIEWS=Object.freeze(['faturamento','clientes','analises']);
 export const ADMIN_VIEWS=Object.freeze(['administracao','integracoes']);
 export const OPERATIONAL_REPORTS=Object.freeze(['viagens','pedidos','ctes','rotas','veiculos','motoristas','containers','mdfes','pendencias','mensal']);
@@ -54,6 +54,7 @@ export function projectOverview(raw,role){
   mdfes:(payload.mdfes||[]).map(x=>operationalOnly?project(x,['nro_mdf','numero','numeroMDFe','nroMDFe','nrMDFe','data_emissao','data','rv_id','viagemId','idViagem','rv_viagem','placa_veiculo','placa','status','situacao']):Object.fromEntries(Object.entries(x).filter(([k])=>!PII.has(k)))),
   rotas:(payload.rotas||[]).map(x=>project(x,['rota_id','km_previsto_rota','dsc_rota','cidade_origem_rota','cidade_destino_rota'])),
   programacoes:(payload.programacoes||[]).map(x=>project(x,['programacao_id','nro_programacao','rv_id','nro_rv','pf_id','motorista_id','veiculo_id','data_emissao','nro_cte','total_frete_pedido_frete'])),
+  ocorrencias:(payload.ocorrencias||[]).map(x=>project(x,['ocorrencia_id','data_ocorrencia','descricao','veiculo_id','placa_veiculo','ocorrencia_de','relato','causa_raiz','providencia_tomada','responsavel_atendimento','envolvido','data','status'])),
   sources:payload.sources
  };
  return {...raw,permissions,role,data:cleaned};
