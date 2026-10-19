@@ -200,7 +200,14 @@ async function queryDss(name,from,to){
   if(r.status===404)throw Error('Rota '+name+' não encontrada no DSS (HTTP 404). Confira DSS_BASE_URL e DSS_'+name.toUpperCase()+'_PATH.');
   throw Error('Consulta '+name+' retornou HTTP '+r.status);
  }
- let v;try{v=await r.json();}catch{throw Error('Resposta '+name+' não é JSON');}
+ let v;
+ try{v=await r.json();}
+ catch{
+  // DSS eventualmente responde HTML/texto com HTTP 200 (gateway/proxy), não um JSON.
+  // Não aceitar esse conteúdo como lista vazia, nem registrar payload potencialmente sensível.
+  console.warn('[DSS] serviço',name,'resposta inválida HTTP',r.status,'content-type',String(r.headers.get('content-type')||'não informado').slice(0,80));
+  throw Error('DSS devolveu conteúdo inválido em '+name+' (HTTP '+r.status+', não é JSON). Tente um período menor ou novamente em alguns minutos.');
+ }
  if(v&&typeof v.status==='number'&&v.status!==200)throw Error('DSS '+name+' recusou a consulta (status '+v.status+'): '+String(v.mensagemErro||'verifique permissões e credenciais').slice(0,180));
  const list=listFrom(getPath(v,c.dataPath));
  if(!list)throw Error('Resposta '+name+' não contém lista; confira o DATA_PATH.');
