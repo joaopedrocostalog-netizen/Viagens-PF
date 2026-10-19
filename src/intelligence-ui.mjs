@@ -108,9 +108,12 @@ export function renderDriverRouteDetails(data,state,view){
  sortedMetricRows(drivers,state.tableSort?.motoristas?.key||'trips',state.tableSort?.motoristas?.direction||'desc').map(d=>'<tr><td><button class="ins-link" data-driver-open="'+esc(d.id)+'">'+esc(d.name)+'</button></td><td>'+n(d.trips)+'</td><td>'+n(d.orders)+'</td><td>'+n(d.ctes)+'</td><td>'+n(d.km)+'</td><td>'+n(d.kmPerTrip)+'</td><td>'+n(d.routes)+'</td></tr>').join('')+'</tbody></table></div>':empty('Sem registros de motorista disponíveis'))+
  '<p class="ins-hint">Clique nos cabeçalhos para ordenar por mais CT-e, pedidos, viagens, KM ou motorista. “Nome não informado” significa que nenhum nome confiável foi retornado no período. A contagem depende do ID do motorista nas RVs e PFs; registros sem vínculo não são inferidos. * KM médio usa apenas viagens com informação de KM.</p></section>';
 }
+let cachedAlerts=null;
 export function renderAlertsHub(data,state){
  const financial=!!state.permissions.financeiro;
- const alerts=alertsForRole(makeAlerts(data,{lateDays:state.lateDays??2}),financial);
+ const lateDays=state.lateDays??2;
+ if(!cachedAlerts||cachedAlerts.data!==data||cachedAlerts.lateDays!==lateDays){cachedAlerts={data,lateDays,alerts:makeAlerts(data,{lateDays})};}
+ const alerts=alertsForRole(cachedAlerts.alerts,financial);
  const priority=state.alertPriority||'todos',kind=state.alertKind||'todos';
  const allowed=alerts.filter(a=>(priority==='todos'||a.level===priority)&&(kind==='todos'||a.type===kind));
  const types=[...new Set(alerts.map(x=>x.type))].sort();
@@ -122,7 +125,7 @@ export function renderAlertsHub(data,state){
  '<label>Tipo<select id="alertKindFilter" class="control"><option value="todos">Todos</option>'+types.map(t=>'<option value="'+esc(t)+'" '+(kind===t?'selected':'')+'>'+esc(typeLabels[t]||t)+'</option>').join('')+'</select></label></div>'+
  (allowed.length?'<div class="ins-alert-list">'+allowed.map(a=>'<article class="ins-alert-item"><span class="ins-alert-signal '+(a.level==='high'?'danger':a.level==='info'?'info':'warning')+'">!</span>'+
  '<div><strong>'+esc(a.title)+'</strong><p>'+esc(a.detail)+'</p><small>'+date(a.refDate)+' · '+esc(typeLabels[a.type]||a.type)+'</small></div>'+
- '<button type="button" class="btn btn-sm" data-alert-detail="'+esc(a.view+':'+a.recordId)+'">Abrir registro ↗</button></article>').join('')+'</div>':empty('Nenhuma pendência correspondente aos filtros.'))+
+ '<button type="button" class="btn btn-sm" data-alert-detail="'+esc(a.view+':'+a.recordId)+'">Abrir registro ↗</button></article>').join('')+'</div>':empty('Nenhuma pendência correspondente aos filtros.'))+(allowed.length>100?'<p class="ins-hint">Exibindo as primeiras 100 pendências dos '+n(allowed.length)+' registros. Refine os filtros para localizar outros resultados.</p>':'')+
  '<p class="ins-hint">Uma RV ou CT-e não localizada pode estar fora do período consultado. Uma referência ausente não comprova irregularidade fiscal ou falta de emissão.</p></section>';
 }
 export function renderComparison(data,state){
