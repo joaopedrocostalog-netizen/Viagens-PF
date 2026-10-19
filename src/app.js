@@ -13,6 +13,7 @@ const root = document.getElementById('app');
 const fmtBRL = new Intl.NumberFormat('pt-BR', {style:'currency',currency:'BRL',maximumFractionDigits:0});
 const fmtNum = new Intl.NumberFormat('pt-BR');
 const year = new Date().getFullYear();
+const localToday=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');};
 const DEMO_VIAGENS = [
  ['V-260081','2026-01-18','MAERSK LOGISTICS','CUF-7H59','Santos/SP','São Paulo/SP',21850,15430,'Concluída'],
  ['V-260102','2026-02-08','MSC BRASIL','CCU-5118','Santos/SP','Campinas/SP',18420,12270,'Concluída'],
@@ -124,7 +125,7 @@ async function demoChangeOwnPassword(currentPassword,newPassword){
 }
 
 const state = {
- view:'painel', chartInterval:'mensal', compareInterval:'mensal',compareAnchor:new Date().toISOString().slice(0,10), from:String(year)+'-01-01',to:String(year)+'-12-31',search:'',filter:'todos',page:1,
+ view:'painel', chartInterval:'mensal', compareInterval:'mensal',compareAnchor:new Date().toISOString().slice(0,10), from:String(year)+'-01-01',to:localToday(),search:'',filter:'todos',page:1,
  dataset:demo, mode:'demo',error:'',loading:false,selected:null,connect:false,menu:false,
  apiUrl:portalSettings.apiUrl,token:'',importCount:0,
  globalQuery:'',clientSelected:'',routeSelected:'',driverSelected:'',alertKind:'todos',
@@ -232,7 +233,7 @@ function render(){
 }
 function renderFilters(){
  if(state.view==='integracoes')return '';
- return '<div class="filters"><div class="filter"><label for="from">De</label><input class="control" id="from" type="date" value="'+attr(state.from)+'"></div><div class="filter"><label for="to">Até</label><input class="control" id="to" type="date" value="'+attr(state.to)+'"></div>'+
+ return '<div class="filters"><div class="filter"><label for="from">De</label><input class="control" id="from" type="date" max="'+localToday()+'" value="'+attr(state.from)+'"></div><div class="filter"><label for="to">Até</label><input class="control" id="to" type="date" max="'+localToday()+'" value="'+attr(state.to)+'"></div>'+
  (['viagens','ctes','clientes','mdfes',...ADVANCED_VIEWS].includes(state.view)?'<div class="filter grow"><label for="searchInput">Buscar registros</label><input id="searchInput" class="control full" type="search" placeholder="Número, placa, cliente ou situação..." value="'+attr(state.search)+'"></div>':'')+
  (['viagens','ctes','mdfes'].includes(state.view)?'<div class="filter"><label for="statusFilter">Situação</label><select id="statusFilter" class="control"><option value="todos">Todas</option><option value="vinculado" '+(state.filter==='vinculado'?'selected':'')+'>Vinculados</option><option value="pendente" '+(state.filter==='pendente'?'selected':'')+'>Sem vínculo</option></select></div>':'')+
  '</div>';
@@ -772,8 +773,8 @@ root.addEventListener('change',e=>{
   else render();
   return;
  }
- if(e.target.id==='from'){state.from=e.target.value;state.page=1;if(state.mode==='live')loadData();else render();}
- if(e.target.id==='to'){state.to=e.target.value;state.page=1;if(state.mode==='live')loadData();else render();}
+ if(e.target.id==='from'){state.from=e.target.value>localToday()?localToday():e.target.value;if(state.from>state.to)state.to=state.from;state.page=1;if(state.mode==='live')loadData();else render();}
+ if(e.target.id==='to'){state.to=e.target.value>localToday()?localToday():e.target.value;if(state.to<state.from)state.from=state.to;state.page=1;if(state.mode==='live')loadData();else render();}
  if(e.target.id==='compareAnchorInput'){
   state.compareAnchor=e.target.value;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;
  }
@@ -797,7 +798,7 @@ root.addEventListener('change',e=>{
  if(e.target.id==='quickPeriod'&&e.target.value){
   const now=new Date(),today=new Date(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()));
   const iso=x=>x.toISOString().slice(0,10);let from,to;
-  if(e.target.value==='this-month'){from=new Date(Date.UTC(now.getFullYear(),now.getMonth(),1));to=new Date(Date.UTC(now.getFullYear(),now.getMonth()+1,0));}
+  if(e.target.value==='this-month'){from=new Date(Date.UTC(now.getFullYear(),now.getMonth(),1));to=today;}
   if(e.target.value==='last-month'){from=new Date(Date.UTC(now.getFullYear(),now.getMonth()-1,1));to=new Date(Date.UTC(now.getFullYear(),now.getMonth(),0));}
   if(e.target.value==='this-year'){from=new Date(Date.UTC(now.getFullYear(),0,1));to=today;}
   if(e.target.value==='last-90'){from=new Date(today.getTime()-89*86400000);to=today;}
