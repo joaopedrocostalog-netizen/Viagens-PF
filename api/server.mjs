@@ -47,6 +47,43 @@ function config(name){
  return {path:env[k+'_PATH']||({DSS_VIAGENS:'/listarViagens',DSS_PEDIDOS:'/listarPedidosFrete'}[k]||''),method:(env[k+'_METHOD']||'GET').toUpperCase(),from:env[k+'_QUERY_FROM']||(name==='viagens'||name==='pedidos'?'data_inicio':''),to:env[k+'_QUERY_TO']||(name==='viagens'||name==='pedidos'?'data_fim':''),body:env[k+'_BODY_TEMPLATE']||'',dataPath:env[k+'_DATA_PATH']||(name==='viagens'||name==='pedidos'?'registros':'')};
 }
 const cfg=Object.fromEntries(['viagens','pedidos','ctes','mdfes'].map(k=>[k,config(k)]));
+/** Catálogo opcional de motoristas. Uma falha aqui não invalida viagens/pedidos. */
+const driversPath=env.DSS_MOTORISTAS_PATH||'';
+let driverCatalog={expires:0,items:[],status:'disabled'};
+async function driverNames(){
+ if(!driversPath)return driverCatalog.items;
+ if(Date.now()<driverCatalog.expires)return driverCatalog.items;
+ const endpoint=new URL(driversPath.replace(/^\\//,''),base.replace(/\\/?$/,'/'));
+ if(endpoint.origin!==new URL(base).origin)throw Error('Origem de motoristas inválida');
+ const req=await fetch(endpoint,{headers:{Accept:'application/json',...dssAuthHeaders()},signal:AbortSignal.timeout(Math.min(timeout,12000)),redirect:'error'});
+ if(!req.ok)throw Error('listarMotoristas HTTP '+req.status);
+ const raw=await req.json();
+ const rows=listFrom(getPath(raw,env.DSS_MOTORISTAS_DATA_PATH||'registros'));
+ if(!Array.isArray(rows))throw Error('listarMotoristas: registros não encontrados, confira DATA_PATH');
+ const idField=env.DSS_MOTORISTAS_ID_FIELD||'motorista_id',nameField=env.DSS_MOTORISTAS_NAME_FIELD||'motorista_nome';
+ const names=new Map();
+ for(const item of rows){
+  const id=String(item?.[idField]??'').trim(),name=String(item?.[nameField]??'').trim();
+  if(id&&name&&name.toLowerCase()!=='null'&&!/^motorista\\s*(id)?\\s*\\d+$/i.test(name)&&name.length<=150){
+   if(names.has(id)&&names.get(id)!==name)names.set(id,null);
+   else if(!names.has(id))names.set(id,name);
+  }
+ }
+ driverCatalog={items:[...names].filter(([,name])=>name),expires:Date.now()+15*60_000,status:'ok'};
+ console.info('[DSS] motoristas: catálogo atualizado, IDs com nome',driverCatalog.items.length);
+ return driverCatalog.items;
+}
+function attachDriverNames(data,names){
+ const lookup=new Map(names);
+ for(const kind of ['viagens','pedidos']){
+  for(const row of data[kind]||[]){
+   const id=String(row.motorista_id??'').trim();
+   if(id&&lookup.has(id)&&!String(row.motorista_nome??'').trim())
+    row.motorista_nome=lookup.get(id);
+  }
+ }
+}
+
 /** Auth do DSS e auth do portal são diferentes.
  * DSS: Basic Auth (somente backend). Portal: token Bearer de acesso à nossa API.
  */
@@ -271,6 +308,10 @@ const server=http.createServer(async(req,res)=>{
     console.info('[DSS] mês concluído',window.from,window.to);
    }
    const data=Object.fromEntries(Object.entries(combined).map(([name,groups])=>[name,mergeDssRows(groups,name)]));
+   if(driversPath){
+    try{const names=await driverNames();attachDriverNames(data,names);}
+    catch(err){driverCatalog.expires=Date.now()+60_000;console.warn('[DSS] listarMotoristas indisponível:',err.name||'Error',String(err.message).slice(0,120));attachDriverNames(data,driverCatalog.items);}
+   }
    const payload={mode:'live',updatedAt:new Date().toISOString(),cacheHit:false,data:{viagens:data.viagens||[],pedidos:data.pedidos||[],ctes:data.ctes||[],mdfes:data.mdfes||[],sources:{viagens:true,pedidos:true,ctes:!!cfg.ctes.path,mdfes:!!cfg.mdfes.path}}};
    cachePut(cacheKey,payload);
    apiStats.success++;apiStats.lastSuccess=payload.updatedAt;
