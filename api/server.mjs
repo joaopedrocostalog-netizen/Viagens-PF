@@ -8,6 +8,7 @@ import {readFile} from 'node:fs/promises';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {timingSafeEqual} from 'node:crypto';
+import {gzip} from 'node:zlib';
 import {configuredUsers,login,authenticate,logout,listAccounts,createAccount,updateAccount,changeOwnPassword,AccountError} from './auth.mjs';
 import {projectOverview,permissionsFor} from './access.mjs';
 import {monthWindows,mergeDssRows} from './dss-periods.mjs';
@@ -134,10 +135,19 @@ function dssAuthHeaders(){
  }
  throw Error('DSS_AUTH_TYPE inválido. Use basic ou header.');
 }
-function reply(res,code,body,origin){
- const str=JSON.stringify(body),h={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(str),'X-Content-Type-Options':'nosniff'};
+function reply(res,code,body,origin,acceptEncoding=''){
+ const str=JSON.stringify(body),h={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
  if(origin&&origins.includes(origin)){h['Access-Control-Allow-Origin']=origin;h['Vary']='Origin';h['Access-Control-Allow-Headers']='Authorization, Content-Type';h['Access-Control-Allow-Methods']='GET, POST, PATCH, OPTIONS';}
- res.writeHead(code,h);res.end(str);
+ // Compactar só respostas grandes. Browser descomprime gzip automaticamente.
+ if(str.length>50000&&/\\bgzip\\b/i.test(acceptEncoding)){
+  h.Vary=h.Vary?'Origin, Accept-Encoding':'Accept-Encoding';
+  return gzip(str,{level:4},(error,data)=>{
+   if(res.destroyed||res.writableEnded)return;
+   if(!error){h['Content-Encoding']='gzip';h['Content-Length']=data.length;res.writeHead(code,h);res.end(data);}
+   else {h['Content-Length']=Buffer.byteLength(str);res.writeHead(code,h);res.end(str);}
+  });
+ }
+ h['Content-Length']=Buffer.byteLength(str);res.writeHead(code,h);res.end(str);
 }
 function legacyAuthorized(req){
  const s=env.PORTAL_ACCESS_TOKEN;
@@ -342,7 +352,7 @@ const server=http.createServer(async(req,res)=>{
  if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)return reply(res,400,{error:'Intervalo de datas inválido'},origin);
  const cacheKey=from+'|'+to;
  const cached=cacheGet(cacheKey);
- if(cached){apiStats.cached++;return reply(res,200,projectOverview({...cached,cacheHit:true},user.role),origin);}
+ if(cached){apiStats.cached++;return reply(res,200,projectOverview({...cached,cacheHit:true},user.role),origin,req.headers['accept-encoding']||'');}
  const started=Date.now();
  let pending=INFLIGHT.get(cacheKey);
  if(!pending){
@@ -401,7 +411,7 @@ const server=http.createServer(async(req,res)=>{
  }else console.info('[DSS] consulta idêntica reutilizada, período',from,to);
  try{
   const payload=await pending;
-  return reply(res,200,projectOverview(payload,user.role),origin);
+  return reply(res,200,projectOverview(payload,user.role),origin,req.headers['accept-encoding']||'');
  }catch(err){
   apiStats.failed++;apiStats.lastFailure=new Date().toISOString();
   console.error('[DSS]',err.name,err.message);
