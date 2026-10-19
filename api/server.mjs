@@ -12,6 +12,7 @@ import {gzip} from 'node:zlib';
 import {configuredUsers,login,authenticate,logout,listAccounts,createAccount,updateAccount,changeOwnPassword,AccountError} from './auth.mjs';
 import {projectOverview,permissionsFor} from './access.mjs';
 import {monthWindows,mergeDssRows} from './dss-periods.mjs';
+import {createPeriodStore} from './period-store.mjs';
 const env=process.env;
 const useAccounts=configuredUsers();
 const allowLegacy=env.PORTAL_ALLOW_LEGACY_TOKEN==='true';
@@ -21,6 +22,7 @@ const origins=(env.PORTAL_ALLOWED_ORIGINS||'').split(',').map(s=>s.trim()).filte
 const timeout=Math.min(38000,Math.max(1000,Number(env.DSS_TIMEOUT_MS||32000)));
 const cacheMaxAge=Math.min(3600000,Math.max(0,Number(env.API_CACHE_SECONDS??60)*1000));
 const CACHE=new Map(),CACHE_LIMIT=3; // Render Free: evitar manter dezenas de respostas DSS enormes em memória.
+const periodStore=createPeriodStore({dir:env.DSS_PERIOD_CACHE_DIR||'',ttlMs:Math.max(60000,Number(env.DSS_PERIOD_CACHE_HOURS||24)*3600000)});
 const INFLIGHT=new Map(); // Reutilizar consultas idênticas que chegam ao mesmo tempo.
 const rateTable=new Map();
 const rateLimit=Math.max(10,Number(env.PORTAL_REQUESTS_PER_MINUTE||120));
@@ -340,7 +342,7 @@ const server=http.createServer(async(req,res)=>{
   if(!user)return reply(res,401,{error:'Não autorizado'},origin);
   if(user.mustChangePassword)return reply(res,403,{error:'Altere a senha provisória.'},origin);
   if(!user.permissions.admin)return reply(res,403,{error:'Somente administradores podem consultar diagnósticos.'},origin);
-  return reply(res,200,{status:'ok',configured:!!(base&&dssCredentialsReady()),lastSuccess:apiStats.lastSuccess,lastFailure:apiStats.lastFailure,counters:{...apiStats},cacheEntries:CACHE.size,cacheSeconds:cacheMaxAge/1000},origin);
+  return reply(res,200,{status:'ok',configured:!!(base&&dssCredentialsReady()),lastSuccess:apiStats.lastSuccess,lastFailure:apiStats.lastFailure,counters:{...apiStats},cacheEntries:CACHE.size,cacheSeconds:cacheMaxAge/1000,periodStoreEnabled:periodStore.enabled},origin);
  }
  if(url.pathname!=='/api/overview')return reply(res,404,{error:'Rota não encontrada'},origin);
  if(!user)return reply(res,401,{error:'Sessão inválida ou expirada'},origin);
@@ -365,9 +367,17 @@ const server=http.createServer(async(req,res)=>{
    for(let offset=0;offset<windows.length;offset+=3){
     const batch=windows.slice(offset,offset+3);
     const results=await Promise.all(batch.map(async window=>{
-     const result=await Promise.all(Object.keys(cfg).filter(name=>cfg[name].path).map(async name=>[name,await queryDssResilient(name,window.from,window.to)]));
-     console.info('[DSS] mês concluído',window.from,window.to);
-     return result;
+     let result=await periodStore.read(window.from,window.to);
+     if(result){
+      console.info('[DSS] mês reutilizado do cache privado',window.from,window.to);
+     }else{
+      const pairs=await Promise.all(Object.keys(cfg).filter(name=>cfg[name].path).map(async name=>[name,await queryDssResilient(name,window.from,window.to)]));
+      result=Object.fromEntries(pairs);
+      // Só guardar o mês se todos os serviços principais terminaram com sucesso.
+      await periodStore.write(window.from,window.to,result);
+      console.info('[DSS] mês consultado',window.from,window.to);
+     }
+     return Object.entries(result);
     }));
     for(const result of results)for(const [name,rows] of result)combined[name].push(rows||[]);
    }
