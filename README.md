@@ -1,3 +1,6 @@
+
+> **Migração futura para o Plesk:** consulte [CLAUDE.md](CLAUDE.md) antes de implantar este projeto com o MariaDB compartilhado da COSTALOG. O guia informa configurações, limites de segurança e verificações necessárias; a implantação não ocorre automaticamente apenas pela leitura do arquivo.
+
 # COSTALOG — Portal de Viagens e Fretes
 
 Site corporativo com visual preto, vermelho e branco, inspirado no Controle de Pneus das imagens. A barra lateral utiliza o PNG original logo-costalog-sem-fundo-1024x876.png, já presente no repositório. Frontend HTML/CSS/JavaScript com backend Node.js privado para o DSS.
