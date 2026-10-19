@@ -64,7 +64,7 @@ async function optionalCatalog(c,from,to){
   const format=d=>d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4);
   url.searchParams.set('data_inicio',format(from));url.searchParams.set('data_fim',format(to));
  }
- const response=await fetch(url,{headers:{Accept:'application/json',...dssAuthHeaders()},signal:AbortSignal.timeout(Math.min(timeout,10000)),redirect:'error'});
+ const response=await fetch(url,{headers:{Accept:'application/json',...dssAuthHeaders()},signal:AbortSignal.timeout(Math.min(timeout,6000)),redirect:'error'});
  if(!response.ok)throw Error(c.name+' HTTP '+response.status);
  const json=await response.json();
  if(typeof json?.status==='number'&&json.status!==200)throw Error(c.name+' status DSS '+json.status);
@@ -344,7 +344,7 @@ const server=http.createServer(async(req,res)=>{
      else{
       const windows=monthWindows(from,to);
       const sets=[];
-      for(const win of windows)sets.push(await optionalCatalog(catalog,win.from,win.to));
+      sets.push(...await Promise.all(windows.map(win=>optionalCatalog(catalog,win.from,win.to))));
       const ids=new Set();
       data.programacoes=sets.flat().filter(row=>{
        const id=String(row.programacao_id??'');
