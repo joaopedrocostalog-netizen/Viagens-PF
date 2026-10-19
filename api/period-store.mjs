@@ -6,7 +6,7 @@ import {randomUUID} from 'node:crypto';
 export function createPeriodStore({dir='',ttlMs=86400000}={}){
  const root=String(dir||'').trim();
  const enabled=!!root;
- const keyOf=(from,to)=>{if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(from)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(to))throw Error('Período inválido');return from+'_'+to;};
+ const keyOf=(from,to)=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to))throw Error('Período inválido');return from+'_'+to;};
  const path=(from,to)=>join(root,keyOf(from,to)+'.json');
  return {
   enabled,
