@@ -108,3 +108,22 @@ O esquema do DSS informa para `listarViagens` os campos `total_km_rodados`, `km_
 O backend agora suporta `DSS_PERIOD_CACHE_DIR` (pasta privada de armazenamento) e `DSS_PERIOD_CACHE_HOURS` (validade padrão: 24 horas). Quando configurados, os resultados de viagens/pedidos de um mesmo período são guardados apenas após consulta integral concluída. Em novas consultas desse mesmo período, o backend reutiliza o arquivo até expirar. O cache bruto pode conter informações comerciais e pessoais: armazene **somente em volume privado protegido**, nunca no GitHub, em GitHub Pages nem numa pasta pública. No Render Free, o disco local é efêmero: **não é cache persistente entre deploys ou reinícios**. Não configure um caminho supondo que seja armazenamento durável. Para sincronização persistente real e controle de retenção/auditoria, será necessária a conexão de um banco durável como PostgreSQL.
 
 As variáveis são opcionais: sem elas, o portal continua como antes. A atualização da DSS permanece manual pelo botão. O cache tem validade e **não é uma atualização em tempo real**; estabeleça a validade conforme a necessidade operacional. É possível verificar se está habilitado no campo `periodStoreEnabled` de `/api/status`, acessível apenas para administradores autenticados.
+
+
+## Migração opcional para MariaDB do Plesk (banco compartilhado)
+
+**Não ativar no Render antes de testar o Plesk.** A integração é opt-in e não acessa nem altera as tabelas dos outros sistemas. No banco MariaDB já existente, confirme antes que o nome `viagens_pf_period_cache` não está em uso e execute manualmente `database/viagens_pf_schema.sql` **após backup e autorização**. Nenhum comando CREATE/ALTER/DROP é executado automaticamente pelo portal. A aplicação só executa SELECT e INSERT/UPDATE nessa tabela.
+
+No painel da aplicação Node.js do Plesk, configurar exclusivamente como variáveis do servidor (nunca no frontend ou GitHub):
+
+- `MARIADB_ENABLED=true`
+- `MARIADB_HOST` (host MariaDB atribuído pelo Plesk)
+- `MARIADB_PORT=3306` (se aplicável)
+- `MARIADB_DATABASE` (nome do banco compartilhado existente)
+- `MARIADB_USER` e `MARIADB_PASSWORD` (preferencialmente um usuário de acesso limitado à tabela `viagens_pf_period_cache`)
+- `MARIADB_SSL=true` somente se exigido pela instalação, com configuração TLS validada pelo administrador
+- `MARIADB_CACHE_HOURS=24` (prazo de expiração da cópia)
+
+A aplicação exige Node.js 20+ e instalação de dependências com `npm install --omit=dev` no Plesk. O arquivo `package.json` contém o driver privado `mysql2`. Se o banco estiver indisponível, a aplicação continua consultando a DSS, com aviso sem revelar credenciais. A sincronização continua **manual pelo botão Atualizar**, e períodos em cache serão reutilizados dentro da validade; portanto, o botão não força atualização da DSS quando o cache válido existe. Para forçar sincronização futura, será necessário acrescentar uma operação de invalidação controlada.
+
+**Importante:** esta etapa cria cache mensal de viagens/pedidos, não migra automaticamente todos os dados históricos nem substitui as demais funcionalidades. Até ativar as variáveis, a execução no Render permanece idêntica. A resposta da API continua filtrada pelas permissões de cada perfil.
