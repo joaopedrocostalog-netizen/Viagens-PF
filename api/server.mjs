@@ -51,6 +51,32 @@ function config(name){
 const cfg=Object.fromEntries(['viagens','pedidos','ctes','mdfes'].map(k=>[k,config(k)]));
 /** Catálogo opcional de motoristas. Uma falha aqui não invalida viagens/pedidos. */
 const driversPath=env.DSS_MOTORISTAS_PATH??'/listarMotoristas';
+const optionalCatalogs=[{name:'rotas',path:env.DSS_ROTAS_PATH??'/listarRotas',fields:['rota_id','km_previsto_rota','dsc_rota','cidade_origem_rota','cidade_destino_rota']},
+ {name:'programacoes',path:env.DSS_PROGRAMACOES_PATH??'/listarProgramacoes',fields:['programacao_id','nro_programacao','rv_id','nro_rv','pf_id','motorista_id','veiculo_id','data_emissao','nro_cte','total_frete_pedido_frete']}];
+const optionalCache=new Map();
+async function optionalCatalog(c,from,to){
+ if(!c.path)return [];
+ const key=c.name+'|'+(c.name==='rotas'?'catalogo':from+'|'+to),saved=optionalCache.get(key);
+ if(saved&&saved.expires>Date.now())return saved.rows;
+ const url=new URL(c.path.startsWith('/')?c.path.slice(1):c.path,base.endsWith('/')?base:base+'/');
+ if(url.origin!==new URL(base).origin)throw Error('Origem de catálogo inválida');
+ if(c.name==='programacoes'){
+  const format=d=>d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4);
+  url.searchParams.set('data_inicio',format(from));url.searchParams.set('data_fim',format(to));
+ }
+ const response=await fetch(url,{headers:{Accept:'application/json',...dssAuthHeaders()},signal:AbortSignal.timeout(Math.min(timeout,10000)),redirect:'error'});
+ if(!response.ok)throw Error(c.name+' HTTP '+response.status);
+ const json=await response.json();
+ if(typeof json?.status==='number'&&json.status!==200)throw Error(c.name+' status DSS '+json.status);
+ const list=listFrom(json.registros);
+ if(!Array.isArray(list))throw Error(c.name+' resposta sem registros');
+ const rows=list.map(record=>Object.fromEntries(c.fields.filter(field=>Object.hasOwn(record,field)).map(field=>[field,record[field]])));
+ optionalCache.set(key,{rows,expires:Date.now()+10*60_000});
+ if(optionalCache.size>8)optionalCache.delete(optionalCache.keys().next().value);
+ console.info('[DSS] catálogo',c.name,'obtidos',rows.length);
+ return rows;
+}
+
 let driverCatalog={expires:0,items:[],status:'disabled'};
 async function driverNames(){
  if(!driversPath)return driverCatalog.items;
@@ -311,11 +337,28 @@ const server=http.createServer(async(req,res)=>{
     console.info('[DSS] mês concluído',window.from,window.to);
    }
    const data=Object.fromEntries(Object.entries(combined).map(([name,groups])=>[name,mergeDssRows(groups,name)]));
+   for(const catalog of optionalCatalogs){
+    if(!catalog.path)continue;
+    try{
+     if(catalog.name==='rotas')data.rotas=await optionalCatalog(catalog,from,to);
+     else{
+      const windows=monthWindows(from,to);
+      const sets=[];
+      for(const win of windows)sets.push(await optionalCatalog(catalog,win.from,win.to));
+      const ids=new Set();
+      data.programacoes=sets.flat().filter(row=>{
+       const id=String(row.programacao_id??'');
+       if(!id)return true;
+       if(ids.has(id))return false;ids.add(id);return true;
+      });
+     }
+    }catch(err){console.warn('[DSS] catálogo opcional',catalog.name,'indisponível:',String(err.message).slice(0,110));}
+   }
    if(driversPath){
     try{const names=await driverNames();attachDriverNames(data,names);}
     catch(err){driverCatalog.expires=Date.now()+60_000;console.warn('[DSS] listarMotoristas indisponível:',err.name||'Error',String(err.message).slice(0,120));attachDriverNames(data,driverCatalog.items);}
    }
-   const payload={mode:'live',updatedAt:new Date().toISOString(),cacheHit:false,data:{viagens:data.viagens||[],pedidos:data.pedidos||[],ctes:data.ctes||[],mdfes:data.mdfes||[],sources:{viagens:true,pedidos:true,ctes:!!cfg.ctes.path,mdfes:!!cfg.mdfes.path}}};
+   const payload={mode:'live',updatedAt:new Date().toISOString(),cacheHit:false,data:{viagens:data.viagens||[],pedidos:data.pedidos||[],ctes:data.ctes||[],mdfes:data.mdfes||[],rotas:data.rotas||[],programacoes:data.programacoes||[],sources:{viagens:true,pedidos:true,ctes:!!cfg.ctes.path,mdfes:!!cfg.mdfes.path}}};
    cachePut(cacheKey,payload);
    apiStats.success++;apiStats.lastSuccess=payload.updatedAt;
    console.info('[DSS] consulta concluída','período',from,to,'duração(ms)',Date.now()-started,'RVs',payload.data.viagens.length,'PFs',payload.data.pedidos.length);
