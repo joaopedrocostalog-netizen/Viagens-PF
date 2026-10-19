@@ -1,0 +1,46 @@
+# CLAUDE.md — Instruções de migração do Portal COSTALOG para Plesk
+
+> Leia este arquivo **antes de modificar ou implantar o repositório**. Este documento registra a intenção do proprietário para uma futura migração; não dá permissão para alterar outros sistemas ou executar operações destrutivas sem validação e autorização.
+
+## Objetivo e infraestrutura confirmada
+
+- Projeto: Portal COSTALOG — Viagens e Fretes, repositório `joaopedrocostalog-netizen/Viagens-PF`.
+- Hoje: frontend GitHub Pages e backend privado no Render. **Manter ambos funcionando até o ambiente Plesk passar nos testes de aceitação.**
+- Destino: hospedagem Plesk da COSTALOG. Usuário informou disponibilidade de **Node.js 26.11.1** e de **MariaDB**.
+- Banco MariaDB existente e **compartilhado** com outros sistemas: `wp_n32k4`. **Não criar outro banco**, a menos que o proprietário mude essa orientação.
+- O proprietário informou que a tabela **`viagens_pf_period_cache` já foi criada no phpMyAdmin**, com cinco colunas, chave primária composta e índice para expiração. **Não executar novamente a criação nem modificar a tabela sem verificação e autorização.**
+- Confirmar no Plesk o domínio/subdomínio, raiz exclusiva da aplicação, versão ativa do Node, permissões e instalação de dependências. Evitar alterar o `httpdocs`, `.node-version` ou a aplicação do site principal sem autorização explícita.
+
+## Procedimento de migração — executar somente quando solicitado e com acesso autorizado
+
+1. Inspecionar o repositório, o Plesk e os serviços existentes antes de mudar qualquer configuração. Fazer backup completo e planejar rollback.
+2. Criar/configurar **uma aplicação Node.js isolada** para o portal, em diretório próprio. Dependências: `npm install --omit=dev`; inicialização: `node api/server.mjs` (`npm start`). O backend exige Node 20+.
+3. Configurar **variáveis de ambiente privadas no servidor**, sem inserir senhas/tokens no código, no GitHub, no navegador, em logs ou neste arquivo. A integração DSS existente usa `DSS_BASE_URL`, `DSS_AUTH_TYPE`, `DSS_USERNAME`, `DSS_PASSWORD`; preservar também as variáveis de autenticação/permissões do portal e as origens HTTPS permitidas.
+4. Configurar MariaDB somente na aplicação do portal: `MARIADB_ENABLED=true`, `MARIADB_HOST` (valor real do Plesk), `MARIADB_PORT` (geralmente 3306), `MARIADB_DATABASE=wp_n32k4`, `MARIADB_USER`, `MARIADB_PASSWORD`, `MARIADB_CACHE_HOURS=24`. `MARIADB_SSL` somente com a configuração de segurança exigida pelo servidor.
+5. Criar, se possível, **usuário MariaDB exclusivo** com privilégio mínimo de `SELECT`, `INSERT`, `UPDATE` exclusivamente na tabela `wp_n32k4.viagens_pf_period_cache`. Nunca usar credenciais de administrador de todo o banco se houver alternativa.
+6. Inspecionar com `SHOW CREATE TABLE viagens_pf_period_cache` para validar a estrutura, sem reexecutar DDL automaticamente:
+   - `period_from VARCHAR(10) NOT NULL`
+   - `period_to VARCHAR(10) NOT NULL`
+   - `payload_json LONGTEXT NOT NULL`
+   - `expires_at DATETIME NOT NULL`
+   - `updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`
+   - Chave primária composta (`period_from`, `period_to`) e índice de `expires_at`.
+7. Executar testes em ambiente isolado: `npm test`, `GET /api/health`, autenticação, consulta limitada da DSS, gravação/leitura do cache em MariaDB, consulta em cache, botão de atualização forçada `refresh=1`, comparação de períodos e permissões por perfil. Confirmar que **nenhuma tabela externa ao prefixo do portal foi tocada**.
+8. Configurar HTTPS, CORS e frontend para a URL do backend Plesk, com verificação de login/logout, dados financeiros por perfil, consultas mensais e relatórios. Fazer migração gradual e rollback disponível; só desativar Render após aceitação expressa.
+
+## Regras de arquitetura que NÃO podem ser quebradas
+
+- A DSS é a fonte oficial dos dados de viagens/fretes. Consultas da DSS devem sair somente do backend com autenticação privada.
+- **Atualização automática desativada.** O botão **Atualizar dados da DSS** inicia consulta nova (`refresh=1`) e renova o cache somente após resposta completa. Comparativos e leituras normais podem aproveitar dados no banco dentro da validade.
+- Backend atual possui `api/mariadb-store.mjs` (MariaDB opt-in), `api/period-store.mjs` (cache opcional em disco) e `api/server.mjs` (seleção de repositório). A tabela é **um cache mensal de respostas DSS**, não a migração completa dos dados em tabelas normalizadas; não prometer que já implementa armazenamento integral.
+- A aplicação deve continuar funcionando em modo DSS/Render quando `MARIADB_ENABLED` não estiver ativado ou se o banco estiver indisponível.
+- Preservar painel, viagens, pedidos/CT-e, motoristas, rotas, ocorrências, comparativos com períodos livres, relatórios, filtros, autenticação, permissões e indicadores. Não inventar dados ausentes (KM, custo, faturamento, vínculo de pedidos).
+- Não criar, alterar, renomear ou excluir objetos de outros sistemas da COSTALOG. Antes de qualquer migração SQL, obter backup e autorização; utilizar somente objetos com prefixo `viagens_pf_`.
+- Não guardar informações sensíveis na pasta pública `httpdocs` (cache, `.env`, arquivos de usuários, logs privados). Manter backend e arquivos privados fora do diretório servido, conforme as capacidades da hospedagem.
+
+## Documentos técnicos
+
+- `database/viagens_pf_schema.sql`: modelo da tabela, **referência de conferência**, não para aplicar cegamente porque a tabela já existe.
+- `RENDER_FREE.md`: parâmetros DSS e notas de migração MariaDB.
+- `package.json`: dependência `mysql2` e comandos de execução.
+- `tests/mariadb-store.test.mjs`: testes de acesso isolado ao cache.
