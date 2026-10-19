@@ -139,7 +139,7 @@ function reply(res,code,body,origin,acceptEncoding=''){
  const str=JSON.stringify(body),h={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
  if(origin&&origins.includes(origin)){h['Access-Control-Allow-Origin']=origin;h['Vary']='Origin';h['Access-Control-Allow-Headers']='Authorization, Content-Type';h['Access-Control-Allow-Methods']='GET, POST, PATCH, OPTIONS';}
  // Compactar só respostas grandes. Browser descomprime gzip automaticamente.
- if(str.length>50000&&/\\bgzip\\b/i.test(acceptEncoding)){
+ if(str.length>50000&&/\bgzip\b/i.test(acceptEncoding)){
   h.Vary=h.Vary?'Origin, Accept-Encoding':'Accept-Encoding';
   return gzip(str,{level:4},(error,data)=>{
    if(res.destroyed||res.writableEnded)return;
