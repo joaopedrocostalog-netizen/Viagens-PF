@@ -126,6 +126,15 @@ function referencesMdfe(viagens,pedidos){
 export function normalizeOverview(raw){
  const payload=raw?.data||raw||{};
  const viagens=uniqueBy(validArray(payload.viagens).map(mapViagem),v=>v.id);
+ // Rotas DSS contêm distância PREVISTA. Nunca confundir com odômetro ou KM rodado.
+ const routeById=new Map(validArray(payload.rotas).filter(r=>r.rota_id!=null&&String(r.rota_id)!=='0').map(r=>[String(r.rota_id),r]));
+ for(const trip of viagens){
+  if(trip.kmPrevisto!==null||!trip.rotaId)continue;
+  const raw=routeById.get(trip.rotaId);
+  const planned=moneyNumber(raw?.km_previsto_rota);
+  if(planned!==null){trip.kmPrevisto=planned;trip.kmPrevistoFonte='Cadastro de rotas DSS';}
+ }
+
  const pedidos=uniqueBy(validArray(payload.pedidos).map(mapPedido),p=>p.id);
  const ctesSeparate=validArray(payload.ctes).map((v,i)=>({...mapPedido(v,i),isCte:true}));
  const uniqueCtes=ctesSeparate.filter(c=>!pedidos.some(p=>p.cteNumero&&c.cteNumero&&docKey(p.cteNumero)===docKey(c.cteNumero)));
