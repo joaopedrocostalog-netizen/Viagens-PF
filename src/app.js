@@ -176,8 +176,11 @@ function normalizeMdfe(v,i){
 }
 function normalizePayload(raw){return normalizeOverview(raw);}
 function inRange(v){return !v||((!state.from||v>=state.from)&&(!state.to||v<=state.to));}
+let scopedCache=null;
 function scoped(){
  const d=state.dataset;
+ const cacheKey=[state.from,state.to,state.customer,state.vehicle,state.serviceType].join('|');
+ if(scopedCache&&scopedCache.dataset===d&&scopedCache.key===cacheKey)return scopedCache.value;
  const matches=r=>(!state.customer||r.cliente===state.customer)&&(!state.vehicle||r.placa===state.vehicle);
  let viagens=d.viagens.filter(v=>inRange(v.data)&&matches(v));
  const pedidos=d.pedidos.filter(p=>inRange(p.data)&&matches(p)&&(!state.serviceType||p.tipoServico===state.serviceType));
@@ -185,7 +188,8 @@ function scoped(){
  const mdfes=d.mdfes.filter(x=>inRange(x.data)&&(!state.vehicle||x.placa===state.vehicle));
  const ocorrencias=(d.ocorrencias||[]).filter(x=>inRange(x.data)&&(!state.vehicle||x.placa===state.vehicle));
  if(state.serviceType)viagens=viagens.filter(v=>pedidos.some(p=>p.viagemId===v.id));
- return {viagens,allViagens:d.viagens,ctes,pedidos,mdfes,ocorrencias,sources:d.sources};
+ const value={viagens,allViagens:d.viagens,ctes,pedidos,mdfes,ocorrencias,sources:d.sources};
+ scopedCache={dataset:d,key:cacheKey,value};return value;
 }
 function totals(data){
  const trips=data.viagens;const ctes=data.ctes;
@@ -237,7 +241,7 @@ function renderFilters(){
  return '<div class="filters"><div class="filter"><label for="from">De</label><input class="control" id="from" type="date" max="'+localToday()+'" value="'+attr(state.from)+'"></div><div class="filter"><label for="to">Até</label><input class="control" id="to" type="date" max="'+localToday()+'" value="'+attr(state.to)+'"></div>'+
  (['viagens','ctes','clientes','mdfes','ocorrencias',...ADVANCED_VIEWS].includes(state.view)?'<div class="filter grow"><label for="searchInput">Buscar registros</label><input id="searchInput" class="control full" type="search" placeholder="Número, placa, cliente ou situação..." value="'+attr(state.search)+'"></div>':'')+
  (['viagens','ctes','mdfes'].includes(state.view)?'<div class="filter"><label for="statusFilter">Situação</label><select id="statusFilter" class="control"><option value="todos">Todas</option><option value="vinculado" '+(state.filter==='vinculado'?'selected':'')+'>Vinculados</option><option value="pendente" '+(state.filter==='pendente'?'selected':'')+'>Sem vínculo</option></select></div>':'')+
- (state.mode==='live'&&!PUBLIC_DEMO?'<div class="filter"><label>Consulta DSS</label><button type="button" class="btn btn-red" data-action="refresh" '+(state.loading?'disabled':'')+'>'+(state.loading?'Consultando DSS...':'Atualizar dados da DSS')+'</button></div>':'')+
+ (state.mode==='live'&&!PUBLIC_DEMO?'<div class="filter"><label>Consulta DSS</label><button type="button" class="btn btn-red" data-action="refresh" '+(state.loading?'disabled':'')+'>'+(state.loading?(state.loadingProgress||'Consultando DSS...'):'Atualizar dados da DSS')+'</button></div>':'')+
  '</div>';
 }
 function kpi(label,value,sub,cl){return '<article class="kpi"><div class="kpi-label">'+label+'</div><div class="kpi-value '+(cl||'')+'">'+value+'</div><div class="kpi-sub">'+sub+'</div></article>';}
@@ -620,7 +624,7 @@ async function loadData(){
  const epoch=identityEpoch;
  if(!state.token){state.connect=true;state.loading=false;state.error='Faça login para consultar a DSS.';render();return;}
  const requestFrom=state.from,requestTo=state.to,token=state.token;
- state.loading=true;state.connect=false;state.error='';render();
+ state.loading=true;state.loadingProgress='Preparando consulta...';state.connect=false;state.error='';render();
  try{
   const windows=splitMonths(requestFrom,requestTo),results=new Array(windows.length);
   // Máximo duas requisições simultâneas, evitando sobrecarregar o DSS/Render Free.
@@ -629,6 +633,12 @@ async function loadData(){
    while(next<windows.length){
     const index=next++;
     results[index]=await fetchDssWindow(windows[index],token);
+    if(epoch===identityEpoch){
+     const loaded=results.filter(Boolean).length;
+     state.loadingProgress='Consultando DSS: '+loaded+' de '+windows.length+' meses';
+     const button=document.querySelector('[data-action="refresh"]');
+     if(button)button.textContent=state.loadingProgress;
+    }
    }
   };
   await Promise.all(Array.from({length:Math.min(2,windows.length)},worker));
@@ -648,7 +658,7 @@ async function loadData(){
   const alreadyLive=state.mode==='live';
   if(!alreadyLive){state.mode='demo';state.dataset=demo;state.loadedRange=null;}
   state.error='API indisponível: '+(err.name==='AbortError'?'tempo limite na consulta mensal':err.message)+(alreadyLive?'. Dados anteriores mantidos.':'. Exibindo somente dados fictícios.');
- }finally{if(epoch===identityEpoch){state.loading=false;render();}}
+ }finally{if(epoch===identityEpoch){state.loading=false;state.loadingProgress='';render();}}
 }
 
 function exportAdvanced(type,format){
