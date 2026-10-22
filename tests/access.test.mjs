@@ -33,14 +33,14 @@ test('Sem role válida não existe projeção',()=>{
  assert.equal(permissionsFor(''),null);
  assert.throws(()=>projectOverview(raw,'invalido'));
  assert.equal(canView('operacional','faturamento'),false);
- assert.equal(canView('operacional','entregas'),false);
+ assert.equal(canView('operacional','entregas'),true);
 });
 
-test('Programações não vazam total de frete e navegação mantém somente viagens/PF',()=>{
+test('Programações não vazam total de frete e navegação mantém operações sem administração',()=>{
  for(const role of ['operacional','financeiro','administrador']){
   const response=projectOverview({data:{programacoes:[{pf_id:8,nro_rv:77,total_frete_pedido_frete:9999}]}},role);
   assert.deepEqual(response.data.programacoes,[{nro_rv:77,pf_id:8}]);
-  for(const view of ['painel','clientes','faturamento','analises','entregas','relatorios','mdfes'])assert.equal(canView(role,view),false);
-  for(const view of ['viagens','ctes'])assert.equal(canView(role,view),true);
+  for(const view of ['painel','clientes','faturamento','analises','relatorios','administracao'])assert.equal(canView(role,view),false);
+  for(const view of ['viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','mdfes','ocorrencias'])assert.equal(canView(role,view),true);
  }
 });

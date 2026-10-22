@@ -25,9 +25,9 @@ test('Login individual, projeção por perfil, revogação e bloqueio de status 
  const upstream=http.createServer((req,res)=>{
   res.writeHead(200,{'Content-Type':'application/json'});
   if(req.url.startsWith('/wsdss/listarViagens')){
-   res.end(JSON.stringify({status:200,qtd_registros:1,registros:[{rv_id:10,nro_rv:123,placa_veiculo:'ABC123',motorista_id:5,cliente_nome:'Cliente',
+   res.end(JSON.stringify({status:200,qtd_registros:1,registros:[{empresa:'AC da Costa',rv_id:10,nro_rv:123,placa_veiculo:'ABC123',motorista_id:5,cliente_nome:'Cliente',
     valor_total_abastecido:1870,valor_liquido_vf:390,cliente_cnpjcpf:'11111111111',data_inicio:'15/10/2026'}]}));
-  }else res.end(JSON.stringify({status:200,qtd_registros:1,registros:[{pf_id:2,nro_pf:'PF9',nro_cte:44,rv_viagem:123,cliente_nome:'Cliente',
+  }else res.end(JSON.stringify({status:200,qtd_registros:1,registros:[{empresa:'AC da Costa',pf_id:2,nro_pf:'PF9',nro_cte:44,rv_viagem:123,cliente_nome:'Cliente',
    total_frete:9999,valor_receber:9990,nro_fatura:'FATURA-PRIVADA',liberado_para_faturamento:true,entrega_concluida:true,comprovante_entrega:false}]}));
  });
  const upPort=await listen(upstream);t.after(()=>new Promise(r=>upstream.close(r)));

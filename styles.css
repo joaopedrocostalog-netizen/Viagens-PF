@@ -429,3 +429,8 @@ body{background:#08090b;color:#f6f7f8}
 .ins-sort-head{background:none;border:0;color:#b4b7c3;font-size:inherit;font-weight:800;display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;padding:3px}
 .ins-sort-head span{color:#ff455b}
 .ins-sort-head:hover,.ins-sort-head:focus-visible{color:#fff;text-decoration:underline;text-decoration-color:#ff455b}
+
+/* Alternância de empresa sempre visível, inclusive no celular. */
+.v-accountbar .btn-company-switch{white-space:nowrap;border-color:#d71e30;color:inherit;min-height:36px}
+.v-topbrand .v-ideal-logo{width:120px;max-height:72px;object-fit:contain}
+@media(max-width:700px){.v-accountbar{flex-wrap:wrap;justify-content:flex-end}.v-topbrand .v-ideal-logo{width:90px}.btn-company-switch{font-size:12px}}

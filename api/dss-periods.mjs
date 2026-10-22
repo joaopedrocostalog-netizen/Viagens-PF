@@ -1,3 +1,4 @@
+import {companyIdentity} from '../src/companies.mjs';
 /** Quebra calendárica de consultas DSS e junção sem duplicar chaves documentais. */
 export function monthWindows(from,to){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)throw Error('Intervalo inválido');
@@ -18,7 +19,7 @@ export function mergeDssRows(groups,name){
   for(const row of rows||[]){
    let key='';
    for(const field of keys[name]||[]){
-    if(row?.[field]!=null&&String(row[field]).trim()){key=field+':'+String(row[field]).trim();break;}
+    if(row?.[field]!=null&&String(row[field]).trim()){key=companyIdentity(row)+'|'+field+':'+String(row[field]).trim();break;}
    }
    if(key&&found.has(key))continue;
    if(key)found.add(key);

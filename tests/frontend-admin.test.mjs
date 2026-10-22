@@ -17,39 +17,21 @@ function fakeBrowser(){
  return {events,fields,root};
 }
 const tick=()=>new Promise(r=>setTimeout(r,40));
-test('Admin vê cadastro de funcionários e cria usuário de perfil Financeiro com acesso operacional sem precisar alterar o GitHub',async()=>{
- const {events,root}=fakeBrowser();const calls=[];let accounts=[{username:'admin',name:'Admin',role:'administrador',disabled:false}];
- globalThis.fetch=async(url,options={})=>{
-  const target=String(url);calls.push({url:target,method:options.method||'GET',body:options.body});
-  const ok=(status,data)=>({ok:status<400,status,async json(){return data;}});
-  if(target.endsWith('/api/login'))return ok(200,{token:'token-privado',user:{username:'admin',displayName:'Admin',role:'administrador'},permissions:{operacional:true,financeiro:true,admin:true}});
-  if(target.includes('/api/overview'))return ok(200,{data:{viagens:[],pedidos:[],ctes:[],mdfes:[],sources:{viagens:true,pedidos:true,ctes:true,mdfes:false}},updatedAt:'2026-10-15T19:00:00Z'});
-  if(target.endsWith('/api/users')&&options.method==='POST'){
-   const user=JSON.parse(options.body);
-   assert.equal(user.role,'financeiro');
-   assert.equal(user.username,'financeiro02');
-   assert.equal(user.password,'provisoria-super-forte-2026');
-   accounts.push({...user,disabled:false,mustChangePassword:true});
-   return ok(201,{user});
-  }
-  if(target.endsWith('/api/users'))return ok(200,{users:accounts.map(({password,...a})=>a)});
-  if(target.includes('/api/logout'))return ok(200,{ok:true});
-  return ok(404,{error:'não encontrado'});
+test('Administração permanece oculta inclusive para administradores e não busca lista de contas',async()=>{
+ const {events,root}=fakeBrowser(),calls=[];
+ globalThis.fetch=async(url)=>{
+  calls.push(String(url));
+  return {ok:true,status:200,async json(){return {token:'token-admin',user:{username:'admin',role:'administrador'},permissions:{operacional:true,financeiro:false,admin:true}};}};
  };
- await import('../src/app.js?admin-ui-test=1');
- events.click({target:{closest:(name)=>name==='[data-action]'?{dataset:{action:'connect'}}:null}});
+ await import('../src/app.js?admin-hidden=1');
+ events.click({target:{closest:name=>name==='[data-action]'?{dataset:{action:'connect'}}:null}});
  events.submit({target:{id:'loginForm'},preventDefault(){}});
- await tick();await tick();
- events.click({target:{closest:(name)=>name==='[data-nav]'?{dataset:{nav:'administracao'}}:null}});
  await tick();
- assert(root.innerHTML.includes('Cadastrar funcionário'));
- assert(root.innerHTML.includes('Financeiro — viagens e pedidos'));
- assert(root.innerHTML.includes('adminNewUsername'));
- events.submit({target:{id:'createPortalUser'},preventDefault(){}});
- await tick();await tick();
- assert(calls.some(x=>x.url.endsWith('/api/users')&&x.method==='POST'));
- assert(root.innerHTML.includes('financeiro02'));
- assert(!root.innerHTML.includes('provisoria-super-forte-2026'),'senha não pode ficar no HTML após criação');
+ assert(!root.innerHTML.includes('data-nav="administracao"'));
+ events.click({target:{closest:name=>name==='[data-nav]'?{dataset:{nav:'administracao'}}:null}});
+ assert(!root.innerHTML.includes('Cadastrar funcionário'));
+ assert(!calls.some(url=>url.includes('/api/users')));
+ assert(root.innerHTML.includes('data-nav="entregas"'));
 });
 test('Usuário com senha provisória não consulta dados reais antes de alterá-la',async()=>{
  const {events,fields,root}=fakeBrowser();

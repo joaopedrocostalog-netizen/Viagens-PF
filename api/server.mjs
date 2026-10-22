@@ -4,6 +4,7 @@
  * Caminhos e parâmetros são configurados após validar o Swagger.
  */
 import http from 'node:http';
+import {validCompany} from '../src/companies.mjs';
 import {readFile} from 'node:fs/promises';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -55,8 +56,8 @@ function config(name){
 const cfg=Object.fromEntries(['viagens','pedidos','ctes','mdfes'].map(k=>[k,config(k)]));
 /** Catálogo opcional de motoristas. Uma falha aqui não invalida viagens/pedidos. */
 const driversPath=env.DSS_MOTORISTAS_PATH??'/listarMotoristas';
-const optionalCatalogs=[{name:'ocorrencias',path:env.DSS_OCORRENCIAS_PATH??'/listarOcorrencias',fields:['ocorrencia_id','data_ocorrencia','descricao','veiculo_id','placa_veiculo','ocorrencia_de','relato','causa_raiz','providencia_tomada','responsavel_atendimento','envolvido','data','status']},{name:'rotas',path:env.DSS_ROTAS_PATH??'/listarRotas',fields:['rota_id','km_previsto_rota','dsc_rota','cidade_origem_rota','cidade_destino_rota']},
- {name:'programacoes',path:env.DSS_PROGRAMACOES_PATH??'/listarProgramacoes',fields:['programacao_id','nro_programacao','rv_id','nro_rv','pf_id','motorista_id','veiculo_id','data_emissao','nro_cte','total_frete_pedido_frete']}];
+const optionalCatalogs=[{name:'ocorrencias',path:env.DSS_OCORRENCIAS_PATH??'/listarOcorrencias',fields:['empresa','rv_id','nro_rv','pf_id','nro_mdf','ocorrencia_id','data_ocorrencia','descricao','veiculo_id','placa_veiculo','ocorrencia_de','relato','causa_raiz','providencia_tomada','responsavel_atendimento','envolvido','data','status']},{name:'rotas',path:env.DSS_ROTAS_PATH??'/listarRotas',fields:['empresa','rota_id','km_previsto_rota','dsc_rota','cidade_origem_rota','cidade_destino_rota']},
+ {name:'programacoes',path:env.DSS_PROGRAMACOES_PATH??'/listarProgramacoes',fields:['empresa','programacao_id','nro_programacao','rv_id','nro_rv','pf_id','motorista_id','veiculo_id','data_emissao','nro_cte','total_frete_pedido_frete']}];
 const optionalCache=new Map();
 async function optionalCatalog(c,from,to){
  if(!c.path)return [];
@@ -248,7 +249,8 @@ const staticFiles=new Map([
  ['/index.html','index.html'],
  ['/styles.css','styles.css'],
  ['/logo-costalog-sem-fundo-1024x876.png','logo-costalog-sem-fundo-1024x876.png'],
- ...['app.js','dss-mapping.mjs','operational.mjs','reporting.mjs','advanced-ui.mjs','access-ui.mjs','admin-users.mjs','site-config.mjs','visual-dashboard.mjs','intelligence.mjs','intelligence-ui.mjs'].map(name=>['/src/'+name,'src/'+name])
+ ['/Ideallog.png','Ideallog.png'],
+ ...['companies.mjs','app.js','dss-mapping.mjs','operational.mjs','reporting.mjs','advanced-ui.mjs','access-ui.mjs','admin-users.mjs','site-config.mjs','visual-dashboard.mjs','intelligence.mjs','intelligence-ui.mjs'].map(name=>['/src/'+name,'src/'+name])
 ]);
 async function serveLocalFrontend(req,res,url){
  if(req.method!=='GET'&&req.method!=='HEAD')return false;
@@ -273,6 +275,8 @@ const server=http.createServer(async(req,res)=>{
  }
  let url;try{url=new URL(req.url,'http://localhost');}catch{return reply(res,400,{error:'Requisição inválida'},origin);}
  if(await serveLocalFrontend(req,res,url))return;
+ const company=url.searchParams.get('company')||'costalog';
+ if(['/api/overview','/api/records'].includes(url.pathname)&&!validCompany(company))return reply(res,400,{error:'Empresa inválida.'},origin);
  if(url.pathname==='/api/login'){
   if(req.method!=='POST')return reply(res,405,{error:'Método não permitido'},origin);
   if(!useAccounts)return reply(res,503,{error:'Login individual indisponível: configure PORTAL_USERS_FILE no servidor privado.'},origin);
@@ -360,19 +364,19 @@ const server=http.createServer(async(req,res)=>{
   if(sortField&&!permittedSort.includes(sortField))return reply(res,400,{error:'Ordenação inválida'},origin);
   const months=monthWindows(from,to);
   if(months.length>12)return reply(res,400,{error:'Selecione no máximo 12 meses'},origin);
-  const source=[];
+  const source={viagens:[],pedidos:[]};
   for(const month of months){
    const cachedMonth=await periodStore.read(month.from,month.to);
    if(!cachedMonth)return reply(res,409,{error:'Dados deste período ainda não sincronizados. Use Atualizar dados da DSS.',missingPeriod:month},origin);
-   source.push(cachedMonth[kind]||[]);
+   for(const type of ['viagens','pedidos'])source[type].push(cachedMonth[type]||[]);
   }
   // Primeiro aplicar projeção por perfil, antes de pesquisar, ordenar ou devolver registros.
-  const scoped=projectOverview({data:{viagens:kind==='viagens'?mergeDssRows(source,kind):[],pedidos:kind==='pedidos'?mergeDssRows(source,kind):[],ctes:[],mdfes:[],rotas:[],programacoes:[],ocorrencias:[],sources:{}}},user.role).data[kind];
+  const scoped=projectOverview({data:{viagens:mergeDssRows(source.viagens,'viagens'),pedidos:mergeDssRows(source.pedidos,'pedidos'),ctes:[],mdfes:[],rotas:[],programacoes:[],ocorrencias:[],sources:{}}},user.role,company).data[kind];
   let rows=scoped;
   if(search)rows=rows.filter(record=>Object.values(record).some(v=>(typeof v==='string'||typeof v==='number')&&String(v).toLocaleLowerCase('pt-BR').includes(search)));
   if(sortField)rows=[...rows].sort((a,b)=>{const x=a[sortField],y=b[sortField];return (String(x??'').localeCompare(String(y??''),'pt-BR',{numeric:true}))*sortDir;});
   const total=rows.length,pages=Math.max(1,Math.ceil(total/size));
-  return reply(res,200,{kind,from,to,page:Math.min(page,pages),pageSize:size,total,pages,rows:rows.slice((Math.min(page,pages)-1)*size,Math.min(page,pages)*size),source:'cache'},origin,req.headers['accept-encoding']||'');
+  return reply(res,200,{kind,company,from,to,page:Math.min(page,pages),pageSize:size,total,pages,rows:rows.slice((Math.min(page,pages)-1)*size,Math.min(page,pages)*size),source:'cache'},origin,req.headers['accept-encoding']||'');
  }
  if(url.pathname!=='/api/overview')return reply(res,404,{error:'Rota não encontrada'},origin);
  if(!user)return reply(res,401,{error:'Sessão inválida ou expirada'},origin);
@@ -386,7 +390,7 @@ const server=http.createServer(async(req,res)=>{
  const forceRefresh=refreshMode==='1'||refreshMode==='recent';
  const cacheKey=from+'|'+to+(forceRefresh?'|refresh':'');
  const cached=forceRefresh?null:cacheGet(cacheKey);
- if(cached){apiStats.cached++;return reply(res,200,projectOverview({...cached,cacheHit:true},user.role),origin,req.headers['accept-encoding']||'');}
+ if(cached){apiStats.cached++;return reply(res,200,projectOverview({...cached,cacheHit:true},user.role,company),origin,req.headers['accept-encoding']||'');}
  const started=Date.now();
  let pending=INFLIGHT.get(cacheKey);
  if(!pending){
@@ -459,7 +463,7 @@ const server=http.createServer(async(req,res)=>{
  }else console.info('[DSS] consulta idêntica reutilizada, período',from,to);
  try{
   const payload=await pending;
-  return reply(res,200,projectOverview(payload,user.role),origin,req.headers['accept-encoding']||'');
+  return reply(res,200,projectOverview(payload,user.role,company),origin,req.headers['accept-encoding']||'');
  }catch(err){
   apiStats.failed++;apiStats.lastFailure=new Date().toISOString();
   console.error('[DSS]',err.name,err.message);

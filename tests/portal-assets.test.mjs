@@ -7,7 +7,11 @@ test('logo PNG do repositório está publicada e substitui o C antigo',()=>{
  const workflow=readFileSync('.github/workflows/pages.yml','utf8');
  const image='logo-costalog-sem-fundo-1024x876.png';
  assert(existsSync(image),'Arquivo de logo original precisa existir na raiz');
- assert(app.includes('src="./'+image+'"'),'Cabeçalho principal deve usar o PNG original');
+ assert(readFileSync('src/companies.mjs','utf8').includes(image));
+ assert(existsSync('Ideallog.png'));
+ assert(app.includes('brand.logo'),'Cabeçalho deve usar a logo da empresa selecionada');
+ assert(workflow.includes('cp Ideallog.png public_site/'));
+ assert(workflow.includes('src/companies.mjs'));
  assert(!app.includes('<div class="brand-emblem">C</div>'),'Não pode manter o C antigo');
  assert(workflow.includes('cp index.html styles.css '+image+' public_site/'),'GitHub Pages deve copiar o PNG');
 });

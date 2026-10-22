@@ -33,8 +33,7 @@ test('GitHub Pages aceita administrador temporário, troca senha e gerencia usu�
  fields.loginPassword.value='SenhaPessoal-Que-Vou-Trocar-2026!';
  submit('loginForm');await tick();
  click('[data-nav]',{nav:'administracao'});await tick();
- assert(app.innerHTML.includes('Cadastrar funcionário'));
- submit('createPortalUser');await tick();
- assert(app.innerHTML.includes('funcionario.teste'));
+ assert(!app.innerHTML.includes('Cadastrar funcionário'));
+ assert(!app.innerHTML.includes('data-nav="administracao"'));
  assert.equal(networkCalls,0,'Demonstração nunca acessa API');
 });

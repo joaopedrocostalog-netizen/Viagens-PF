@@ -68,3 +68,13 @@
 - Faturamento, clientes/fretes, análises financeiras e as demais telas ficam ocultos. As referências operacionais de CT-e/MDF-e continuam disponíveis nos registros de RV/PF.
 - Todos os perfis, inclusive financeiro e administrador, recebem somente campos operacionais. A projeção vale para `/api/overview`, cache e `/api/records`; exportações de viagens/PF também removem campos financeiros.
 - Preservar autenticação, contas existentes, sincronização DSS e armazenamento. Não reativar dados de faturamento por perfil nem restaurar abas ocultas sem novo pedido.
+
+
+## Revisão do escopo operacional — 22/10/2026
+
+- A solicitação mais recente oculta **Administração** para todos os perfis e restaura **Entregas, Pendências, Rotas, Frota, Motoristas, MDF-e e Ocorrências**, além de viagens/RV e pedidos de frete. Dados de faturamento continuam ocultos.
+- A alternância no topo e o parâmetro `?empresa=costalog|ideallog` identificam o portal ativo. **Costalog inclui AC da Costa, CRC e Comex; Ideallog permanece separada.**
+- `/api/overview` e `/api/records` aceitam `company=costalog|ideallog` (padrão Costalog), rejeitam empresas inválidas e filtram cada resposta, inclusive a partir de caches privados compartilhados. O navegador também filtra respostas de backends antigos antes de normalizar os registros.
+- A classificação usa `empresa` e vínculos documentais inequívocos, nunca o cliente ou a placa isoladamente. Registros com empresa desconhecida ou vínculos ambíguos não entram em nenhuma visão. Ocorrências sem empresa precisam de referência segura a RV/PF/MDF-e para serem exibidas.
+- Trocar de empresa limpa seleções e filtros. Dados já carregados são guardados separadamente por empresa e intervalo; respostas de consultas iniciadas antes da troca são descartadas. Exportações usam somente o conjunto da empresa ativa e sua identificação.
+- A logo `Ideallog.png` foi reaproveitada do repositório Faturamento e faz parte dos arquivos publicados no Pages e no backend. As contas e endpoints de gestão continuam preservados para manutenção, sem aba ou consulta automática de usuários na interface.

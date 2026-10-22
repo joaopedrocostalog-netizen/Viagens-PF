@@ -1,9 +1,11 @@
+import {companyIdentity} from './companies.mjs';
 /**
  * Mapeamento real DSS para as telas COSTALOG.
  * Formatos baseados nos esquemas enviados para listarViagens e listarPedidosFrete.
  * Não representa custos operacionais completos ou documentos MDF-e validados.
  */
 const s=v=>v===null||v===undefined?'':String(v).trim();
+const scopedId=(row,value)=>companyIdentity(row)?companyIdentity(row)+'~'+value:value;
 const id=v=>v===0||v==='0'?'':s(v);
 export function moneyNumber(v){
  if(v===undefined||v===null||v==='')return null;
@@ -30,7 +32,7 @@ function mapViagem(v,i){
  const rvId=id(v.rv_id),numero=id(v.nro_rv);
  const abastecimento=moneyNumber(v.valor_total_abastecido);
  return {
-  id:rvId||('rv-index-'+i),rvId,numero:numero||rvId||'—',
+  id:scopedId(v,rvId||('rv-index-'+i)),rvId,numero:numero||rvId||'—',
   data:isoDate(v.data_inicio),dataTermino:isoDate(v.data_termino),
   cliente:s(v.cliente_nome)||'Não informado',clienteDocumento:s(v.cliente_cnpjcpf),
   placa:s(v.placa_veiculo),origem:s(v.cidade_inicial),destino:s(v.cidade_final),
@@ -45,7 +47,7 @@ function mapViagem(v,i){
   carreta1Id:id(v.carreta1_id),carreta2Id:id(v.carreta2_id),carreta3Id:id(v.carreta3_id),
   contratoVf:s(v.nro_contrato_vf),rotaMdf:s(v.rota_mdf),perfilCiot:s(v.perfil_ciot),
   solicitacaoMonitoramento:s(v.nro_solic_monitoramento),programacaoId:id(v.programacao_id),
-  nroProgramacao:id(v.nro_programacao),rotaId:id(v.rota_id),empresa:s(v.empresa),
+  nroProgramacao:id(v.nro_programacao),rotaId:id(v.rota_id),empresa:typeof v.empresa==='object'?companyIdentity(v):s(v.empresa),
   clientePredominante:s(v.cliente_predominante),container:s(v.nro_container),
   proprietario:s(v.proprietario),statusPagamentoSaldo:s(v.status_pgto_saldo),
   dataPagamentoSaldo:isoDate(v.data_pgto_saldo),createdBy:s(v.created_by),createdOn:isoDate(v.created_on)
@@ -55,7 +57,7 @@ function mapPedido(v,i){
  const pfId=id(v.pf_id),pedidoNum=id(v.nro_pf),cteNum=meaningfulDocNum(v.nro_cte);
  const mdfeNum=meaningfulDocNum(v.nro_mdf);
  return {
-  id:pfId||('pf-index-'+i),pedidoNumero:pedidoNum,cteNumero:cteNum,
+  id:scopedId(v,pfId||('pf-index-'+i)),pedidoNumero:pedidoNum,cteNumero:cteNum,
   numero:cteNum||pedidoNum||pfId||'—',data:isoDate(v.data_emissao),
   dataCte:isoDate(v.data_emissao_cte),cliente:s(v.cliente_nome)||'Não informado',
   placa:s(v.placa_veiculo),origem:s(v.cidade_origem),destino:s(v.cidade_destino),
@@ -72,7 +74,7 @@ function mapPedido(v,i){
   valorIcmsIss:moneyNumber(v.valor_icms_iss),freteSemIcms:moneyNumber(v.total_frete_sem_icms),
   numeroNfse:s(v.numero_nfse),processoId:id(v.processo_id),numeroProcesso:s(v.numero_processo),
   nroProgramacao:id(v.nro_programacao),programacaoId:id(v.programacao_id),
-  empresa:s(v.empresa),remetente:s(v.remetente),destinatario:s(v.destinatario),
+  empresa:typeof v.empresa==='object'?companyIdentity(v):s(v.empresa),remetente:s(v.remetente),destinatario:s(v.destinatario),
   container:s(v.nro_container),localColeta:s(v.local_coleta),
   produtoPredominante:s(v.produto_predominante),refCliente:s(v.nro_ref_cliente),
   valorMercadorias:moneyNumber(v.valor_mercadorias),numeroDocumento:s(v.nro_documento),
@@ -82,9 +84,9 @@ function mapPedido(v,i){
 function mapMdfe(v,i){
  const num=meaningfulDocNum(v.nro_mdf??v.numeroMDFe??v.numero??v.nroMDFe??v.nrMDFe);
  const rv=id(v.rv_id??v.viagemId??v.idViagem??v.rv_viagem);
- return {id:num||('mdfe-index-'+i),numero:num||'—',data:isoDate(v.data_emissao??v.data),
+ return {id:scopedId(v,num||('mdfe-index-'+i)),numero:num||'—',data:isoDate(v.data_emissao??v.data),
   viagemId:rv||null,placa:s(v.placa_veiculo??v.placa),status:s(v.status??v.situacao)||'Não informado',
-  origem:'API de MDF-e',nroMdf:num};
+  empresa:typeof v.empresa==='object'?companyIdentity(v):s(v.empresa),origem:'API de MDF-e',nroMdf:num};
 }
 function indexBy(rows,key){
  const map=new Map();
@@ -99,6 +101,8 @@ function reconcile(viagens,pedidos){
   if(p.rvReferencia)found=unique([...(byId.get(docKey(p.rvReferencia))||[]),...(byNum.get(docKey(p.rvReferencia))||[])]);
   // Referência RV presente porém não encontrada: NÃO presumir vínculo por placa ou MDF.
   else if(p.nroMdf)found=unique(byMdfe.get(docKey(p.nroMdf))||[]);
+  const entity=companyIdentity(p);
+  if(entity)found=found.filter(v=>!companyIdentity(v)||companyIdentity(v)===entity);
   if(found.length===1){p.viagemId=found[0].id;p.matchMethod=p.rvReferencia?'rv_viagem':'nro_mdf';}
   else if(found.length>1){p.ambiguous=true;p.matchMethod='ambíguo';}
  }
@@ -114,13 +118,13 @@ function reconcile(viagens,pedidos){
 }
 function referencesMdfe(viagens,pedidos){
  const map=new Map();
- const add=(numero,viagemId,placa,data)=>{
+ const add=(numero,viagemId,placa,data,empresa)=>{
   if(!numero)return;
-  const key=docKey(numero);const found=map.get(key)||{id:'ref-'+key,numero,viagemId:null,placa:placa||'',data:data||'',status:'Referência no DSS (não validado)',origem:'Referência DSS',nroMdf:numero,ids:new Set()};
+  const key=companyIdentity({empresa})+'~'+docKey(numero);const found=map.get(key)||{id:'ref-'+key,empresa,numero,viagemId:null,placa:placa||'',data:data||'',status:'Referência no DSS (não validado)',origem:'Referência DSS',nroMdf:numero,ids:new Set()};
   if(viagemId)found.ids.add(viagemId);map.set(key,found);
  };
- for(const v of viagens)add(v.nroMdf,v.id,v.placa,v.data);
- for(const p of pedidos)add(p.nroMdf,p.viagemId,p.placa,p.data);
+ for(const v of viagens)add(v.nroMdf,v.id,v.placa,v.data,v.empresa);
+ for(const p of pedidos)add(p.nroMdf,p.viagemId,p.placa,p.data,p.empresa);
  return [...map.values()].map(r=>({...r,viagemId:r.ids.size===1?[...r.ids][0]:null,ambiguous:r.ids.size>1,ids:undefined}));
 }
 export function normalizeOverview(raw){
@@ -137,18 +141,24 @@ export function normalizeOverview(raw){
 
  const pedidos=uniqueBy(validArray(payload.pedidos).map(mapPedido),p=>p.id);
  const ctesSeparate=validArray(payload.ctes).map((v,i)=>({...mapPedido(v,i),isCte:true}));
- const orderCteNumbers=new Set(pedidos.filter(p=>p.cteNumero).map(p=>docKey(p.cteNumero)));
- const uniqueCtes=ctesSeparate.filter(c=>!c.cteNumero||!orderCteNumbers.has(docKey(c.cteNumero)));
+ const orderCteNumbers=new Set(pedidos.filter(p=>p.cteNumero).map(p=>companyIdentity(p)+'~'+docKey(p.cteNumero)));
+ const uniqueCtes=ctesSeparate.filter(c=>!c.cteNumero||!orderCteNumbers.has(companyIdentity(c)+'~'+docKey(c.cteNumero)));
  reconcile(viagens,[...pedidos,...uniqueCtes]);
  // Evitar duplicidade se o CT-e também constar em listarPedidosFrete.
  const seenCte=new Set();
  const ctes=[...pedidos.filter(p=>p.isCte),...ctesSeparate].filter(p=>{
-  const key=p.cteNumero?docKey(p.cteNumero):p.id;
+  const key=p.cteNumero?companyIdentity(p)+'~'+docKey(p.cteNumero):p.id;
   if(seenCte.has(key))return false;seenCte.add(key);return true;
  });
  const hasMdfeApi=!!payload.sources?.mdfes;
  const mdfes=hasMdfeApi?validArray(payload.mdfes).map(mapMdfe):referencesMdfe(viagens,pedidos);
- const ocorrencias=validArray(payload.ocorrencias).map(o=>({id:s(o.ocorrencia_id),data:isoDate(o.data_ocorrencia)||isoDate(o.data),descricao:s(o.descricao),placa:s(o.placa_veiculo),veiculoId:id(o.veiculo_id),tipo:s(o.ocorrencia_de),relato:s(o.relato),causa:s(o.causa_raiz),providencia:s(o.providencia_tomada),responsavel:s(o.responsavel_atendimento),envolvido:s(o.envolvido),status:s(o.status)}));
+ const tripIds=new Set(viagens.map(v=>v.id)),tripsById=indexBy(viagens,v=>v.rvId),tripsByNumber=indexBy(viagens,v=>v.numero);
+ for(const doc of mdfes){
+  if(!doc.viagemId||tripIds.has(doc.viagemId))continue;
+  const matches=unique([...(tripsById.get(docKey(doc.viagemId))||[]),...(tripsByNumber.get(docKey(doc.viagemId))||[])]).filter(v=>!companyIdentity(doc)||companyIdentity(v)===companyIdentity(doc));
+  doc.viagemId=matches.length===1?matches[0].id:null;
+ }
+ const ocorrencias=validArray(payload.ocorrencias).map(o=>({id:s(o.ocorrencia_id),empresa:o.empresa,rv_id:o.rv_id,nro_rv:o.nro_rv,pf_id:o.pf_id,nro_mdf:o.nro_mdf,data:isoDate(o.data_ocorrencia)||isoDate(o.data),descricao:s(o.descricao),placa:s(o.placa_veiculo),veiculoId:id(o.veiculo_id),tipo:s(o.ocorrencia_de),relato:s(o.relato),causa:s(o.causa_raiz),providencia:s(o.providencia_tomada),responsavel:s(o.responsavel_atendimento),envolvido:s(o.envolvido),status:s(o.status)}));
  return {viagens,pedidos,ctes,mdfes,ocorrencias,sources:{
   ...payload.sources,
   viagens:true,pedidos:true,ctes:true,mdfes:hasMdfeApi,mdfeReferences:!hasMdfeApi

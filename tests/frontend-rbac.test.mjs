@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-test('Todos os perfis veem somente viagens/PF; detalhes e respostas antigas não expõem finanças',async()=>{
+test('Todos os perfis veem operações sem administração; detalhes e respostas antigas não expõem finanças',async()=>{
  const storage=new Map(),events={};
+ const requestedCompanies=[];
  const root={innerHTML:'',addEventListener(type,fn){events[type]=fn;}};
  const fields={
  apiUrl:{value:'https://api.exemplo.local'},
@@ -17,10 +18,11 @@ test('Todos os perfis veem somente viagens/PF; detalhes e respostas antigas não
  const permissions=()=>({operacional:true,financeiro:activeRole!=='operacional',admin:activeRole==='administrador'});
  globalThis.fetch=async url=>{
   const route=String(url);
+ if(route.includes('/api/overview'))requestedCompanies.push(new URL(route).searchParams.get('company'));
   return {ok:true,status:200,async json(){
    if(route.includes('/api/login'))return {token:'teste-'+activeRole,user:user(),permissions:permissions()};
    if(route.includes('/api/overview'))return {mode:'live',updatedAt:new Date().toISOString(),role:activeRole,permissions:permissions(),
-    data:{viagens:[{rv_id:10,nro_rv:123,data_inicio:'01/10/2026',cliente_nome:'CLIENTE OPERACIONAL',valor_total_abastecido:98765}],pedidos:[1,2].map(id=>({pf_id:id,nro_pf:'PF-TESTE-'+id,nro_cte:44,data_emissao:'01/10/2026',rv_viagem:123,cliente_nome:'CLIENTE OPERACIONAL',total_frete:87654,nro_fatura:'FAT-PRIVADA',liberado_para_faturamento:true})),ctes:[],mdfes:[],sources:{viagens:true,pedidos:true,ctes:true,mdfes:false}}};
+    data:{viagens:[{empresa:'AC da Costa',rv_id:10,nro_rv:123,data_inicio:'01/10/2026',cliente_nome:'CLIENTE OPERACIONAL',valor_total_abastecido:98765},{empresa:'Ideallog',rv_id:10,nro_rv:123,data_inicio:'01/10/2026',cliente_nome:'CLIENTE IDEAL SEPARADO'}],pedidos:[1,2].map(id=>({empresa:'AC da Costa',pf_id:id,nro_pf:'PF-TESTE-'+id,nro_cte:44,data_emissao:'01/10/2026',rv_viagem:123,cliente_nome:'CLIENTE OPERACIONAL',total_frete:87654,nro_fatura:'FAT-PRIVADA',liberado_para_faturamento:true})).concat([{empresa:'Ideallog',pf_id:1,nro_pf:'PF-IDEAL-SEPARADO',nro_cte:44,rv_viagem:123,data_emissao:'01/10/2026',cliente_nome:'CLIENTE IDEAL SEPARADO'}]),ctes:[],mdfes:[],sources:{viagens:true,pedidos:true,ctes:true,mdfes:false}}};
    return {ok:true};
   }};
  };
@@ -32,7 +34,8 @@ test('Todos os perfis veem somente viagens/PF; detalhes e respostas antigas não
  await wait();
  assert(root.innerHTML.includes('operacional'),'Deve identificar o perfil operacional');
  assert(root.innerHTML.includes('data-nav="viagens"'));
- assert(!root.innerHTML.includes('data-nav="entregas"'));
+ for(const view of ['entregas','pendencias','rotas','veiculos','motoristas','mdfes','ocorrencias'])assert(root.innerHTML.includes('data-nav="'+view+'"'));
+ assert(root.innerHTML.includes('data-nav="entregas"'));
  assert(!root.innerHTML.includes('data-nav="faturamento"'));
  assert(!root.innerHTML.includes('data-nav="clientes"'));
  assert(!root.innerHTML.includes('data-nav="administracao"'));
@@ -55,7 +58,7 @@ test('Todos os perfis veem somente viagens/PF; detalhes e respostas antigas não
  click('[data-action]',{action:'connect'});
  events.submit({target:{id:'loginForm'},preventDefault(){}});
  await wait();
- assert(root.innerHTML.includes('data-nav="administracao"'));
+ assert(!root.innerHTML.includes('data-nav="administracao"'));
  assert(!root.innerHTML.includes('data-nav="integracoes"'),'A aba de integração deve estar oculta enquanto a API estiver desativada.');
  click('[data-nav]',{nav:'ctes'});
  events.change({target:{id:'from',value:'2026-10-01',dataset:{}}});
@@ -64,14 +67,37 @@ test('Todos os perfis veem somente viagens/PF; detalhes e respostas antigas não
  await wait();
  for(const pf of ['PF-TESTE-1','PF-TESTE-2'])assert(root.innerHTML.includes(pf),'Não pode perder PFs que compartilham CT-e');
  for(const field of ['Valor frete','Valor a receber','Liberado faturamento','Nº fatura','FAT-PRIVADA','87654'])assert(!root.innerHTML.includes(field),field);
- click('[data-detail]',{detail:'ctes:1'});
+ click('[data-detail]',{detail:'ctes:acdacosta~1'});
  assert(root.innerHTML.includes('Detalhes ·'));
  assert(root.innerHTML.includes('PF-TESTE-1'));
  for(const field of ['numeroFatura','liberadoFaturamento','valorReceber','FAT-PRIVADA','87654'])assert(!root.innerHTML.includes(field),field);
  click('[data-action]',{action:'close'});
  click('[data-nav]',{nav:'viagens'});
- click('[data-detail]',{detail:'viagens:10'});
+ click('[data-detail]',{detail:'viagens:acdacosta~10'});
  assert(root.innerHTML.includes('Detalhes · 123'));
  for(const field of ['Abastecimento (R$)','receita','98765'])assert(!root.innerHTML.includes(field),field);
+ assert(!root.innerHTML.includes('CLIENTE IDEAL SEPARADO'));
+ click('[data-action]',{action:'close'});
+ click('[data-action]',{action:'switch-company'});
+ await wait();
+ assert(root.innerHTML.includes('src="./Ideallog.png"'));
+ assert(root.innerHTML.includes('Trocar para Costalog'));
+ assert(root.innerHTML.includes('CLIENTE IDEAL SEPARADO'));
+ assert(!root.innerHTML.includes('CLIENTE OPERACIONAL'));
+ click('[data-nav]',{nav:'ctes'});
+ assert(root.innerHTML.includes('PF-IDEAL-SEPARADO'));
+ assert(!root.innerHTML.includes('PF-TESTE-1'));
+ for(const view of ['entregas','pendencias','rotas','veiculos','motoristas','mdfes','ocorrencias']){
+  click('[data-nav]',{nav:view});
+  assert(!root.innerHTML.includes('CLIENTE OPERACIONAL'),'Outra empresa vazou em '+view);
+  assert(!root.innerHTML.includes('FAT-PRIVADA'));
+ }
+ click('[data-action]',{action:'switch-company'});
+ await wait();
+ click('[data-nav]',{nav:'ctes'});
+ assert(root.innerHTML.includes('PF-TESTE-1'));
+ assert(!root.innerHTML.includes('PF-IDEAL-SEPARADO'));
+ assert.deepEqual(requestedCompanies,['costalog','ideallog']);
+
 
 });

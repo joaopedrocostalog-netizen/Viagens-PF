@@ -1,8 +1,8 @@
 /** Regras visuais: segurança real é aplicada em api/access.mjs no servidor. */
-export const OP_VIEWS=['viagens','ctes'];
+export const OP_VIEWS=['viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','mdfes','ocorrencias'];
 export const FIN_VIEWS=[];
-export const ADMIN_VIEWS=['administracao'];
-export const OP_REPORTS=['viagens','pedidos'];
+export const ADMIN_VIEWS=[];
+export const OP_REPORTS=['viagens','pedidos','mdfes'];
 const OP_COLUMNS={
  viagens:['numero','data','dataTermino','cliente','placa','motoristaId','container','nroMdf','origem','destino','kmPrevisto','kmRodados','desvioKm','status'],
  pedidos:['pedidoNumero','cteNumero','data','dataCte','cliente','motoristaNome','placa','container','rvReferencia','nroMdf','entregaConcluida','comprovanteEntrega','ocorrencia','status'],

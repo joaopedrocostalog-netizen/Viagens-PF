@@ -1,3 +1,4 @@
+import {COMPANIES,validCompany,scopeCompanyData} from './companies.mjs';
 import {renderGlobalSearch,renderCustomDashboard,renderCustomerProfiles,renderDriverRouteDetails,renderAlertsHub,renderComparison} from './intelligence-ui.mjs';
 import {normalizedLayout,reorderMetric,comparisonWindows,subsetPeriod} from './intelligence.mjs';
 import {renderHero,renderSummary,renderCharts,renderTripsHeader,renderReportsHeader} from './visual-dashboard.mjs';
@@ -28,6 +29,7 @@ const DEMO_VIAGENS = [
  ['V-260402','2026-10-09','CMA CGM','CCU-5118','Santos/SP','Sorocaba/SP',26500,18800,'Em andamento'],
  ['V-260403','2026-10-13','HAPAG-LLOYD','CDR-7G70','Santos/SP','Jundiaí/SP',21400,14250,'Planejada']
 ];
+const emptyDataset=()=>({viagens:[],pedidos:[],ctes:[],mdfes:[],ocorrencias:[],sources:{}});
 const demo = {
  viagens:DEMO_VIAGENS.map(x=>({id:x[0],numero:x[0],data:x[1],cliente:x[2],placa:x[3],origem:x[4],destino:x[5],receita:x[6],custo:x[7],status:x[8]})),
  ctes:[
@@ -46,6 +48,9 @@ const demo = {
 };
 const readPrefs=(key,def)=>{try{return JSON.parse(localStorage.getItem(key))??def;}catch{return def;}};
 demo.pedidos=demo.ctes.map(p=>({...p,pedidoNumero:'PF-'+p.numero,cteNumero:p.numero}));
+for(const [i,trip] of demo.viagens.entries())trip.empresa=i<8?'AC da Costa':'Ideallog';
+for(const order of [...demo.pedidos,...demo.ctes])order.empresa=demo.viagens.find(v=>v.id===order.viagemId)?.empresa||'Ideallog';
+for(const doc of demo.mdfes)doc.empresa=demo.viagens.find(v=>v.id===doc.viagemId)?.empresa||'AC da Costa';
 Object.assign(demo,operationalDataset(demo));
 
 /* GitHub Pages = APENAS DEMONSTRAÇÃO, SEM AUTENTICAÇÃO REAL.
@@ -125,14 +130,18 @@ async function demoChangeOwnPassword(currentPassword,newPassword){
  demoSave(rows);
 }
 
+const requestedCompany=new URLSearchParams(window.location.search||'').get('empresa')||readPrefs('viagens_pf_company','costalog');
+const initialCompany=validCompany(requestedCompany)?requestedCompany:'costalog';
+const companySnapshots=new Map();
 const state = {
+ company:initialCompany,
   compareCustom:true,compareCurrentFrom:String(year)+'-10-01',compareCurrentTo:localToday(),comparePreviousFrom:String(year)+'-09-01',comparePreviousTo:String(year)+'-09-30',view:'viagens', chartInterval:'mensal', compareInterval:'mensal',compareAnchor:new Date().toISOString().slice(0,10), from:String(year)+'-01-01',to:localToday(),search:'',filter:'todos',page:1,
  dataset:demo, mode:'demo',error:'',loading:false,selected:null,connect:false,menu:false,
  apiUrl:portalSettings.apiUrl,token:'',importCount:0,
  globalQuery:'',clientSelected:'',routeSelected:'',driverSelected:'',alertKind:'todos',
  metricLayout:null,showMetricOptions:false,comparison:null,comparisonLoading:false,comparisonError:'',
  customer:'',vehicle:'',serviceType:'',sortKey:'',sortDir:'desc',alertPriority:'todos',
- hiddenColumns:readPrefs('costalog_visible_columns',{}),presets:readPrefs('costalog_filter_presets',{}),
+ hiddenColumns:readPrefs('costalog_visible_columns',{}),presets:readPrefs('costalog_filter_presets_'+initialCompany,{}),
  demoOnly:PUBLIC_DEMO,reportSelected:'viagens',reportMulti:false,autoRefresh:0,lastSync:null,prevDataset:null,lateDays:2,apiDiagnostics:null,adminUsers:[],adminUsersLoading:false,adminUsersError:'',adminResetUser:'',role:'operacional',user:null,permissions:{operacional:true,financeiro:false,admin:false}
 };
 const icons={
@@ -173,15 +182,16 @@ function normalizeDoc(v,i){
 }
 function normalizeMdfe(v,i){
  const n=str(pick(v,['numeroMDFe','nroMDFe','nrMDFe','numero','id']));
- return {id:n||String(i+1),numero:n||'—',data:toDay(pick(v,['dataEmissao','dtEmissao','data'])),viagemId:str(pick(v,['idViagem','numeroViagem','nroViagem','nrViagem','viagemId','viagem']))||null,placa:str(pick(v,['placaVeiculo','placa','placaTracao'])),status:str(pick(v,['situacao','status']))||'Não informado'};
+ return {id:n||String(i+1),numero:n||'—',empresa:str(pick(v,['empresa','company','nomeEmpresa'])),data:toDay(pick(v,['dataEmissao','dtEmissao','data'])),viagemId:str(pick(v,['idViagem','numeroViagem','nroViagem','nrViagem','viagemId','viagem']))||null,placa:str(pick(v,['placaVeiculo','placa','placaTracao'])),status:str(pick(v,['situacao','status']))||'Não informado'};
 }
-function normalizePayload(raw){return operationalDataset(normalizeOverview(raw));}
+function normalizePayload(raw){return operationalDataset(normalizeOverview({data:scopeCompanyData(raw?.data||raw,state.company)}));}
 function inRange(v){return !v||((!state.from||v>=state.from)&&(!state.to||v<=state.to));}
 let scopedCache=null;
 function scoped(){
- const d=state.dataset;
- const cacheKey=[state.from,state.to,state.customer,state.vehicle,state.serviceType].join('|');
- if(scopedCache&&scopedCache.dataset===d&&scopedCache.key===cacheKey)return scopedCache.value;
+ const source=state.dataset;
+ const cacheKey=[state.company,state.from,state.to,state.customer,state.vehicle,state.serviceType].join('|');
+ if(scopedCache&&scopedCache.dataset===source&&scopedCache.key===cacheKey)return scopedCache.value;
+ const d=scopeCompanyData(source,state.company);
  const matches=r=>(!state.customer||r.cliente===state.customer)&&(!state.vehicle||r.placa===state.vehicle);
  let viagens=d.viagens.filter(v=>inRange(v.data)&&matches(v));
  const pedidos=d.pedidos.filter(p=>inRange(p.data)&&matches(p)&&(!state.serviceType||p.tipoServico===state.serviceType));
@@ -190,7 +200,7 @@ function scoped(){
  const ocorrencias=(d.ocorrencias||[]).filter(x=>inRange(x.data)&&(!state.vehicle||x.placa===state.vehicle));
  if(state.serviceType)viagens=viagens.filter(v=>pedidos.some(p=>p.viagemId===v.id));
  const value={viagens,allViagens:d.viagens,ctes,pedidos,mdfes,ocorrencias,sources:d.sources};
- scopedCache={dataset:d,key:cacheKey,value};return value;
+ scopedCache={dataset:source,key:cacheKey,value};return value;
 }
 function totals(data){
  const trips=data.viagens;const ctes=data.ctes;
@@ -203,9 +213,11 @@ function totals(data){
  const mismatched=data.sources.mdfes?data.mdfes.filter(m=>m.viagemId&&!data.allViagens.some(t=>t.id===m.viagemId)):null;
  return {revenue:revenueKnown.length?revenue:null,cost:costsKnown.length?cost:null,profit:completeMoney?revenue-cost:null,margin:completeMoney&&revenue?pct((revenue-cost)/revenue*100):'—',orphan,mismatched,linked,completeMoney,revenueCount:revenueKnown.length,costCount:costsKnown.length};
 }
-const navItems=[['viagens','truck','Viagens / RV'],['ctes','doc','Pedidos de frete'],['administracao','cog','Administração']];
+const navItems=[['viagens','truck','Viagens / RV'],['ctes','doc','Pedidos de frete'],['entregas','doc','Entregas'],['pendencias','shield','Pendências'],['rotas','chart','Rotas'],['veiculos','truck','Frota'],['motoristas','home','Motoristas'],['mdfes','shield','MDF-e'],['ocorrencias','shield','Ocorrências']];
 function button(action,label,extra){return '<button type="button" class="btn '+(extra||'')+'" data-action="'+action+'">'+label+'</button>';}
 function render(){
+ const brand=COMPANIES[state.company],other=state.company==='costalog'?'ideallog':'costalog';
+ if(document.title!==undefined)document.title=brand.name+' · Viagens e pedidos de frete';
  state.view=safeView(state.role,state.view);
  const d=scoped(),stats=totals(d);
  const allowed=navItems.filter(x=>x[0]!=='integracoes'&&permittedView(state.role,x[0]));
@@ -217,21 +229,21 @@ function render(){
  const message=state.mode==='live'?'<div class="info-strip '+(state.error?'error':'live')+'"><strong>DSS:</strong> '+(state.error?'Última atualização falhou. Mostrando dados reais anteriores, que podem estar desatualizados. '+esc(state.error):'Dados consultados no servidor. Campos ausentes são exibidos como “—”.')+'</div>':
  '<div class="info-strip v-demo-notice"><strong>AMBIENTE DE DEMONSTRAÇÃO</strong> · Registros fictícios. A integração DSS utilizará estas mesmas telas quando o backend privado estiver configurado.</div>';
  const detailedFilters=state.view!=='administracao'?'<details class="v-extra-filters"><summary>⚙ Filtros avançados <span>Cliente, placa, serviço e períodos rápidos</span></summary>'+operationalFilters(d,state)+'</details>':'';
- const tools=['viagens','ctes','relatorios','faturamento'].includes(state.view)?
+ const tools=['viagens','ctes','mdfes'].includes(state.view)?
   '<div class="v-heading-tools">'+button('csv',icon('download')+' CSV','btn-sm')+button('print','PDF / Imprimir','btn-sm btn-red')+'</div>':'';
  const dateFilters=state.view==='administracao'?'':renderFilters();
  const globalSearch=state.view==='administracao'?'':renderGlobalSearch(state,d);
  root.innerHTML='<div class="layout v-app"><main class="main v-main">'+
- '<header class="topbar v-topbar"><div class="v-topbrand"><img class="v-brand-logo" src="./logo-costalog-sem-fundo-1024x876.png" alt="Logotipo COSTALOG"><div><b>COSTALOG</b><small>A LOGÍSTICA IDEAL</small></div><i></i><strong>GESTÃO DE VIAGENS & FRETES</strong></div>'+
- '<div class="topbar-right v-accountbar"><span class="v-environment '+(state.mode==='live'?'connected':'')+'">'+(state.mode==='live'?'● DSS':'● DEMO')+'</span>'+
+ '<header class="topbar v-topbar"><div class="v-topbrand"><img class="v-brand-logo '+(state.company==='ideallog'?'v-ideal-logo':'')+'" src="./'+brand.logo+'" alt="Logotipo '+brand.name+'"><div><b>'+brand.name+'</b><small>'+brand.description+'</small></div><i></i><strong>GESTÃO DE VIAGENS & FRETES</strong></div>'+
+ '<div class="topbar-right v-accountbar">'+button('switch-company','Trocar para '+COMPANIES[other].label,'btn-sm btn-company-switch')+'<span class="v-environment '+(state.mode==='live'?'connected':'')+'">'+(state.mode==='live'?'● DSS':'● DEMO')+'</span>'+
  (state.user?'<span class="v-username">'+esc(state.user.displayName||state.user.username)+' · '+esc(state.role)+'</span>'+button('logout','Sair','btn-sm btn-ghost'):button('connect','Entrar','btn-sm btn-ghost'))+'</div></header>'+
  '<div class="v-menu-row"><nav class="v-main-nav" aria-label="Seções principais">'+primary+'</nav><div class="v-right-hint">'+(state.mode==='live'?'DADOS DO DSS':'DADOS DE TESTE')+'</div></div>'+
  (sub?'<nav class="v-sub-nav" aria-label="Outras áreas">'+sub+'</nav>':'')+
- '<div class="content v-content">'+renderHero(state.view,d,{from:state.from,to:state.to,mode:state.mode,financeiro:state.permissions.financeiro})+
+ '<div class="content v-content">'+renderHero(state.view,d,{from:state.from,to:state.to,mode:state.mode,financeiro:state.permissions.financeiro,company:state.company})+
  '<div class="v-tools-row">'+dateFilters+tools+'</div>'+globalSearch+detailedFilters+message+
  (state.loading?'<div class="info-strip">Consultando registros DSS...</div>':'')+
  renderView(d,stats)+
- '<footer class="v-footer">COSTALOG • Portal de inteligência operacional • '+(PUBLIC_DEMO?'Contas de demonstração somente neste navegador.':'Acesso baseado em permissões, dados DSS protegidos no servidor.')+'</footer></div></main></div>'+
+ '<footer class="v-footer">'+brand.name+' • Portal de inteligência operacional • '+(PUBLIC_DEMO?'Contas de demonstração somente neste navegador.':'Acesso baseado em permissões, dados DSS protegidos no servidor.')+'</footer></div></main></div>'+
  (state.selected?renderDrawer(d):'')+(state.connect?renderConnect():'')+
  (state.user?.mustChangePassword?renderForcePasswordChange():'')+
  (state.adminResetUser&&state.permissions.admin?renderAdminPasswordReset(state.adminResetUser):'');
@@ -251,7 +263,7 @@ function renderOcorrencias(d){
  return '<section class="ins-module"><h2>OCORRÊNCIAS INTERNAS DSS</h2><p>Registros de motoristas e veículos no período consultado. Até 300 resultados por página de visualização.</p>'+
  (rows.length?'<div class="ins-responsive-table"><table><thead><tr><th>Data</th><th>ID</th><th>Placa</th><th>Tipo</th><th>Descrição / relato</th><th>Status</th><th>Providência</th></tr></thead><tbody>'+
  rows.map(o=>'<tr><td>'+esc(o.data)+'</td><td>'+esc(o.id)+'</td><td>'+esc(o.placa)+'</td><td>'+esc(o.tipo)+'</td><td>'+esc(o.descricao||o.relato)+'</td><td>'+esc(o.status)+'</td><td>'+esc(o.providencia)+'</td></tr>').join('')+'</tbody></table></div>':
- '<p class="help">Nenhuma ocorrência carregada. A consulta complementar é feita apenas para períodos de até um mês e pode estar indisponível na DSS.</p>')+'</section>';
+ '<p class="help">Nenhuma ocorrência identificada para esta empresa. Registros sem empresa ou vínculo seguro com RV/PF não são exibidos. A consulta complementar pode estar indisponível na DSS.</p>')+'</section>';
 }
 function renderView(d,s){
  if(state.view==='painel')return renderCustomDashboard(d,state)+renderSummary(d,{financeiro:state.permissions.financeiro,mode:state.mode,from:state.from,to:state.to,showCards:false});
@@ -448,7 +460,7 @@ async function portalLogin(){
    const user=await demoSignin(username,password);
    clearSession();state.user=user;state.role=user.role;state.permissions=demoRights(user.role);
    state.view='viagens';state.connect=false;state.error='';state.mode='demo';state.dataset=demo;loadMetricPreferences();render();
-   if(state.permissions.admin&&!state.user.mustChangePassword)loadAdminUsers();
+
   }catch(err){alert('Demonstração: '+err.message);}
   return;
  }
@@ -465,7 +477,7 @@ async function portalLogin(){
   state.mode='live';loadMetricPreferences();render();
   if(state.user.mustChangePassword)return;
   // Dados DSS são carregados apenas ao clicar em Atualizar.
-  if(state.permissions.admin)loadAdminUsers();
+
  }catch(err){const offline=err instanceof TypeError||/failed to fetch|networkerror|load failed/i.test(err.message||'');alert(offline?'Não foi possível conectar à API. Se está no mesmo computador, inicie o backend no PowerShell com node api/server.mjs e abra http://localhost:3001/ (não o endereço GitHub Pages). Verifique http://localhost:3001/api/health.': 'Login não autorizado: '+err.message);}
 }
 function adminEndpoint(path=''){
@@ -590,12 +602,27 @@ async function fetchPeriodComparison(){
   if(seq===comparisonSeq&&identity===identityEpoch){state.comparisonLoading=false;render();}
  }
 }
-function clearSession(){
+function switchCompany(){
+ if(state.user?.mustChangePassword)return;
+ if(state.mode==='live'&&state.loadedRange&&!state.loading)companySnapshots.set(state.company,{dataset:state.dataset,range:state.loadedRange,lastSync:state.lastSync});
+ const company=state.company==='costalog'?'ideallog':'costalog';
  identityEpoch++;comparisonSeq++;
+ state.company=company;
+ localStorage.setItem('viagens_pf_company',JSON.stringify(company));
+ if(window.history?.replaceState){const url=new URL(window.location.href);url.searchParams.set('empresa',company);window.history.replaceState(null,'',url);}
+ const saved=companySnapshots.get(company);
+ const reusable=saved&&saved.range.from===state.from&&saved.range.to===state.to;
+ state.dataset=state.mode==='demo'?demo:reusable?saved.dataset:emptyDataset();
+ Object.assign(state,{selected:null,page:1,customer:'',vehicle:'',serviceType:'',search:'',globalQuery:'',filter:'todos',sortKey:'',clientSelected:'',routeSelected:'',driverSelected:'',alertPriority:'todos',alertKind:'todos',comparison:null,prevDataset:null,error:'',loading:false,loadingProgress:'',loadedRange:reusable?saved.range:null,lastSync:reusable?saved.lastSync:null,presets:readPrefs('costalog_filter_presets_'+company,{})});
+ loadMetricPreferences();render();
+ if(state.mode==='live'&&state.token&&!reusable)loadData();
+}
+function clearSession(){
+ identityEpoch++;comparisonSeq++;companySnapshots.clear();
  const token=state.token,url=state.apiUrl;
  if(token&&url)fetch(url.replace(/\/$/,'')+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+token},credentials:'omit'}).catch(()=>{});
  state.token='';state.user=null;state.role='operacional';state.permissions={operacional:true,financeiro:false,admin:false};
- state.mode='demo';state.dataset=demo;state.view='viagens';state.comparison=null;state.comparisonError='';state.metricLayout=null;state.clientSelected='';state.globalQuery='';state.adminUsers=[];state.adminUsersError='';state.adminResetUser='';state.adminUsersLoading=false;state.prevDataset=null;state.loading=false;state.selected=null;state.lastSync=null;state.apiDiagnostics=null;
+ state.mode='demo';state.dataset=demo;state.loadedRange=null;state.view='viagens';state.comparison=null;state.comparisonError='';state.metricLayout=null;state.clientSelected='';state.globalQuery='';state.adminUsers=[];state.adminUsersError='';state.adminResetUser='';state.adminUsersLoading=false;state.prevDataset=null;state.loading=false;state.selected=null;state.lastSync=null;state.apiDiagnostics=null;
 }
 function csvCell(s){const v=str(s);return '"'+v.replace(/"/g,'""')+'"';}
 function exportCsv(which){
@@ -621,9 +648,9 @@ function splitMonths(from,to){
  }
  return result;
 }
-async function fetchDssWindow(range,token,syncTo){
+async function fetchDssWindow(range,token,syncTo,company=state.company){
  // O botão Atualizar deve ir à DSS mesmo que o MariaDB tenha uma cópia válida.
- const url=(state.apiUrl||window.location.origin).replace(/\/$/,'')+'/api/overview?from='+encodeURIComponent(range.from)+'&to='+encodeURIComponent(range.to)+'&refresh=recent&sync_to='+encodeURIComponent(syncTo);
+ const url=(state.apiUrl||window.location.origin).replace(/\/$/,'')+'/api/overview?from='+encodeURIComponent(range.from)+'&to='+encodeURIComponent(range.to)+'&refresh=recent&sync_to='+encodeURIComponent(syncTo)+'&company='+encodeURIComponent(company);
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),90000);
  try{
   const response=await fetch(url,{headers:{Authorization:'Bearer '+token},credentials:'omit',signal:controller.signal});
@@ -641,16 +668,16 @@ async function fetchDssWindow(range,token,syncTo){
 async function loadData(){
  const epoch=identityEpoch;
  if(!state.token){state.connect=true;state.loading=false;state.error='Faça login para consultar a DSS.';render();return;}
- const requestFrom=state.from,requestTo=state.to,token=state.token;
+ const requestFrom=state.from,requestTo=state.to,token=state.token,requestCompany=state.company;
  state.loading=true;state.loadingProgress='Preparando consulta...';state.connect=false;state.error='';render();
  try{
   const windows=splitMonths(requestFrom,requestTo),results=new Array(windows.length);
   // Máximo duas requisições simultâneas, evitando sobrecarregar o DSS/Render Free.
   let next=0;
   const worker=async()=>{
-   while(next<windows.length){
+   while(next<windows.length&&epoch===identityEpoch){
     const index=next++;
-    results[index]=await fetchDssWindow(windows[index],token,requestTo);
+    results[index]=await fetchDssWindow(windows[index],token,requestTo,requestCompany);
     if(epoch===identityEpoch){
      const loaded=results.filter(Boolean).length;
      state.loadingProgress='Consultando DSS: '+loaded+' de '+windows.length+' meses';
@@ -660,7 +687,7 @@ async function loadData(){
    }
   };
   await Promise.all(Array.from({length:Math.min(2,windows.length)},worker));
-  if(epoch!==identityEpoch||state.from!==requestFrom||state.to!==requestTo)return;
+  if(epoch!==identityEpoch||state.from!==requestFrom||state.to!==requestTo||state.company!==requestCompany)return;
   // Só substitui os dados depois que TODOS os meses forem recebidos com sucesso.
   const data={mode:'live',updatedAt:new Date().toISOString(),data:{
    viagens:results.flatMap(x=>x.data.viagens||[]),pedidos:results.flatMap(x=>x.data.pedidos||[]),
@@ -671,6 +698,7 @@ async function loadData(){
   }};
   state.dataset=normalizePayload(data);state.loadedRange={from:requestFrom,to:requestTo};state.mode='live';state.error='';
   state.page=1;state.comparison=null;state.lastSync=data.updatedAt;state.prevDataset=null;
+  companySnapshots.set(state.company,{dataset:state.dataset,range:state.loadedRange,lastSync:state.lastSync});
  }catch(err){
   if(epoch!==identityEpoch)return;
   const alreadyLive=state.mode==='live';
@@ -689,13 +717,13 @@ function exportAdvanced(type,format){
  const allowed=reportTypesFor(state.role);if(!allowed.includes(type))throw Error('Acesso negado ao relatório.');
  const models=(full?allowed:[type]).map(t=>secureReport(extractRows(t,d),t,state.role));
  const suffix=(state.mode==='live'?'DSS':'DEMO')+'_'+state.from+'_'+state.to;
- if(format==='xlsx')downloadXlsx(models,{mode:state.mode,from:state.from,to:state.to},'COSTALOG_'+(full?'COMPLETO':type)+'_'+suffix+'.xlsx');
- if(format==='pdf')printReport(models,{mode:state.mode,from:state.from,to:state.to});
+ if(format==='xlsx')downloadXlsx(models,{mode:state.mode,from:state.from,to:state.to,company:state.company},state.company.toUpperCase()+'_'+(full?'COMPLETO':type)+'_'+suffix+'.xlsx');
+ if(format==='pdf')printReport(models,{mode:state.mode,from:state.from,to:state.to,company:state.company});
  if(format==='csv'){
   const r=models[0],lines=[r.columns.map(x=>x[1]),...r.rows.map(row=>r.columns.map(c=>row[c[0]]??''))];
   const quote=x=>{let t=String(x??'');if(/^[=+@-]/.test(t)&&!/^-(\d+)(\.\d+)?$/.test(t))t="'"+t;return '"'+t.replace(/"/g,'""')+'"';};
   const csv='\uFEFF'+lines.map(x=>x.map(quote).join(';')).join('\r\n');
-  downloadFile(new TextEncoder().encode(csv),'COSTALOG_'+type+'_'+suffix+'.csv','text/csv;charset=utf-8');
+  downloadFile(new TextEncoder().encode(csv),state.company.toUpperCase()+'_'+type+'_'+suffix+'.csv','text/csv;charset=utf-8');
  }
 }
 let refreshTimer=null;
@@ -807,6 +835,7 @@ root.addEventListener('click',e=>{
  const act=e.target.closest('[data-action]');if(!act)return;
  const action=act.dataset.action;
  if(action==='close-overlay'&&e.target!==act)return;
+ if(action==='switch-company'){switchCompany();return;}
  if(action==='close'||action==='close-overlay'){state.selected=null;state.connect=false;render();}
  if(action==='menu'){state.menu=!state.menu;render();}
  if(action==='refresh'&&!PUBLIC_DEMO)loadData();
@@ -823,9 +852,9 @@ root.addEventListener('click',e=>{
  }
  if(['xlsx-export','csv-advanced','pdf-report'].includes(action)){try{exportAdvanced(state.reportSelected||'viagens',action==='xlsx-export'?'xlsx':action==='csv-advanced'?'csv':'pdf');}catch(err){alert('Erro ao gerar relatório: '+err.message);}}
  if(action==='clear-filters'){state.customer='';state.vehicle='';state.serviceType='';state.search='';state.sortKey='';state.page=1;render();}
- if(action==='save-filter'){const name=prompt('Nome para este conjunto de filtros:');if(name&&name.trim()){state.presets[name.trim().slice(0,45)]={from:state.from,to:state.to,customer:state.customer,vehicle:state.vehicle,serviceType:state.serviceType,search:state.search};localStorage.setItem('costalog_filter_presets',JSON.stringify(state.presets));render();}}
- if(action==='delete-filter'){const sel=document.getElementById('savedPreset'),name=sel?.value;if(!name){alert('Selecione primeiro um filtro salvo.');return;}if(confirm('Excluir o filtro salvo '+name+'?')){delete state.presets[name];localStorage.setItem('costalog_filter_presets',JSON.stringify(state.presets));render();}}
- if(action==='clear-settings'){if(confirm('Limpar filtros salvos e preferências de colunas?')){localStorage.removeItem('costalog_filter_presets');localStorage.removeItem('costalog_visible_columns');state.presets={};state.hiddenColumns={};state.autoRefresh=0;activateRefresh();render();}}
+ if(action==='save-filter'){const name=prompt('Nome para este conjunto de filtros:');if(name&&name.trim()){state.presets[name.trim().slice(0,45)]={from:state.from,to:state.to,customer:state.customer,vehicle:state.vehicle,serviceType:state.serviceType,search:state.search};localStorage.setItem('costalog_filter_presets_'+state.company,JSON.stringify(state.presets));render();}}
+ if(action==='delete-filter'){const sel=document.getElementById('savedPreset'),name=sel?.value;if(!name){alert('Selecione primeiro um filtro salvo.');return;}if(confirm('Excluir o filtro salvo '+name+'?')){delete state.presets[name];localStorage.setItem('costalog_filter_presets_'+state.company,JSON.stringify(state.presets));render();}}
+ if(action==='clear-settings'){if(confirm('Limpar filtros salvos e preferências de colunas?')){localStorage.removeItem('costalog_filter_presets_'+state.company);localStorage.removeItem('costalog_visible_columns');state.presets={};state.hiddenColumns={};state.autoRefresh=0;activateRefresh();render();}}
  if(action==='connect'){state.connect=true;state.selected=null;render();}
  if(action==='go-viagens'){state.view='viagens';state.page=1;render();}
  if(action==='csv'){try{exportAdvanced(state.view==='ctes'?'pedidos':state.view==='mdfes'?'mdfes':state.permissions.financeiro&&state.view==='clientes'?'clientes':'viagens','csv');}catch(err){alert(err.message);}}
@@ -894,7 +923,7 @@ root.addEventListener('change',e=>{
  }
  if(e.target.id==='csvMDFE'){
   const file=e.target.files&&e.target.files[0];if(!file)return;
-  file.text().then(text=>{const records=parseCsv(text);if(!records.length){alert('Nenhum registro válido no CSV. Confira o cabeçalho.');return;}state.dataset={...state.dataset,mdfes:records,sources:{...state.dataset.sources,mdfes:true}};state.importCount=records.length;render();alert(records.length+' MDF-e carregados nesta aba.');}).catch(()=>alert('Não foi possível ler o arquivo.'));
+  file.text().then(text=>{const records=parseCsv(text);if(!records.length){alert('Nenhum registro válido no CSV. Confira o cabeçalho.');return;}const imported=scopeCompanyData({mdfes:records.map(row=>({...row,empresa:row.empresa||state.company}))},state.company).mdfes;state.dataset={...state.dataset,mdfes:imported,sources:{...state.dataset.sources,mdfes:true}};state.importCount=imported.length;render();alert(imported.length+' MDF-e carregados para '+COMPANIES[state.company].label+'.');}).catch(()=>alert('Não foi possível ler o arquivo.'));
  }
 });
 root.addEventListener('input',e=>{

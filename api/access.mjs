@@ -1,3 +1,4 @@
+import {scopeCompanyData} from '../src/companies.mjs';
 /** Projeção de resposta DSS por papel: proteção acontece ANTES da resposta HTTP. */
 export const ROLE_PERMISSIONS=Object.freeze({
   operacional:Object.freeze({operacional:true,financeiro:false,admin:false}),
@@ -5,10 +6,10 @@ export const ROLE_PERMISSIONS=Object.freeze({
   administrador:Object.freeze({operacional:true,financeiro:false,admin:true})
 });
 export function permissionsFor(role){return ROLE_PERMISSIONS[role]||null;}
-export const OPERATIONAL_VIEWS=Object.freeze(['viagens','ctes']);
+export const OPERATIONAL_VIEWS=Object.freeze(['viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','mdfes','ocorrencias']);
 export const FINANCIAL_VIEWS=Object.freeze([]);
-export const ADMIN_VIEWS=Object.freeze(['administracao']);
-export const OPERATIONAL_REPORTS=Object.freeze(['viagens','pedidos']);
+export const ADMIN_VIEWS=Object.freeze([]);
+export const OPERATIONAL_REPORTS=Object.freeze(['viagens','pedidos','mdfes']);
 export const FINANCIAL_REPORTS=Object.freeze([]); // Este portal publica somente relatórios operacionais.
 export function canView(role,view){
  const p=permissionsFor(role);if(!p)return false;
@@ -41,19 +42,19 @@ function project(row,allowed){
  for(const field of allowed)if(Object.hasOwn(row,field))result[field]=row[field];
  return result;
 }
-export function projectOverview(raw,role){
+export function projectOverview(raw,role,company=null){
  const permissions=permissionsFor(role);
  if(!permissions)throw new Error('Papel de acesso inválido');
- const payload=raw?.data||{};
+ const payload=company?scopeCompanyData(raw?.data||{},company):(raw?.data||{});
  const cleaned={
   viagens:(payload.viagens||[]).map(x=>project(x,OP_TRIPS)),
   pedidos:(payload.pedidos||[]).map(x=>project(x,OP_ORDERS)),
   ctes:(payload.ctes||[]).map(x=>project(x,OP_ORDERS)),
-  mdfes:(payload.mdfes||[]).map(x=>project(x,['nro_mdf','numero','numeroMDFe','nroMDFe','nrMDFe','data_emissao','data','rv_id','viagemId','idViagem','rv_viagem','placa_veiculo','placa','status','situacao'])),
+  mdfes:(payload.mdfes||[]).map(x=>project(x,['empresa','nro_mdf','numero','numeroMDFe','nroMDFe','nrMDFe','data_emissao','data','rv_id','viagemId','idViagem','rv_viagem','placa_veiculo','placa','status','situacao'])),
   rotas:(payload.rotas||[]).map(x=>project(x,['rota_id','km_previsto_rota','dsc_rota','cidade_origem_rota','cidade_destino_rota'])),
   programacoes:(payload.programacoes||[]).map(x=>project(x,['programacao_id','nro_programacao','rv_id','nro_rv','pf_id','motorista_id','veiculo_id','data_emissao','nro_cte'])),
-  ocorrencias:(payload.ocorrencias||[]).map(x=>project(x,['ocorrencia_id','data_ocorrencia','descricao','veiculo_id','placa_veiculo','ocorrencia_de','relato','causa_raiz','providencia_tomada','responsavel_atendimento','envolvido','data','status'])),
+  ocorrencias:(payload.ocorrencias||[]).map(x=>project(x,['empresa','rv_id','nro_rv','pf_id','nro_mdf','ocorrencia_id','data_ocorrencia','descricao','veiculo_id','placa_veiculo','ocorrencia_de','relato','causa_raiz','providencia_tomada','responsavel_atendimento','envolvido','data','status'])),
   sources:payload.sources
  };
- return {...raw,permissions,role,data:cleaned};
+ return {...raw,permissions,role,...(company?{company}:{}),data:cleaned};
 }

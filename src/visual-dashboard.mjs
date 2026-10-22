@@ -1,3 +1,4 @@
+import {COMPANIES} from './companies.mjs';
 /**
  * COSTALOG • Painel visual corporativo (dados normalizados pelo adaptador DSS).
  * Não inventa posição GPS, manutenção, frota disponível, lucro ou status fiscal.
@@ -31,12 +32,19 @@ function panel(title,kicker,content,extra=''){
  return '<section class="v-panel '+extra+'"><div class="v-panel-head"><div><h3>'+H(title)+'</h3>'+(kicker?'<small>'+H(kicker)+'</small>':'')+'</div></div>'+content+'</section>';
 }
 function empty(text){return '<div class="v-chart-empty"><span>◇</span>'+H(text)+'</div>';}
-export function renderHero(view,d,{from,to,mode,financeiro}){
+export function renderHero(view,d,{from,to,mode,financeiro,company='costalog'}){
  const titles={
   painel:['STATUS & CATEGORIA','Visão operacional unificada de viagens e pedidos de frete'],
   graficos:['VISÃO GRÁFICA','Indicadores, tendências e distribuição dos registros DSS'],
   viagens:['VIAGENS / RV','Relatórios de viagem, placas, clientes e situações'],
   ctes:['PEDIDOS DE FRETE','Consulta de pedidos e suas referências de viagem'],
+  entregas:['ENTREGAS','Acompanhamento das entregas e comprovantes'],
+  pendencias:['PENDÊNCIAS','Conferência operacional de RVs, pedidos e documentos'],
+  rotas:['ROTAS','Trajetos e quilômetros das viagens'],
+  veiculos:['FROTA','Veículos vinculados às RVs e pedidos'],
+  motoristas:['MOTORISTAS','Atividade nas viagens e pedidos de frete'],
+  mdfes:['MDF-e','Referências documentais vinculadas às viagens'],
+  ocorrencias:['OCORRÊNCIAS','Registros identificados para a empresa selecionada'],
   relatorios:['RELATÓRIOS DE PERFORMANCE','Business Intelligence & Operational Metrics'],
   comparativos:['COMPARATIVOS','Evolução diária, semanal e mensal dos indicadores'],
   faturamento:['FATURAMENTO','Análise financeira dos pedidos de frete'],
@@ -44,7 +52,7 @@ export function renderHero(view,d,{from,to,mode,financeiro}){
   analises:['ANÁLISES FINANCEIRAS','Tendências mensais e valores de pedidos']
  };
  const t=titles[view]||[String(view||'painel').toUpperCase(),'Acompanhamento operacional COSTALOG'];
- return '<section class="v-hero"><div class="v-hero-mark">▦</div><div class="v-hero-copy"><div class="v-eyebrow">COSTALOG <span> / INTELIGÊNCIA OPERACIONAL</span></div><h1>'+H(t[0])+' <span class="v-hero-badge">'+(mode==='live'?'DSS':'DEMONSTRAÇÃO')+'</span></h1><p>'+H(t[1])+'</p></div><div class="v-hero-side"><span>PERÍODO SELECIONADO</span><strong>'+H(PT(from))+' — '+H(PT(to))+'</strong><small>'+N(d.viagens.length)+' RVs • '+N(d.pedidos.length)+' pedidos</small></div></section>';
+ return '<section class="v-hero"><div class="v-hero-mark">▦</div><div class="v-hero-copy"><div class="v-eyebrow">'+H(COMPANIES[company]?.name||'COSTALOG')+' <span> / INTELIGÊNCIA OPERACIONAL</span></div><h1>'+H(t[0])+' <span class="v-hero-badge">'+(mode==='live'?'DSS':'DEMONSTRAÇÃO')+'</span></h1><p>'+H(t[1])+'</p></div><div class="v-hero-side"><span>PERÍODO SELECIONADO</span><strong>'+H(PT(from))+' — '+H(PT(to))+'</strong><small>'+N(d.viagens.length)+' RVs • '+N(d.pedidos.length)+' pedidos</small></div></section>';
 }
 export function renderSummary(d,settings){
  const viagens=d.viagens||[],pedidos=d.pedidos||[];
