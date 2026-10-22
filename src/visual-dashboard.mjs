@@ -1,3 +1,4 @@
+import {memoView} from './view-cache.mjs';
 import {COMPANIES} from './companies.mjs';
 /**
  * COSTALOG • Painel visual corporativo (dados normalizados pelo adaptador DSS).
@@ -6,8 +7,9 @@ import {COMPANIES} from './companies.mjs';
  */
 import {buildInsights,makeAlerts,createAlertPager,groupRows} from './operational.mjs';
 const H=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const N=v=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:0}).format(v);
-const B=v=>Number.isFinite(v)?new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:2}).format(v):'—';
+const numbers=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:0}),currency=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:2});
+const N=v=>numbers.format(v);
+const B=v=>Number.isFinite(v)?currency.format(v):'—';
 const PT=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)?v.slice(8)+'/'+v.slice(5,7)+'/'+v.slice(0,4):'—';
 const COLORS=['#ff3548','#3ed68c','#64a9ff','#bb81ff','#ffad5b','#ffb6ae','#8f98a8'];
 const safeStatus=s=>String(s||'Não informado').trim()||'Não informado';
@@ -59,7 +61,7 @@ export function renderSummary(d,settings){
  const viagens=d.viagens||[],pedidos=d.pedidos||[];
  const fin=!!settings.financeiro;
  const insights=fin?buildInsights(d,{year:Number(settings.from?.slice(0,4)||new Date().getFullYear()),includeAlerts:false}):null;
- const statuses=groupRows(viagens,classify),counts=Object.fromEntries(statuses.map(x=>[x.name,x.count]));
+ const statuses=memoView('summary-status',[d],()=>groupRows(viagens,classify)),counts=Object.fromEntries(statuses.map(x=>[x.name,x.count]));
  const underway=counts['Em viagem']||0,completed=counts['Concluídas']||0;
  const docs=pedidos.filter(p=>p.isCte),unlinked=docs.filter(p=>!p.viagemId);
  const evidence=pedidos.filter(p=>p.entregaConcluida===true&&p.comprovanteEntrega===false);
@@ -78,17 +80,17 @@ export function renderSummary(d,settings){
  ];
  const buckets=[...new Set(viagens.map(v=>v.tipoRv||'Não informado'))].sort((a,b)=>a.localeCompare(b,'pt-BR')).slice(0,5);
  const types=buckets.length?buckets:['Não informado'];
- const matrix='<div class="v-matrix-scroll"><table class="v-matrix"><thead><tr><th>SITUAÇÃO / TIPO DE RV</th>'+types.map(t=>'<th>'+H(t)+'</th>').join('')+'<th>TOTAL</th></tr></thead><tbody>'+
+ const matrix=memoView('summary-matrix',[d],()=>'<div class="v-matrix-scroll"><table class="v-matrix"><thead><tr><th>SITUAÇÃO / TIPO DE RV</th>'+types.map(t=>'<th>'+H(t)+'</th>').join('')+'<th>TOTAL</th></tr></thead><tbody>'+
  CATS.map(cat=>{
  const row=types.map(type=>viagens.filter(v=>(v.tipoRv||'Não informado')===type&&classify(v)===cat).length);
  return '<tr><td><i class="v-dot '+DOT[cat]+'"></i>'+H(cat.toUpperCase())+'</td>'+
  row.map(n=>'<td><span class="v-matrix-cell'+(n?' filled':'')+'">'+N(n)+'</span></td>').join('')+
  '<td class="v-matrix-total">'+N(counts[cat]||0)+'</td></tr>';
- }).join('')+'</tbody></table></div>';
+ }).join('')+'</tbody></table></div>');
  const asOf=new Date().toISOString().slice(0,10);
  if(summaryAlertsCache?.data!==d||summaryAlertsCache.asOf!==asOf)summaryAlertsCache={data:d,asOf,pager:createAlertPager(d,{asOf})};
  const warnings=summaryAlertsCache.pager.getPage({financial:fin}).rows.slice(0,6);
- const alertHtml=warnings.length?warnings.map(a=>'<div class="v-alert '+(a.level==='high'?'critical':'')+'"><div class="v-alert-title">'+H(a.title)+'</div><p>'+H(a.detail)+'</p><span>'+H(a.refDate||'')+'</span></div>').join(''):empty('Nenhuma pendência identificada nos registros selecionados');
+ const alertHtml=warnings.length?warnings.map(a=>'<div class="v-alert '+(a.level==='high'?'critical':'')+'"><div class="v-alert-title">'+H(a.title)+'</div><p>'+H(a.detail)+'</p><span>'+H(a.refDate||'')+'</span><button class="btn btn-sm" data-alert-detail="'+H(a.view+':'+a.recordId)+'">Abrir registro ↗</button></div>').join(''):empty('Nenhuma pendência identificada nos registros selecionados');
  return (settings.showCards===false?'':'<div class="v-stats-grid">'+cards.join('')+'</div>')+
  (settings.showCards===false?'':'<div class="v-stats-grid v-secondary-stats">'+extras.join('')+'</div>')+
  '<div class="v-section-grid">'+panel('STATUS & CATEGORIA','Distribuição por tipo e situação informada na RV',matrix,'v-span-7')+
@@ -222,7 +224,7 @@ export function renderCharts(d,settings){
  '</div>';
 }
 export function renderTripsHeader(d){
- const rows=d.viagens||[],categorized=groupRows(rows,classify),counts=Object.fromEntries(categorized.map(c=>[c.name,c.count]));
+ const rows=d.viagens||[],categorized=memoView('trips-header',[d],()=>groupRows(rows,classify)),counts=Object.fromEntries(categorized.map(c=>[c.name,c.count]));
  return '<div class="v-stats-grid">'+
  createCard('TOTAL DE VIAGENS',N(rows.length),'No período selecionado','red','▤')+
  createCard('EM VIAGEM',N(counts['Em viagem']||0),'Conforme status da RV','green','↗')+
@@ -231,7 +233,7 @@ export function renderTripsHeader(d){
  '</div>';
 }
 export function renderReportsHeader(d,settings){
- const groups=timelineGroups(d,settings.interval||'mensal'),fin=!!settings.financeiro;
+ const groups=memoView('reports-header',[d,settings.interval],()=>timelineGroups(d,settings.interval||'mensal')),fin=!!settings.financeiro;
  const counts=[{label:'VIAGENS',value:d.viagens.length,bar:'red'},{label:'PEDIDOS',value:d.pedidos.length,bar:'green'},{label:'CT-e NUMERADOS',value:d.pedidos.filter(p=>p.isCte).length,bar:'blue'}];
  const percentages=counts.map((c,i)=>createCard(c.label,N(c.value),i===0?'Relatórios RV':i===1?'Registros PF':'Pedidos com nro_cte',c.bar,i===0?'▤':'✓'));
  return '<div class="v-stats-grid">'+percentages.join('')+

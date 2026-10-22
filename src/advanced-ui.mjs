@@ -1,11 +1,13 @@
+import {memoView} from './view-cache.mjs';
 import {renderAlertsHub} from './intelligence-ui.mjs';
 import {COMPANIES} from './companies.mjs';
-import {reportTypesFor,buildOperationalReport} from './access-ui.mjs';
-import {buildInsights,sortRecords,searchRecords,extractRows,REPORT_TYPES,groupRows} from './operational.mjs';
+import {reportTypesFor,buildOperationalReport,OP_COLUMNS} from './access-ui.mjs';
+import {buildInsights,sortRecords,searchRecords,extractRows,REPORT_TYPES,groupRows,operationalGroups} from './operational.mjs';
 const h=v=>String(v===null||v===undefined?'':v).replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
 const b=v=>v===true?'Sim':v===false?'Não':'—';
-const brl=v=>Number.isFinite(v)?new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v):'—';
-const num=v=>Number.isFinite(v)?new Intl.NumberFormat('pt-BR').format(v):'—';
+const numberFormatter=new Intl.NumberFormat('pt-BR'),moneyFormatter=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
+const brl=v=>Number.isFinite(v)?moneyFormatter.format(v):'—';
+const num=v=>Number.isFinite(v)?numberFormatter.format(v):'—';
 const dt=v=>String(v||'').match(/^\d{4}-\d{2}-\d{2}/)?v.slice(8,10)+'/'+v.slice(5,7)+'/'+v.slice(0,4):h(v||'—');
 const chip=(label,color='gray')=>'<span class="pill '+color+'">'+h(label)+'</span>';
 const tt=(label,value,sub='')=>'<article class="kpi"><div class="kpi-label">'+h(label)+'</div><div class="kpi-value">'+h(value)+'</div><div class="kpi-sub">'+h(sub)+'</div></article>';
@@ -41,7 +43,8 @@ function cell(v,fmt){if(fmt==='money')return h(brl(v));if(fmt==='number')return 
 export function tableAdvanced(rows,columns,s,view){
  const active=columns.filter(c=>!(s.hiddenColumns?.[view]||[]).includes(c.key));
  const head=active.map(c=>'<th><button class="sort-link" data-sort="'+h(c.key)+'" title="Ordenar por '+h(c.label)+'">'+h(c.label)+' '+(s.sortKey===c.key?(s.sortDir==='asc'?'↑':'↓'):'↕')+'</button></th>').join('');
- const sorted=sortRecords(rows,s.sortKey||columns[0].key,s.sortDir||'desc');
+ const key=s.sortKey||columns[0].key,direction=s.sortDir||'desc';
+ const sorted=s.rowsSorted?rows:memoView('sort-grid-'+view,[rows,key,direction],()=>sortRecords(rows,key,direction));
  const total=sorted.length;const limit=25,pageCount=Math.max(1,Math.ceil(total/limit)),page=Math.min(Math.max(1,s.page||1),pageCount);
  s.page=page;
  const pageRows=sorted.slice((page-1)*limit,page*limit);
@@ -53,7 +56,8 @@ export function tableAdvanced(rows,columns,s,view){
  return '<div class="table-wrap"><table><thead><tr>'+head+'</tr></thead><tbody>'+((body)?body:'<tr><td colspan="'+active.length+'" class="empty">Nenhum registro encontrado para os filtros selecionados.</td></tr>')+'</tbody></table></div>'+footer;
 }
 function columnsPicker(columns,s,view){
- return '<details class="columns-picker"><summary class="btn btn-sm">Colunas da tabela</summary><div class="columns-list">'+columns.map(c=>'<label><input type="checkbox" data-column-toggle="'+h(view)+':'+h(c.key)+'" '+(!(s.hiddenColumns?.[view]||[]).includes(c.key)?'checked':'')+'/> '+h(c.label)+'</label>').join('')+'</div></details>';
+ const visible=columns.filter(c=>!(s.hiddenColumns?.[view]||[]).includes(c.key));
+ return '<details class="columns-picker"><summary class="btn btn-sm">Colunas da tabela</summary><div class="columns-list">'+columns.map(c=>'<label><input type="checkbox" data-column-toggle="'+h(view)+':'+h(c.key)+'" '+(!(s.hiddenColumns?.[view]||[]).includes(c.key)?'checked':'')+' '+(visible.length===1&&visible[0].key===c.key?'disabled':'')+'/> '+h(c.label)+'</label>').join('')+'</div></details>';
 }
 function rowTable(title,rows,columns,s,view,sub=''){
  return '<div class="table-tools"><h2>'+h(title)+'</h2>'+columnsPicker(columns,s,view)+'</div>'+section(title,sub,tableAdvanced(rows,columns,s,view));
@@ -72,7 +76,8 @@ function monthlyPanel(i,s){
  return rowTable('Evolução mensal',rows,cols,s,'mensal','Agrupamento por data de início da RV e emissão do pedido.');
 }
 export function renderAdvanced(view,d,s){
- const i=buildInsights(d,{year:Number((s.from||'').slice(0,4)||new Date().getFullYear()),lateDays:s.lateDays||2,includeAlerts:false});
+ if(view==='pendencias')return renderAlertsHub(d,s);
+ const i=['entregas','veiculos'].includes(view)?null:memoView('advanced-'+view,[d,s.lateDays],()=>buildInsights(d,{year:Number((s.from||'').slice(0,4)||new Date().getFullYear()),lateDays:s.lateDays||2,includeAlerts:false}));
  if(view==='pendencias'){
   const count=i.alerts.reduce((v,a)=>(v[a.level]=(v[a.level]||0)+1,v),{});
   return '<div class="kpis">'+tt('PENDÊNCIAS TOTAIS',num(i.alerts.length),'Alertas calculados pelas APIs')+tt('PRIORIDADE ALTA',num(count.high||0),'Requer conferência')+tt('VERIFICAÇÃO',num(count.warning||0),'Vínculos, faturamento, RVs')+tt('INFORMATIVOS',num(count.info||0),'Ocorrências e quilometragem')+'</div>'+
@@ -81,13 +86,18 @@ export function renderAdvanced(view,d,s){
    rowTable('Central de pendências',searchRecords(i.alerts.filter(x=>s.alertPriority==='todos'||!s.alertPriority||x.level===s.alertPriority),s.search),alertCols,s,'pendencias','DSS · somente leitura');
  }
  if(view==='entregas'){
-  const rows=searchRecords(d.pedidos||[],s.search).filter(x=>(!s.customer||x.cliente===s.customer)&&(!s.vehicle||x.placa===s.vehicle));
+  const rows=memoView('delivery-search',[d,s.search],()=>searchRecords(d.pedidos||[],s.search));
   const cols=[{key:'pedidoNumero',label:'Pedido'},{key:'cteNumero',label:'CT-e'},{key:'data',label:'Emissão',format:'date'},{key:'cliente',label:'Cliente'},{key:'motoristaNome',label:'Motorista'},{key:'placa',label:'Placa'},{key:'entregaConcluida',label:'Entrega concluída',format:'bool'},{key:'comprovanteEntrega',label:'Comprovante',format:'bool'},{key:'ocorrencia',label:'Ocorrência'},{key:'status',label:'Situação'}];
-  return '<div class="kpis">'+tt('PEDIDOS',num(rows.length))+tt('ENTREGAS CONCLUÍDAS',num(rows.filter(x=>x.entregaConcluida===true).length))+tt('SEM COMPROVANTE',num(rows.filter(x=>x.entregaConcluida===true&&x.comprovanteEntrega===false).length))+'</div>'+
+  const counts=memoView('delivery-counts',[rows],()=>rows.reduce((sum,row)=>({done:sum.done+(row.entregaConcluida===true?1:0),missing:sum.missing+(row.entregaConcluida===true&&row.comprovanteEntrega===false?1:0)}),{done:0,missing:0}));
+  return '<div class="kpis">'+tt('PEDIDOS',num(rows.length))+tt('ENTREGAS CONCLUÍDAS',num(counts.done))+tt('SEM COMPROVANTE',num(counts.missing))+'</div>'+
    rowTable('Acompanhamento de entregas',rows,cols,s,'entregas','Indicadores operacionais, sem dados de faturamento.');
  }
  if(view==='rotas')return '<div class="kpis">'+tt('ROTAS DISTINTAS',num(i.routes.length))+tt('KM TOTAL IDENTIFICADO',num(i.totals.actual.sum),'Não informado não equivale a zero')+tt('KM PREVISTO',num(i.totals.planned.sum))+tt('DESVIO GLOBAL',Number.isFinite(i.totals.kmDifference)?num(i.totals.kmDifference):'—')+'</div>'+rowTable('Rotas mais utilizadas',searchRecords(i.routes,s.search),s.permissions?.financeiro?routesCols:routesCols.filter(x=>!['fuel','freight'].includes(x.key)),s,'rotas','Origem → destino, agrupamento por registro RV');
- if(view==='veiculos')return '<div class="kpis">'+tt('VEÍCULOS IDENTIFICADOS',num(i.totals.uniqueVehicles))+tt('VIAGENS',num(i.totals.trips))+tt('QUILOMETRAGEM',num(i.totals.actual.sum))+(s.permissions?.financeiro?tt('ABASTECIMENTO',brl(i.totals.fuel.known?i.totals.fuel.sum:null)):'')+'</div>'+rowTable('Indicadores por veículo',searchRecords(i.vehicles,s.search),s.permissions?.financeiro?vehiclesCols:vehiclesCols.filter(x=>!['fuel','freight'].includes(x.key)),s,'veiculos','Placa da viagem RV; sem considerar reboques sem placas');
+ if(view==='veiculos'){
+  const vehicles=operationalGroups('veiculos',d),rows=memoView('vehicles-search',[vehicles,s.search],()=>searchRecords(vehicles,s.search));
+  const totalKm=memoView('vehicles-km',[d],()=>({sum:d.viagens.reduce((n,v)=>n+(Number.isFinite(v.kmRodados)?v.kmRodados:0),0),known:d.viagens.some(v=>Number.isFinite(v.kmRodados))}));
+  return '<div class="kpis">'+tt('VEÍCULOS IDENTIFICADOS',num(vehicles.filter(v=>v.name!=='Veículo ID ?').length))+tt('VIAGENS',num(d.viagens.length))+tt('QUILOMETRAGEM',totalKm.known?num(totalKm.sum):'—')+'</div>'+rowTable('Indicadores por veículo',rows,vehiclesCols.filter(x=>!['fuel','freight'].includes(x.key)),s,'veiculos','Placa da viagem RV; apenas KM informados.');
+ }
  if(view==='motoristas')return '<div class="kpis">'+tt('GRUPOS DE MOTORISTAS',num(i.drivers.length),'Dados por ID/nome no PF')+tt('PEDIDOS DE FRETE',num(i.totals.orders))+tt('CT-e IDENTIFICADOS',num(i.totals.ctes))+'</div>'+rowTable('Pedidos por motorista',searchRecords(i.drivers,s.search),s.permissions?.financeiro?driversCols:driversCols.filter(x=>x.key!=='freight'),s,'motoristas','listarPedidosFrete • motoristas sem ID serão exibidos conforme nome cadastrado');
  if(view==='containers')return '<div class="kpis">'+tt('CONTAINERS IDENTIFICADOS',num(i.containers.length),'RVs + pedidos; número distinto')+'</div>'+rowTable('Histórico resumido de containers',searchRecords(i.containers,s.search),containerCols,s,'containers','Somente registros operacionais retornados pelo DSS, não rastreamento');
  if(view==='faturamento'){
@@ -142,8 +152,14 @@ export function renderReportHub(data,s){
  const selected=allowed.includes(s.reportSelected)?s.reportSelected:allowed[0];
  const multi=s.reportMulti===true;
  s.reportSelected=selected;
- const preview=selected==='pendencias'?renderAlertsHub(data,s):(()=>{const model=buildOperationalReport(selected,data,s);const previewState={...s,sortKey:model.sortKey};const html=renderGrid(model.title,model.rows,model.columns.map(([key,label])=>({key,label,format:['data','dataTermino','dataCte','refDate'].includes(key)?'date':['entregaConcluida','comprovanteEntrega'].includes(key)?'bool':undefined})),previewState,'report-'+selected,'Prévia de 25 itens por página. A exportação inclui todos os resultados filtrados.');s.page=previewState.page;return html;})();
- return '<section class="card"><div class="card-head"><h3>Relatórios '+h(COMPANIES[s.company||'costalog'].name)+'</h3><span>Excel real (.xlsx), CSV e impressão/PDF</span></div>'+
+ const preview=selected==='pendencias'?renderAlertsHub(data,s):(()=>{const model=buildOperationalReport(selected,data,s,{preview:true});const previewState={...s,sortKey:model.sortKey,rowsSorted:true};const html=renderGrid(model.title,model.rows,model.availableColumns.map(([key,label])=>({key,label,format:['data','dataTermino','dataCte','refDate','due'].includes(key)?'date':['entregaConcluida','comprovanteEntrega'].includes(key)?'bool':undefined})),previewState,'report-'+selected,'Prévia de 25 itens por página. A exportação inclui todos os resultados filtrados.');s.page=previewState.page;return html;})();
+ const pendingLabels={type:'Tipo',level:'Prioridade',recordId:'Registro',title:'Pendência',detail:'Detalhes',refDate:'Data',owner:'Responsável',due:'Prazo',priority:'Prioridade do tratamento',status:'Situação do tratamento'};
+ const pendingColumns=OP_COLUMNS.pendencias.filter(key=>!(s.hiddenColumns?.['report-pendencias']||[]).includes(key)).sort((a,b)=>{const order=s.reportColumnOrder?.pendencias||[];return (order.includes(a)?order.indexOf(a):order.length+OP_COLUMNS.pendencias.indexOf(a))-(order.includes(b)?order.indexOf(b):order.length+OP_COLUMNS.pendencias.indexOf(b));}).map(key=>[key,pendingLabels[key]]);
+ const model=selected==='pendencias'?{columns:pendingColumns}:buildOperationalReport(selected,data,s,{preview:true});
+ const templateNames=Object.keys(s.reportTemplates||{});
+ const pendingPicker=selected==='pendencias'?columnsPicker(OP_COLUMNS.pendencias.map(key=>({key,label:pendingLabels[key]})),s,'report-pendencias'):'';
+ const templateControls='<section class="card report-template-controls"><h3>Modelos de relatório</h3><div class="filter-row"><label class="filter grow">Modelo salvo<select id="reportTemplateSelect" class="control"><option value="">Selecionar modelo</option>'+templateNames.map(name=>'<option value="'+h(name)+'" '+(s.templateSelected===name?'selected':'')+'>'+h(name)+'</option>').join('')+'</select></label><button class="btn btn-sm" data-action="apply-report-template">Aplicar modelo</button><button class="btn btn-sm" data-action="save-report-template">Salvar modelo atual</button><button class="btn btn-sm" data-action="delete-report-template">Excluir modelo</button><label class="filter">Formato preferido<select id="reportFormat" class="control">'+['xlsx','csv','pdf'].map(format=>'<option value="'+format+'" '+((s.reportFormat||'xlsx')===format?'selected':'')+'>'+format.toUpperCase()+'</option>').join('')+'</select></label><button class="btn btn-red" data-action="export-report-template">Exportar no formato salvo</button></div><p class="help">Modelos guardam filtros, período, colunas, ordem e formato neste navegador, separados por usuário e empresa.</p>'+pendingPicker+(model?'<details><summary>Ordenar colunas do relatório</summary><div class="report-column-order">'+model.columns.map(([key,label],i)=>'<div><span>'+h(label)+'</span><button class="btn btn-sm" data-report-column-move="'+key+':-1" '+(!i?'disabled':'')+' aria-label="Mover '+h(label)+' para cima">↑</button><button class="btn btn-sm" data-report-column-move="'+key+':1" '+(i===model.columns.length-1?'disabled':'')+' aria-label="Mover '+h(label)+' para baixo">↓</button></div>').join('')+'</div></details>':'')+'</section>';
+ return templateControls+'<section class="card"><div class="card-head"><h3>Relatórios '+h(COMPANIES[s.company||'costalog'].name)+'</h3><span>Excel real (.xlsx), CSV e impressão/PDF</span></div>'+
  '<div class="filter-row">'+
  '<label class="filter grow"><span>Tipo do relatório</span><select id="reportSelected" class="control full">'+allowed.map(t=>'<option value="'+t+'" '+(selected===t?'selected':'')+'>'+h(EXPORT_LABELS[t])+'</option>').join('')+'</select></label>'+
  '<label class="filter"><span>Escopo Excel</span><select id="reportMulti" class="control"><option value="single" '+(!multi?'selected':'')+'>Uma aba</option><option value="all" '+(multi?'selected':'')+'>Todas as abas</option></select></label>'+

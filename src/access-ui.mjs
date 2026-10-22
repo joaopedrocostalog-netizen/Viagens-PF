@@ -1,3 +1,5 @@
+import {memoView} from './view-cache.mjs';
+import {taskFor} from './workflow.mjs';
 import {extractRows,searchRecords,sortRecords} from './operational.mjs';
 import {filterLinkedRows} from './filtering.mjs';
 /** Regras visuais: segurança real é aplicada em api/access.mjs no servidor. */
@@ -5,7 +7,7 @@ export const OP_VIEWS=['painel','relatorios','viagens','ctes','entregas','penden
 export const FIN_VIEWS=[];
 export const ADMIN_VIEWS=[];
 export const OP_REPORTS=['viagens','pedidos','ctes','entregas','rotas','veiculos','motoristas','mdfes','pendencias','ocorrencias','mensal'];
-const OP_COLUMNS={
+export const OP_COLUMNS={
  viagens:['numero','data','dataTermino','cliente','placa','motoristaId','motoristaNome','container','nroMdf','origem','destino','kmPrevisto','kmRodados','desvioKm','status'],
  entregas:['pedidoNumero','cteNumero','data','cliente','motoristaNome','placa','entregaConcluida','comprovanteEntrega','ocorrencia','status'],
  ocorrencias:['id','data','placa','tipo','descricao','relato','status','providencia'],
@@ -16,7 +18,7 @@ const OP_COLUMNS={
  motoristas:['name','orders','ctes'],
  containers:['name','viagens','pedidos','lastDate'],
  mdfes:['numero','data','viagemId','placa','status'],
- pendencias:['type','level','recordId','title','detail','refDate'],
+ pendencias:['type','level','recordId','title','detail','refDate','owner','due','priority','status'],
  mensal:['month','trips','orders','ctes','km']
 };
 export function permittedView(role,view){
@@ -49,16 +51,31 @@ export function operationalDataset(data){
 }
 
 /** Mesmo modelo para a prévia e para CSV/Excel/PDF. */
-export function buildOperationalReport(type,data,state){
+function makeOperationalReport(type,data,state,preview){
  const scoped={...data};
  if(['viagens','pedidos','ctes','mdfes'].includes(type)){
   const key=type==='ctes'?'pedidos':type;
   scoped[key]=filterLinkedRows(data[key]||[],key,data,state.filter);
   if(type==='ctes')scoped.ctes=filterLinkedRows(data.ctes||[],'pedidos',data,state.filter);
  }
- const model=secureReport(extractRows(type,scoped),type,state.role);
- const rows=searchRecords(model.rows.filter(row=>type!=='pendencias'||(row.type!=='sem_fatura'&&(!state.alertPriority||state.alertPriority==='todos'||row.level===state.alertPriority)&&(!state.alertKind||state.alertKind==='todos'||row.type===state.alertKind))),state.search,model.columns.map(([key])=>key));
+ if(!reportTypesFor(state.role).includes(type))throw Error('Relatório não permitido para este perfil.');
+ const source=extractRows(type,scoped);
+ const hidden=state.hiddenColumns?.['report-'+type]||[],order=state.reportColumnOrder?.[type]||[];
+ const allowed=source.columns.filter(([key])=>OP_COLUMNS[type]?.includes(key));
+ if(type==='pendencias')for(const [key,label] of [['owner','Responsável'],['due','Prazo'],['priority','Prioridade do tratamento'],['status','Situação do tratamento']])allowed.push([key,label]);
+ const availableColumns=allowed.slice().sort((a,b)=>{const rank=key=>order.includes(key)?order.indexOf(key):order.length+allowed.findIndex(c=>c[0]===key);return rank(a[0])-rank(b[0]);});
+ const columns=allowed.filter(([key])=>!hidden.includes(key)).sort((a,b)=>{const rank=key=>order.includes(key)?order.indexOf(key):order.length+allowed.findIndex(c=>c[0]===key);return rank(a[0])-rank(b[0]);});
+ const sourceRows=type==='pendencias'?source.rows.map(row=>({...row,...taskFor(row,state.tasks),level:taskFor(row,state.tasks).priority})):source.rows;
+ const model={...source,columns,availableColumns,rows:sourceRows};
+ const rows=searchRecords(model.rows.filter(row=>type!=='pendencias'||(row.type!=='sem_fatura'&&(!state.alertPriority||state.alertPriority==='todos'||row.level===state.alertPriority)&&(!state.alertKind||state.alertKind==='todos'||row.type===state.alertKind)&&(!state.alertStatus||state.alertStatus==='todos'||row.status===state.alertStatus)&&(!state.alertOwner||searchRecords([{owner:row.owner}],state.alertOwner).length))),state.search,model.availableColumns.map(([key])=>key));
  const keys=model.columns.map(([key])=>key);
  const sortKey=keys.includes(state.sortKey)?state.sortKey:['data','refDate','month','name'].find(key=>keys.includes(key))||keys[0];
- return {...model,sortKey,rows:sortRecords(rows,sortKey,type==='pendencias'?'desc':state.sortDir||'desc')};
+ const sorted=sortRecords(rows,sortKey,type==='pendencias'?'desc':state.sortDir||'desc');
+ return {...model,sortKey,rows:preview?sorted:sorted.map(row=>Object.fromEntries(columns.map(([key])=>[key,row[key]])))};
+}
+
+/** A prévia mantém referências; somente a exportação projeta todas as linhas. */
+export function buildOperationalReport(type,data,state,{preview=false}={}){
+ const deps=[data,state.role,state.filter,state.search,state.sortKey,state.sortDir,state.alertPriority,state.alertKind,state.alertStatus,state.alertOwner,state.tasks,state.hiddenColumns?.['report-'+type],state.reportColumnOrder?.[type],preview];
+ return memoView('report-'+type+'-'+preview,deps,()=>makeOperationalReport(type,data,state,preview));
 }

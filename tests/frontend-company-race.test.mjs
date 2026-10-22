@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-test('Resposta antiga de Costalog não substitui a Ideallog depois da troca',async()=>{
+test('Resposta antiga de Costalog não substitui a Ideallog depois da troca',async(t)=>{
  const events={},storage=new Map(),fields={loginUser:{value:'operador'},loginPassword:{value:'senha-teste'}};
  const root={innerHTML:'',addEventListener:(type,callback)=>events[type]=callback};
  globalThis.document={getElementById:id=>id==='app'?root:fields[id]||null,querySelector(){return null;},addEventListener(){}};
@@ -9,6 +9,7 @@ test('Resposta antiga de Costalog não substitui a Ideallog depois da troca',asy
  globalThis.window={location:{protocol:'file:',origin:'https://teste.local'}};
  const reply=data=>({ok:true,status:200,json:async()=>data});
  let finishCostalog;
+ t.after(()=>finishCostalog?.());
  globalThis.fetch=async input=>{
   const url=new URL(input);
   if(url.pathname==='/api/login')return reply({token:'token-teste',user:{username:'operador',role:'operacional'},permissions:{operacional:true,financeiro:false,admin:false}});
@@ -26,6 +27,8 @@ test('Resposta antiga de Costalog não substitui a Ideallog depois da troca',asy
  click('[data-action]',{action:'refresh'});await tick();
  assert.equal(typeof finishCostalog,'function');
  click('[data-action]',{action:'switch-company'});await tick();
+ // Conferir a lista visível; filtros fechados não pré-carregam opções de clientes.
+ click('[data-nav]',{nav:'viagens'});
  assert(root.innerHTML.includes('CLIENTE IDEAL ATIVO'));
  finishCostalog();await tick();
  assert(root.innerHTML.includes('CLIENTE IDEAL ATIVO'));

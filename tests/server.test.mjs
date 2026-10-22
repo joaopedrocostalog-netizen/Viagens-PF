@@ -33,8 +33,8 @@ test('backend DSS converte filtros para dd/mm/aaaa, lê registros e mantém aute
  const uport=await listen(upstream);
  t.after(()=>new Promise(resolve=>upstream.close(resolve)));
  const port=32500+(process.pid%10000);
- const child=spawn(process.execPath,['api/server.mjs'],{env:{...process.env,PORT:String(port),DSS_PERIOD_CACHE_DIR:cacheDir,PORTAL_ACCESS_TOKEN:'local-test-token',PORTAL_ALLOW_LEGACY_TOKEN:'true',PORTAL_ALLOWED_ORIGINS:'http://127.0.0.1',DSS_BASE_URL:'http://127.0.0.1:'+uport+'/wsdss',
-  DSS_AUTH_TYPE:'basic',DSS_USERNAME:user,DSS_PASSWORD:pass,DSS_AUTH_HEADER:'',DSS_AUTH_VALUE:'',DSS_VIAGENS_PATH:'/listarViagens',DSS_PEDIDOS_PATH:'/listarPedidosFrete',DSS_CTES_PATH:'',DSS_MDFES_PATH:'',DSS_ROTAS_PATH:'',DSS_PROGRAMACOES_PATH:'',DSS_OCORRENCIAS_PATH:'',DSS_MOTORISTAS_PATH:'/listarMotoristas',DSS_MOTORISTAS_ID_FIELD:'id',DSS_MOTORISTAS_NAME_FIELD:'nome_motorista'},
+ const child=spawn(process.execPath,['api/server.mjs'],{env:{...process.env,PORT:String(port),DSS_PERIOD_CACHE_DIR:cacheDir,PORTAL_WORKFLOW_FILE:join(cacheDir,'workflow.json'),PORTAL_ACCESS_TOKEN:'local-test-token',PORTAL_ALLOW_LEGACY_TOKEN:'true',PORTAL_ALLOWED_ORIGINS:'http://127.0.0.1',DSS_BASE_URL:'http://127.0.0.1:'+uport+'/wsdss',
+  DSS_AUTH_TYPE:'basic',DSS_USERNAME:user,DSS_PASSWORD:pass,DSS_AUTH_HEADER:'',DSS_AUTH_VALUE:'',DSS_VIAGENS_PATH:'/listarViagens',DSS_PEDIDOS_PATH:'/listarPedidosFrete',DSS_CTES_PATH:'',DSS_MDFES_PATH:'',DSS_ROTAS_PATH:'',DSS_PROGRAMACOES_PATH:'',DSS_OCORRENCIAS_PATH:'/listarOcorrencias',DSS_MOTORISTAS_PATH:'/listarMotoristas',DSS_MOTORISTAS_ID_FIELD:'id',DSS_MOTORISTAS_NAME_FIELD:'nome_motorista'},
   stdio:['ignore','pipe','pipe']});
  t.after(()=>child.kill('SIGTERM'));
  await waitPort(port);
@@ -49,6 +49,9 @@ test('backend DSS converte filtros para dd/mm/aaaa, lê registros e mantém aute
  assert(!JSON.stringify(body).includes('00000000000'),'Dados pessoais do cadastro não devem ir ao portal');
  assert.equal(body.data.viagens.length,1);
  assert.equal(body.company,'costalog');
+ assert(body.quality.periods[0].syncedAt,'Informar a data da sincronização do mês, inclusive depois de reutilizar cache');
+ assert(body.quality.sources.some(source=>source.name==='motoristas'&&source.status==='ok'));
+ assert(body.quality.sources.some(source=>source.name==='ocorrencias'&&source.status==='unavailable'));
  const request=path=>fetch('http://127.0.0.1:'+port+path,{headers:{Authorization:'Bearer local-test-token'}});
  const ideal=await(await request('/api/overview?from=2026-10-15&to=2026-10-16&company=ideallog')).json();
  assert.equal(ideal.company,'ideallog');
@@ -70,9 +73,22 @@ test('backend DSS converte filtros para dd/mm/aaaa, lê registros e mantém aute
  assert.equal((await request('/api/overview?from=2026-10-15&to=2026-10-16&company=todas')).status,400);
  assert.equal((await request('/Ideallog.png')).status,200);
  assert.equal((await request('/src/companies.mjs')).status,200);
+ for(const name of ['view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs'])assert.equal((await request('/src/'+name)).status,200,name);
+ assert.equal((await fetch('http://127.0.0.1:'+port+'/api/workflow?company=costalog')).status,401);
+ const patch=input=>fetch('http://127.0.0.1:'+port+'/api/workflow?company=costalog',{method:'PATCH',headers:{Authorization:'Bearer local-test-token','Content-Type':'application/json'},body:JSON.stringify(input)});
+ const taskInput={key:'cte_sem_rv:ctes:acdacosta~8',owner:'João',due:'2026-10-25',priority:'high',status:'tratamento',comment:'Conferir referência',revision:0};
+ assert.equal((await patch(taskInput)).status,200);
+ const index=await(await request('/api/workflow?company=costalog')).json();
+ assert.equal(index.tasks[taskInput.key].owner,'João');assert.equal(index.tasks[taskInput.key].comments,undefined);
+ const detail=await(await request('/api/workflow?company=costalog&key='+encodeURIComponent(taskInput.key))).json();
+ assert.equal(detail.task.comments[0].text,'Conferir referência');
+ assert.equal((await patch(taskInput)).status,409,'Não sobrescrever a versão de outro funcionário');
+ assert.equal((await patch({...taskInput,key:'cte_sem_rv:ctes:ideallog~8'})).status,400);
+ assert.deepEqual((await(await request('/api/workflow?company=ideallog')).json()).tasks,{});
+ assert.equal((await request('/api/workflow?company=todas')).status,400);
 
- assert.equal(calls.length,3);
- assert.deepEqual(calls.map(x=>x.path).sort(),['/wsdss/listarMotoristas','/wsdss/listarPedidosFrete','/wsdss/listarViagens']);
+ assert.equal(calls.length,4);
+ assert.deepEqual(calls.map(x=>x.path).sort(),['/wsdss/listarMotoristas','/wsdss/listarOcorrencias','/wsdss/listarPedidosFrete','/wsdss/listarViagens']);
  assert(calls.filter(x=>x.path!=='/wsdss/listarMotoristas').every(x=>x.query.data_inicio==='15/10/2026'&&x.query.data_fim==='16/10/2026'));
  assert(!calls.find(x=>x.path==='/wsdss/listarMotoristas').query.data_inicio);
  assert(calls.every(x=>x.accept==='application/json'));

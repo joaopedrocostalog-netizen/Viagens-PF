@@ -1,5 +1,11 @@
+import {memoView,clearViewCache} from './view-cache.mjs';
+import {alertKey,taskFor,updateTask,taskSummary,TASK_STATUSES} from './workflow.mjs';
+import {renderTaskDrawer} from './workflow-ui.mjs';
+import {createTripTimeline} from './trip-timeline.mjs';
+import {renderDataQuality} from './data-quality.mjs';
+import {reportTemplate,applyReportTemplate} from './report-templates.mjs';
 import {filterOperationalData,searchOperationalData,filterLinkedRows} from './filtering.mjs';
-import {COMPANIES,validCompany,scopeCompanyData} from './companies.mjs';
+import {COMPANIES,COSTALOG_ENTITIES,validCompany,scopeCompanyData} from './companies.mjs';
 import {renderGlobalSearch,renderCustomDashboard,renderCustomerProfiles,renderDriverRouteDetails,renderAlertsHub,renderComparison} from './intelligence-ui.mjs';
 import {normalizedLayout,reorderMetric,comparisonWindows,subsetPeriod} from './intelligence.mjs';
 import {renderHero,renderSummary,renderCharts,renderTripsHeader,renderReportsHeader} from './visual-dashboard.mjs';
@@ -135,7 +141,9 @@ const requestedCompany=new URLSearchParams(window.location.search||'').get('empr
 const initialCompany=validCompany(requestedCompany)?requestedCompany:'costalog';
 const companySnapshots=new Map();
 const state = {
- company:initialCompany,
+ company:initialCompany,legalEntity:'',drilldown:'',detailPage:1,timelinePage:1,
+ visibleAlerts:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',taskSelected:null,taskDetail:null,taskLoading:false,taskSaving:false,taskError:'',taskUnavailable:false,alertStatus:'todos',alertOwner:'',syncMetadata:[],
+ reportTemplates:{},templateSelected:'',reportFormat:'xlsx',reportColumnOrder:{},
   compareCustom:true,compareCurrentFrom:String(year)+'-10-01',compareCurrentTo:localToday(),comparePreviousFrom:String(year)+'-09-01',comparePreviousTo:String(year)+'-09-30',view:'painel', chartInterval:'mensal', compareInterval:'mensal',compareAnchor:new Date().toISOString().slice(0,10), from:String(year)+'-01-01',to:localToday(),search:'',filter:'todos',page:1,
  dataset:demo, mode:'demo',error:'',loading:false,selected:null,connect:false,menu:false,
  apiUrl:portalSettings.apiUrl,token:'',importCount:0,
@@ -189,13 +197,13 @@ function normalizePayload(raw){return operationalDataset(normalizeOverview({data
 function inRange(v){return !v||((!state.from||v>=state.from)&&(!state.to||v<=state.to));}
 let companyPeriodCache=null,scopedCache=null;
 function filterOptionsData(){
- const key=[state.company,state.from,state.to].join('|');
+ const key=[state.company,state.legalEntity,state.from,state.to].join('|');
  if(companyPeriodCache?.dataset===state.dataset&&companyPeriodCache.key===key)return companyPeriodCache.value;
- const value=filterOperationalData(scopeCompanyData(state.dataset,state.company),{from:state.from,to:state.to});
+ const value=filterOperationalData(scopeCompanyData(state.dataset,state.company,state.legalEntity),{from:state.from,to:state.to});
  companyPeriodCache={dataset:state.dataset,key,value};return value;
 }
 function scoped(){
- const source=filterOptionsData(),key=[state.customer,state.vehicle,state.serviceType,state.status,state.status?state.view:'',state.status?state.reportSelected:''].join('|');
+ const source=filterOptionsData(),key=[state.customer,state.vehicle,state.serviceType,state.status,state.status?state.view:'',state.status?state.reportSelected:'',state.drilldown].join('|');
  if(scopedCache?.dataset===source&&scopedCache.key===key)return scopedCache.value;
  const value=filterOperationalData(source,state);
  scopedCache={dataset:source,key,value};return value;
@@ -230,7 +238,7 @@ function render(){
  '<div class="info-strip v-demo-notice"><strong>AMBIENTE DE DEMONSTRAÇÃO</strong> · Registros fictícios. A integração DSS utilizará estas mesmas telas quando o backend privado estiver configurado.</div>';
  const needsUpdate=state.mode==='live'&&!state.loading&&(!state.loadedRange||state.from<state.loadedRange.from||state.to>state.loadedRange.to);
  const updateNotice=needsUpdate?'<div class="info-strip">O período selecionado precisa ser consultado. Clique em <strong>Atualizar dados da DSS</strong> para carregar os registros.</div>':'';
- const detailedFilters=state.view!=='administracao'?'<details id="advancedFilters" class="v-extra-filters" '+(state.filtersOpen?'open':'')+'><summary>⚙ Filtros avançados <span>Cliente, placa, serviço e períodos rápidos</span></summary>'+operationalFilters(filterOptionsData(),state)+'</details>':'';
+ const detailedFilters=state.view!=='administracao'?'<details id="advancedFilters" class="v-extra-filters" '+(state.filtersOpen?'open':'')+'><summary>⚙ Filtros avançados <span>Cliente, placa, serviço e períodos rápidos</span></summary>'+(state.filtersOpen?memoView('advanced-filters',[filterOptionsData(),state.customer,state.vehicle,state.serviceType,state.sortDir,state.view,state.reportSelected,state.presets],()=>operationalFilters(filterOptionsData(),state)):'')+'</details>':'';
  const tools=['viagens','ctes','mdfes'].includes(state.view)?
   '<div class="v-heading-tools">'+button('csv',icon('download')+' CSV','btn-sm')+button('print','PDF / Imprimir','btn-sm btn-red')+'</div>':'';
  const dateFilters=state.view==='administracao'?'':renderFilters();
@@ -244,20 +252,21 @@ function render(){
  '<div class="content v-content">'+renderHero(state.view,d,{from:state.from,to:state.to,mode:state.mode,financeiro:state.permissions.financeiro,company:state.company})+
  '<div class="v-tools-row">'+dateFilters+tools+'</div>'+globalSearch+detailedFilters+updateNotice+message+
  (state.loading?'<div class="info-strip">Consultando registros DSS...</div>':'')+
- renderView(d,stats)+
+ renderDataQuality(state,base)+renderDrilldownNotice()+renderView(d,stats)+
  '<footer class="v-footer">'+brand.name+' • Portal de inteligência operacional • '+(PUBLIC_DEMO?'Contas de demonstração somente neste navegador.':'Acesso baseado em permissões, dados DSS protegidos no servidor.')+'</footer></div></main></div>'+
- (state.selected?renderDrawer(d):'')+(state.connect?renderConnect():'')+
+ (state.selected?renderDrawer(d):'')+renderTaskDrawer(state)+(state.connect?renderConnect():'')+
  (state.user?.mustChangePassword?renderForcePasswordChange():'')+
  (state.adminResetUser&&state.permissions.admin?renderAdminPasswordReset(state.adminResetUser):'');
+ if((state.view==='pendencias'||state.view==='relatorios'&&state.reportSelected==='pendencias')&&!state.taskIndexLoaded&&!state.taskIndexLoading&&!state.taskIndexError)loadTaskIndex();
 }
 function renderFilters(){
  const placeholders={painel:'RV, pedido, placa, cliente ou motorista',pendencias:'Pedido, RV, cliente ou descrição da pendência',rotas:'Origem, destino, cliente ou placa',motoristas:'Nome, ID, placa, RV ou pedido',veiculos:'Placa ou veículo',relatorios:'Buscar no relatório selecionado',ocorrencias:'Placa, descrição, relato ou providência'};
  const options=filterOptionsData();
  const statusRows=state.view==='mdfes'?options.mdfes:state.view==='ocorrencias'?options.ocorrencias:['ctes','entregas'].includes(state.view)?options.pedidos:options.viagens;
- const statuses=[...new Set((statusRows||[]).map(row=>row.status).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+ const statuses=memoView('status-options',[statusRows],()=>[...new Set((statusRows||[]).map(row=>row.status).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'))).slice();
  if(state.status&&!statuses.includes(state.status))statuses.push(state.status);
  const validDates=/^\d{4}-\d{2}-\d{2}$/.test(state.from)&&/^\d{4}-\d{2}-\d{2}$/.test(state.to)&&state.from<=state.to;
- return '<div class="filters"><div class="filter"><label for="from">De</label><input class="control" id="from" type="date" max="'+localToday()+'" value="'+attr(state.from)+'"></div><div class="filter"><label for="to">Até</label><input class="control" id="to" type="date" max="'+localToday()+'" value="'+attr(state.to)+'"></div>'+
+ return '<div class="filters">'+(state.company==='costalog'?'<div class="filter"><label for="legalEntityFilter">Empresa Costalog</label><select id="legalEntityFilter" class="control"><option value="">Todas: AC · CRC · Comex</option>'+Object.entries(COSTALOG_ENTITIES).map(([key,label])=>'<option value="'+key+'" '+(state.legalEntity===key?'selected':'')+'>'+label+'</option>').join('')+'</select></div>':'')+'<div class="filter"><label for="from">De</label><input class="control" id="from" type="date" max="'+localToday()+'" value="'+attr(state.from)+'"></div><div class="filter"><label for="to">Até</label><input class="control" id="to" type="date" max="'+localToday()+'" value="'+attr(state.to)+'"></div>'+
  '<div class="filter grow"><label for="searchInput">Buscar nesta aba</label><div class="search-field"><input id="searchInput" class="control full" type="search" autocomplete="off" placeholder="'+attr(placeholders[state.view]||'Número, placa, cliente, motorista ou situação')+'" value="'+attr(state.search)+'">'+(state.search?button('clear-table-search','Limpar busca','btn-sm'):'')+'</div></div>'+
  (['viagens','ctes','entregas','mdfes','ocorrencias'].includes(state.view)?'<div class="filter"><label for="recordStatusFilter">Situação</label><select id="recordStatusFilter" class="control"><option value="">Todas as situações</option>'+statuses.map(value=>'<option value="'+attr(value)+'" '+(state.status===value?'selected':'')+'>'+esc(value)+'</option>').join('')+'</select></div>':'')+
  (['viagens','ctes','mdfes'].includes(state.view)?'<div class="filter"><label for="statusFilter">Vínculo</label><select id="statusFilter" class="control"><option value="todos">Todos os vínculos</option><option value="vinculado" '+(state.filter==='vinculado'?'selected':'')+'>Vinculados</option><option value="pendente" '+(state.filter==='pendente'?'selected':'')+'>Sem vínculo</option></select></div>':'')+
@@ -266,8 +275,9 @@ function renderFilters(){
 }
 function kpi(label,value,sub,cl){return '<article class="kpi"><div class="kpi-label">'+label+'</div><div class="kpi-value '+(cl||'')+'">'+value+'</div><div class="kpi-sub">'+sub+'</div></article>';}
 function renderOcorrencias(d){
+ const rows=memoView('incident-rows',[d,state.search],()=>searchRecords(d.ocorrencias||[],state.search));
  const cols=[{key:'data',label:'Data',format:'date'},{key:'id',label:'ID'},{key:'placa',label:'Placa'},{key:'tipo',label:'Tipo'},{key:'descricao',label:'Descrição'},{key:'relato',label:'Relato'},{key:'status',label:'Situação'},{key:'providencia',label:'Providência'}];
- return renderGrid('Ocorrências internas DSS',searchRecords(d.ocorrencias||[],state.search),cols,state,'ocorrencias','Registros identificados para a empresa selecionada, com 25 itens por página.');
+ return renderGrid('Ocorrências internas DSS',rows,cols,state,'ocorrencias','Registros identificados para a empresa selecionada, com 25 itens por página.');
 }
 function renderView(d,s){
  if(state.view==='painel')return renderCustomDashboard(d,state)+renderSummary(d,{financeiro:state.permissions.financeiro,mode:state.mode,from:state.from,to:state.to,showCards:false});
@@ -350,11 +360,10 @@ function barRanking(d){
 function statusPill(s){const x=str(s).toLowerCase();let cl=x.includes('conclu')||x.includes('autoriza')||x.includes('encerra')?'green':x.includes('pend')||x.includes('andamento')||x.includes('planeja')?'yellow':x.includes('cancel')||x.includes('sem ')||x.includes('erro')?'red':'gray';return '<span class="pill '+cl+'">'+esc(s||'Não informado')+'</span>';}
 function tableHtml(headers,rows){return '<div class="table-wrap"><table><thead><tr>'+headers.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+(rows.length?rows.join(''):'<tr><td colspan="'+headers.length+'"><div class="empty"><b>Nenhum registro encontrado</b>Ajuste os filtros ou atualize os dados.</div></td></tr>')+'</tbody></table></div>';}
 function searchRows(list){return searchRecords(list,state.search);}
-function paginate(list){const pageCount=Math.max(1,Math.ceil(list.length/15));state.page=Math.min(state.page,pageCount);const start=(state.page-1)*15;return {slice:list.slice(start,start+15),total:list.length,pages:pageCount};}
+function paginate(list){const pageCount=Math.max(1,Math.ceil(list.length/25));state.page=Math.min(state.page,pageCount);const start=(state.page-1)*25;return {slice:list.slice(start,start+25),total:list.length,pages:pageCount};}
 function paging(p){return '<div class="pagination"><span>'+number(p.total)+' registros · Página '+state.page+' de '+p.pages+'</span><div class="pagination-actions"><button class="btn btn-sm" data-action="prev" '+(state.page<=1?'disabled':'')+'>Anterior</button><button class="btn btn-sm" data-action="next" '+(state.page>=p.pages?'disabled':'')+'>Próxima</button></div></div>';}
 function renderViagens(d,s){
- let rows=searchRows(d.viagens);
- rows=filterLinkedRows(rows,'viagens',d,state.filter);
+ const rows=memoView('trip-rows',[d,state.search,state.filter],()=>filterLinkedRows(searchRows(d.viagens),'viagens',d,state.filter));
  const cols=[
   {key:'numero',label:'Nº RV',detail:'viagens'},{key:'data',label:'Início',format:'date'},{key:'dataTermino',label:'Término',format:'date'},
   {key:'cliente',label:'Cliente'},{key:'placa',label:'Placa'},{key:'motoristaId',label:'Motorista ID'},{key:'motoristaNome',label:'Motorista'},
@@ -367,11 +376,9 @@ function renderViagens(d,s){
  return renderGrid('Viagens cadastradas',rows,state.permissions.financeiro?cols:cols.filter(x=>!['receita','abastecimento','custo','custoAbastecimentoKm'].includes(x.key)),state,'viagens','Clique no número da RV para consultar a ficha completa e os pedidos relacionados.');
 }
 function renderCtes(d){
- const combined=d.pedidos.map(x=>({...x,numero:x.pedidoNumero||x.numero,category:'Pedido de frete'}));
- let rows=searchRows(combined);
- rows=filterLinkedRows(rows,'pedidos',d,state.filter);
+ const rows=memoView('order-rows',[d,state.search,state.filter],()=>filterLinkedRows(searchRows(d.pedidos),'pedidos',d,state.filter));
  const cols=[
-  {key:'numero',label:'Pedido PF',detail:'ctes'},
+  {key:'pedidoNumero',label:'Pedido PF',detail:'ctes'},
   {key:'cteNumero',label:'CT-e'},{key:'data',label:'Emissão',format:'date'},{key:'dataCte',label:'Emissão CT-e',format:'date'},
   {key:'cliente',label:'Cliente'},{key:'motoristaNome',label:'Motorista'}, {key:'placa',label:'Placa'},
   {key:'rvReferencia',label:'RV ref.'},{key:'nroMdf',label:'MDF-e ref.'},
@@ -399,9 +406,9 @@ function renderClientes(d,s){
  return '<div class="info-strip">Total de fretes por cliente não comprova valor recebido. Custos completos, lucro e margem não são deduzidos do abastecimento; exigem outras fontes.</div>'+
  renderGrid('Resumo operacional por cliente',rows,cols,state,'clientes','Ticket médio calculado sobre pedidos com valor informado.');
 }
-function mdfeSituation(m,d){if(m.ambiguous)return 'Vínculo ambíguo';if(!m.viagemId)return 'Sem vínculo informado';if(!d.allViagens.some(v=>v.id===m.viagemId))return 'Viagem não encontrada';return 'Vinculado';}
+function mdfeSituation(m,d){const tripIds=memoView('mdfe-trip-ids',[d.allViagens],()=>new Set(d.allViagens.map(v=>v.id)));if(m.ambiguous)return 'Vínculo ambíguo';if(!m.viagemId)return 'Sem vínculo informado';if(!tripIds.has(m.viagemId))return 'Viagem não encontrada';return 'Vinculado';}
 function renderMdfes(d,s){
- let rows=filterLinkedRows(searchRows(d.mdfes),'mdfes',d,state.filter);rows.sort((a,b)=>state.sortDir==='asc'?a.data.localeCompare(b.data):b.data.localeCompare(a.data));const p=paginate(rows);
+ const rows=memoView('mdfe-rows',[d,state.search,state.filter,state.sortDir],()=>filterLinkedRows(searchRows(d.mdfes),'mdfes',d,state.filter).slice().sort((a,b)=>state.sortDir==='asc'?String(a.data).localeCompare(String(b.data)):String(b.data).localeCompare(String(a.data))));const p=paginate(rows);
  return '<div class="table-tools"><h2>Conciliação de MDF-e</h2><div class="right-tools"><label class="btn btn-sm" for="csvMDFE">'+icon('download')+' Importar CSV de MDF-e</label><input id="csvMDFE" type="file" accept=".csv,text/csv" hidden>'+button('csv',icon('download')+' Exportar','btn-sm')+'</div></div>'+
  '<div class="info-strip">'+(d.sources.mdfeReferences?'nro_mdf traz referências nos registros do DSS, não o status fiscal do MDF-e. Para validar, conecte API de MDF-e ou importe CSV.':'Conciliação por ID de viagem. Placa e data não comprovam vínculo.')+' CSV: numero,data,viagemId,placa,status.</div>'+
  tableHtml(['Nº MDF-e','Emissão','Viagem','Placa','Situação fiscal','Conciliação'],p.slice.map(v=>'<tr><td><button class="row-link" data-detail="mdfes:'+attr(v.id)+'">'+esc(v.numero)+'</button></td><td>'+dateBR(v.data)+'</td><td>'+esc(v.viagemId||'—')+'</td><td>'+esc(v.placa||'—')+'</td><td>'+statusPill(v.status)+'</td><td>'+statusPill(mdfeSituation(v,d))+'</td></tr>'))+paging(p);
@@ -425,21 +432,27 @@ function renderDrawer(d){
  const rows=Object.entries(item).filter(([k])=>!['id','isCte'].includes(k)&&(state.permissions.financeiro||!secureKeys.has(k))).map(([k,v])=>'<div class="detail-line"><span>'+esc(({numero:'Número',data:'Data',cliente:'Cliente',abastecimento:'Abastecimento (R$)',nroMdf:'MDF-e informado',rvReferencia:'RV referenciada',pedidoNumero:'Pedido de frete',cteNumero:'Número CT-e',placa:'Placa',origem:'Origem',destino:'Destino',receita:'Receita',custo:'Custo',status:'Situação',viagemId:'Viagem',valor:'Valor',chave:'Chave CT-e'}[k]||k))+'</span><b>'+(['receita','custo','valor'].includes(k)?money(v):k==='data'?dateBR(v):esc(v===null||v===''?'—':v))+'</b></div>').join('');
  let related='';
  if(kind==='viagens'){
-  const cs=d.ctes.filter(c=>c.viagemId===id),ms=d.mdfes.filter(m=>m.viagemId===id),orders=d.pedidos.filter(p=>p.viagemId===id);
-  // Ocorrências não possuem RV no schema DSS: placa + intervalo é somente contexto, nunca vínculo confirmado.
-  const incidents=(d.ocorrencias||[]).filter(o=>item.placa&&o.placa===item.placa&&o.data&&item.data&&o.data>=item.data&&o.data<=(item.dataTermino||item.data)).slice(0,20);
-  related='<h3 class="drawer-section">Visão 360° da viagem</h3>'+
+  const {cs,ms,orders,incidents}=memoView('drawer-related',[item,d],()=>({
+   cs:d.ctes.filter(c=>c.viagemId===id),ms:d.mdfes.filter(m=>m.viagemId===id),orders:d.pedidos.filter(p=>p.viagemId===id),
+   // Contexto por placa e intervalo não estabelece vínculo documental.
+   incidents:(d.ocorrencias||[]).filter(o=>item.placa&&o.placa===item.placa&&o.data&&item.data&&o.data>=item.data&&o.data<=(item.dataTermino||item.data)).slice(0,20)
+  }));
+  const pager=memoView('trip-timeline',[item,d],()=>createTripTimeline(item,d));
+  const timelineResult=pager.getPage({page:state.timelinePage||1});
+  const pageCount=timelineResult.pages;state.timelinePage=timelineResult.page;
+  const timeline='<h3 class="drawer-section">Linha do tempo da viagem</h3><ol class="trip-timeline">'+timelineResult.rows.map(event=>'<li class="'+(event.context?'timeline-context':'')+'"><small>'+dateBR(event.date||'Data não fornecida')+'</small><strong>'+esc(event.title)+'</strong><p>'+esc(event.detail)+'</p>'+(event.reference?'<button class="btn btn-sm" data-detail="'+attr(event.reference)+'">Abrir documento</button>':'')+'</li>').join('')+'</ol>'+(pageCount>1?'<div class="pagination"><span>Página '+state.timelinePage+' de '+pageCount+'</span><button class="btn btn-sm" data-action="timeline-prev" '+(state.timelinePage===1?'disabled':'')+'>Anterior</button><button class="btn btn-sm" data-action="timeline-next" '+(state.timelinePage===pageCount?'disabled':'')+'>Próxima</button></div>':'');
+  related=timeline+'<h3 class="drawer-section">Visão 360° da viagem</h3>'+
    '<p class="help">Motorista: '+esc(item.motoristaNome||item.motoristaId||'Não informado')+' · Veículo: '+esc(item.placa||'Não informado')+'</p>'+
    '<p class="help">Trajeto: '+esc(item.origem||'—')+' → '+esc(item.destino||'—')+'</p>'+
    '<p class="help">KM previsto: '+esc(item.kmPrevisto??'—')+' · KM rodado: '+esc(item.kmRodados??'—')+'</p>'+
    '<h3 class="drawer-section">Documentos vinculados</h3>'+
    '<p class="help">Pedidos de frete: '+orders.length+' · '+orders.slice(0,15).map(p=>esc(p.numero)).join(', ')+'</p>'+
-   '<p class="help">CT-e identificados: '+cs.map(x=>esc(x.numero)).join(', ')+(cs.length?'':'nenhum')+'</p>'+
-   '<p class="help">MDF-e vinculados: '+ms.map(x=>esc(x.numero)).join(', ')+(ms.length?'':'nenhum')+'</p>'+
+   '<p class="help">CT-e identificados: '+cs.slice(0,15).map(x=>esc(x.numero)).join(', ')+(cs.length?'':'nenhum')+'</p>'+
+   '<p class="help">MDF-e vinculados: '+ms.slice(0,15).map(x=>esc(x.numero)).join(', ')+(ms.length?'':'nenhum')+'</p>'+
    '<h3 class="drawer-section">Ocorrências da mesma placa no intervalo</h3>'+
    '<p class="help">Contexto por placa e data — não confirma relação com esta viagem: '+(incidents.length?incidents.map(o=>esc(o.data)+' · '+esc(o.descricao||o.tipo||o.status||'Ocorrência')).join(' | '):'nenhuma encontrada nos dados carregados')+'</p>';
  }
- return '<div class="overlay" data-action="close-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Detalhes do registro"><div class="drawer-top"><h2>Detalhes · '+esc(item.numero)+'</h2>'+button('close',icon('close'),'btn-sm')+'</div>'+rows+related+'</aside></div>';
+ return '<div class="overlay" data-action="close-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Detalhes do registro"><div class="drawer-top"><h2>Detalhes · '+esc(item.numero)+'</h2>'+button('close',icon('close'),'btn-sm')+'</div>'+(kind==='viagens'?related+'<details class="rv-fields"><summary>Dados da RV</summary>'+rows+'</details>':rows)+'</aside></div>';
 }
 function renderConnect(){
  return '<div class="overlay" data-action="close-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Acessar portal COSTALOG">'+
@@ -557,6 +570,7 @@ function metricPrefsKey(){
  return 'costalog_dashboard_v1:'+mode+':'+encodeURIComponent(user)+':'+state.role+':'+state.company;
 }
 function loadMetricPreferences(){
+ state.reportTemplates=readPrefs(reportTemplatesKey(),{});state.templateSelected='';
  let saved=null;
  try{const v=JSON.parse(localStorage.getItem(metricPrefsKey())||(state.company==='costalog'?localStorage.getItem(metricPrefsKey().slice(0,metricPrefsKey().lastIndexOf(':'))):null)||'null');if(Array.isArray(v))saved=v;}catch{}
  state.metricLayout=normalizedLayout(saved,{financial:!!state.permissions.financeiro});
@@ -604,21 +618,22 @@ async function fetchPeriodComparison(){
 }
 function switchCompany(){
  if(state.user?.mustChangePassword)return;
- if(state.mode==='live'&&state.loadedRange&&!state.loading)companySnapshots.set(state.company,{dataset:state.dataset,range:state.loadedRange,lastSync:state.lastSync});
+ if(state.mode==='live'&&state.loadedRange&&!state.loading)companySnapshots.set(state.company,{dataset:state.dataset,range:state.loadedRange,lastSync:state.lastSync,syncMetadata:state.syncMetadata});
  const company=state.company==='costalog'?'ideallog':'costalog';
  identityEpoch++;comparisonSeq++;
- state.company=company;
+ state.company=company;clearViewCache();
  localStorage.setItem('viagens_pf_company',JSON.stringify(company));
  if(window.history?.replaceState){const url=new URL(window.location.href);url.searchParams.set('empresa',company);window.history.replaceState(null,'',url);}
  const saved=companySnapshots.get(company);
  const reusable=saved&&saved.range.from===state.from&&saved.range.to===state.to;
  state.dataset=state.mode==='demo'?demo:reusable?saved.dataset:emptyDataset();
- Object.assign(state,{selected:null,page:1,customer:'',vehicle:'',serviceType:'',status:'',search:'',globalQuery:'',filter:'todos',sortKey:'',clientSelected:'',routeSelected:'',driverSelected:'',alertPriority:'todos',alertKind:'todos',comparison:null,prevDataset:null,error:'',loading:false,loadingProgress:'',loadedRange:reusable?saved.range:null,lastSync:reusable?saved.lastSync:null,presets:readPrefs('costalog_filter_presets_'+company,{})});
+ Object.assign(state,{legalEntity:'',drilldown:'',detailPage:1,timelinePage:1,visibleAlerts:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',taskSelected:null,taskDetail:null,taskLoading:false,taskSaving:false,taskUnavailable:false,alertStatus:'todos',alertOwner:'',syncMetadata:reusable?saved.syncMetadata||[]:[],selected:null,page:1,customer:'',vehicle:'',serviceType:'',status:'',search:'',globalQuery:'',filter:'todos',sortKey:'',clientSelected:'',routeSelected:'',driverSelected:'',alertPriority:'todos',alertKind:'todos',comparison:null,prevDataset:null,error:'',loading:false,loadingProgress:'',loadedRange:reusable?saved.range:null,lastSync:reusable?saved.lastSync:null,presets:readPrefs('costalog_filter_presets_'+company,{})});
  loadMetricPreferences();render();
  if(state.mode==='live'&&state.token&&!reusable)loadData();
 }
 function clearSession(){
- identityEpoch++;comparisonSeq++;companySnapshots.clear();
+ identityEpoch++;comparisonSeq++;companySnapshots.clear();clearViewCache();
+ Object.assign(state,{legalEntity:'',drilldown:'',detailPage:1,timelinePage:1,visibleAlerts:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',taskSelected:null,taskDetail:null,taskLoading:false,taskSaving:false,taskUnavailable:false,alertStatus:'todos',alertOwner:'',syncMetadata:[],reportTemplates:{},templateSelected:'',reportColumnOrder:{},reportFormat:'xlsx'});
  const token=state.token,url=state.apiUrl;
  if(token&&url)fetch(url.replace(/\/$/,'')+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+token},credentials:'omit'}).catch(()=>{});
  state.token='';state.user=null;state.role='operacional';state.permissions={operacional:true,financeiro:false,admin:false};
@@ -695,11 +710,11 @@ async function loadData(){
    ctes:results.flatMap(x=>x.data.ctes||[]),mdfes:results.flatMap(x=>x.data.mdfes||[]),
    rotas:results.flatMap(x=>x.data.rotas||[]),programacoes:results.flatMap(x=>x.data.programacoes||[]),
    ocorrencias:results.flatMap(x=>x.data.ocorrencias||[]),
-   sources:results.reduce((acc,x)=>({...acc,...x.data.sources}),{})
+   sources:results.reduce((acc,x)=>{for(const [key,value] of Object.entries(x.data.sources||{}))acc[key]=Object.hasOwn(acc,key)?acc[key]&&value:value;return acc;},{})
   }};
-  state.dataset=normalizePayload(data);state.loadedRange={from:requestFrom,to:requestTo};state.mode='live';state.error='';
-  state.page=1;state.comparison=null;state.lastSync=data.updatedAt;state.prevDataset=null;
-  companySnapshots.set(state.company,{dataset:state.dataset,range:state.loadedRange,lastSync:state.lastSync});
+  clearViewCache();state.dataset=normalizePayload(data);state.loadedRange={from:requestFrom,to:requestTo};state.mode='live';state.error='';
+  state.page=1;state.comparison=null;state.lastSync=data.updatedAt;state.syncMetadata=results.map(result=>result.quality||{});state.prevDataset=null;
+  companySnapshots.set(state.company,{dataset:state.dataset,range:state.loadedRange,lastSync:state.lastSync,syncMetadata:state.syncMetadata});
  }catch(err){
   if(epoch!==identityEpoch)return;
   const alreadyLive=state.mode==='live';
@@ -710,9 +725,10 @@ async function loadData(){
 
 function exportAdvanced(type,format){
  const d=scoped(),full=state.view==='relatorios'&&state.reportMulti&&format==='xlsx';
+ if((type==='pendencias'||full)&&state.mode==='live'&&!state.taskIndexLoaded){const epoch=identityEpoch,query=state.search;loadTaskIndex(true).then(()=>{if(epoch!==identityEpoch||scoped()!==d||state.search!==query)return;if(!state.taskIndexLoaded)throw Error(state.taskIndexError||'Tratamentos ainda não carregados.');exportAdvanced(type,format);}).catch(error=>alert('Erro ao gerar relatório: '+error.message));return;}
  const allowed=reportTypesFor(state.role);if(!allowed.includes(type))throw Error('Acesso negado ao relatório.');
  const models=(full?allowed:[type]).map(t=>buildOperationalReport(t,d,state));
- const suffix=(state.mode==='live'?'DSS':'DEMO')+'_'+state.from+'_'+state.to;
+ const suffix=(state.mode==='live'?'DSS':'DEMO')+'_'+state.from+'_'+state.to+(state.legalEntity?'_'+state.legalEntity:'');
  if(format==='xlsx')downloadXlsx(models,{mode:state.mode,from:state.from,to:state.to,company:state.company},state.company.toUpperCase()+'_'+(full?'COMPLETO':type)+'_'+suffix+'.xlsx');
  if(format==='pdf')printReport(models,{mode:state.mode,from:state.from,to:state.to,company:state.company});
  if(format==='csv'){
@@ -761,7 +777,98 @@ function activateChartPoint(hit){
   }
  }
 }
+const drilldownLabels={viagens:'Todas as viagens',andamento:'Viagens em andamento',concluidas:'Viagens concluídas',pedidos:'Todos os pedidos',ctes:'Pedidos com CT-e',sem_cte:'Pedidos sem CT-e',sem_rv:'CT-e sem RV localizada',entregas:'Entregas concluídas sem comprovante',km:'RVs com KM informado'};
+function renderDrilldownNotice(){
+ return state.drilldown?'<div class="info-strip drilldown-notice"><strong>Filtro do painel:</strong> '+esc(drilldownLabels[state.drilldown]||state.drilldown)+' '+button('clear-drilldown','Remover filtro','btn-sm')+'</div>':'';
+}
+function openMetric(id){
+ const view=['viagens','andamento','concluidas','km'].includes(id)?'viagens':id==='entregas'?'entregas':'ctes';
+ if(!drilldownLabels[id]||!permittedView(state.role,view))return;
+ Object.assign(state,{view,drilldown:id,page:1,search:'',status:'',filter:'todos',sortKey:'',selected:null,routeSelected:'',driverSelected:'',globalQuery:''});render();
+}
+function reportTemplatesKey(){return 'viagens_pf_report_templates_v1:'+state.company+':'+(PUBLIC_DEMO?'demo':'portal')+':'+encodeURIComponent(state.user?.username||'visitante');}
+function saveReportTemplate(){
+ try{
+  const model=reportTemplate(state),name=prompt('Nome do modelo de relatório:',state.templateSelected||'');
+  if(!name?.trim())return;
+  const label=name.trim().slice(0,60);
+  if(Object.hasOwn(state.reportTemplates,label)&&!confirm('Substituir o modelo “'+label+'”?'))return;
+  state.reportTemplates={...state.reportTemplates,[label]:model};localStorage.setItem(reportTemplatesKey(),JSON.stringify(state.reportTemplates));state.templateSelected=label;render();
+ }catch(error){alert('Não foi possível salvar o modelo: '+error.message);}
+}
+function applySelectedReportTemplate(){
+ const name=state.templateSelected;if(!name)return;
+ try{Object.assign(state,applyReportTemplate(state.reportTemplates[name],state),{selected:null,routeSelected:'',driverSelected:'',detailPage:1});render();}catch(error){alert(error.message);}
+}
+function deleteReportTemplate(){
+ const name=state.templateSelected;if(!name)return;
+ if(!confirm('Excluir o modelo “'+name+'”?'))return;
+ state.reportTemplates={...state.reportTemplates};delete state.reportTemplates[name];localStorage.setItem(reportTemplatesKey(),JSON.stringify(state.reportTemplates));state.templateSelected='';render();
+}
+async function workflowFetch(company,options={},key=''){
+ const query=new URLSearchParams({company});if(key)query.set('key',key);
+ const response=await fetch(state.apiUrl.replace(/\/$/,'')+'/api/workflow?'+query,{...options,credentials:'omit',headers:{Authorization:'Bearer '+state.token,...(options.body?{'Content-Type':'application/json'}:{})},signal:AbortSignal.timeout(20000)});
+ const body=await response.json();
+ if(!response.ok){const error=Error(response.status===401?'Sessão expirada. Entre novamente no portal.':body.error||'Falha ao consultar tratamentos.');error.status=response.status;throw error;}
+ return body;
+}
+function demoWorkflowKey(company){return 'viagens_pf_demo_workflow_v1:'+company;}
+let taskIndexRequest=null;
+function loadTaskIndex(force=false){
+ if(state.taskIndexLoading)return taskIndexRequest||Promise.resolve();
+ if(state.taskIndexLoaded&&!force)return Promise.resolve();
+ const epoch=identityEpoch,company=state.company;state.taskIndexLoading=true;
+ taskIndexRequest=(async()=>{
+  try{
+   const tasks=state.mode==='demo'?Object.fromEntries(Object.entries(readPrefs(demoWorkflowKey(company),{})).map(([key,value])=>[key,taskSummary(value)])):(await workflowFetch(company)).tasks;
+   if(epoch!==identityEpoch)return;
+   state.tasks=tasks||{};state.taskIndexLoaded=true;state.taskIndexError='';
+  }catch(error){if(epoch===identityEpoch)state.taskIndexError='Tratamentos não carregados: '+error.message;}
+  finally{if(epoch===identityEpoch){state.taskIndexLoading=false;render();}}
+ })();
+ return taskIndexRequest;
+}
+async function openTask(item){
+ const epoch=identityEpoch,key=alertKey(item),company=state.company;
+ Object.assign(state,{taskSelected:{...item,key},taskDetail:taskFor(item,state.tasks),taskLoading:true,taskSaving:false,taskError:'',taskUnavailable:false});render();
+ try{
+  const task=state.mode==='demo'?readPrefs(demoWorkflowKey(company),{})[key]:(await workflowFetch(company,{},key)).task;
+  if(epoch!==identityEpoch||state.taskSelected?.key!==key)return;
+  state.taskDetail=task||{...taskFor(item,{}),comments:[],history:[]};
+  state.tasks={...state.tasks,[key]:taskSummary(state.taskDetail)};
+ }catch(error){if(epoch===identityEpoch&&state.taskSelected?.key===key){state.taskError=error.message;state.taskUnavailable=true;}}
+ finally{if(epoch===identityEpoch&&state.taskSelected?.key===key){state.taskLoading=false;render();}}
+}
+async function saveTask(){
+ if(!state.taskSelected||state.taskSaving||state.taskLoading||state.taskUnavailable)return;
+ const epoch=identityEpoch,company=state.company,key=state.taskSelected.key;
+ const input={key,owner:document.getElementById('taskOwner')?.value||'',due:document.getElementById('taskDue')?.value||'',priority:document.getElementById('taskPriority')?.value,status:document.getElementById('taskStatus')?.value,comment:document.getElementById('taskComment')?.value||'',revision:state.taskDetail?.revision||0};
+ state.taskSaving=true;state.taskError='';
+ const submit=document.querySelector('#taskForm button[type="submit"]');if(submit){submit.disabled=true;submit.textContent='Salvando…';}
+ try{
+  let task;
+  if(state.mode==='demo'){
+   const tasks=readPrefs(demoWorkflowKey(company),{});task=updateTask(tasks[key],input,state.user?.username||'demonstração');tasks[key]=task;localStorage.setItem(demoWorkflowKey(company),JSON.stringify(tasks));
+  }else task=(await workflowFetch(company,{method:'PATCH',body:JSON.stringify(input)})).task;
+  if(epoch!==identityEpoch)return;
+  state.tasks={...state.tasks,[key]:taskSummary(task)};
+  if(state.taskSelected?.key===key){state.taskDetail=task;state.taskSelected=null;state.taskDetail=null;}
+ }catch(error){
+  if(epoch===identityEpoch){state.taskError=error.message;if(error.status===409||error.status===401)state.taskUnavailable=true;}
+ }finally{
+  if(epoch===identityEpoch){state.taskSaving=false;
+   // Preserva os campos digitados em caso de falha, inclusive o comentário.
+   if(state.taskError&&state.taskSelected?.key===key){
+    state.taskDetail={...state.taskDetail,owner:input.owner,due:input.due,priority:input.priority,status:input.status};
+    render();const comment=document.getElementById('taskComment');if(comment)comment.value=input.comment;
+   }else render();
+  }
+ }
+}
 root.addEventListener('click',e=>{
+ const metric=e.target.closest('[data-metric-open]');if(metric){openMetric(metric.dataset.metricOpen);return;}
+ const manage=e.target.closest('[data-alert-manage]');if(manage){const item=state.visibleAlerts?.find(item=>alertKey(item)===manage.dataset.alertManage);if(item)openTask(item);return;}
+ const columnMove=e.target.closest('[data-report-column-move]');if(columnMove){const [key,direction]=columnMove.dataset.reportColumnMove.split(':'),model=buildOperationalReport(state.reportSelected,scoped(),state,{preview:true}),keys=model.columns.map(([key])=>key),i=keys.indexOf(key),j=i+Number(direction);if(i>=0&&j>=0&&j<keys.length){[keys[i],keys[j]]=[keys[j],keys[i]];state.reportColumnOrder={...state.reportColumnOrder,[state.reportSelected]:keys};render();}return;}
  const point=e.target.closest('[data-chart-point]');
  if(point){activateChartPoint(point);return;}
  const searchHit=e.target.closest('[data-search-result]');
@@ -773,20 +880,20 @@ root.addEventListener('click',e=>{
   if(group==='clientes'&&state.permissions.financeiro){state.view='clientes';state.clientSelected=id;render();return;}
   const view=group==='viagens'?'viagens':group==='pedidos'?'ctes':'mdfes';
   if(!permittedView(state.role,view))return;
-  state.view=view;state.selected=view+':'+id;render();return;
+  state.view=view;state.selected=view+':'+id;state.timelinePage=1;render();return;
  }
  const openClient=e.target.closest('[data-client-open]');
  if(openClient&&state.permissions.financeiro){state.clientSelected=openClient.dataset.clientOpen;render();return;}
  const profileDetail=e.target.closest('[data-profile-detail]');
- if(profileDetail){state.selected=profileDetail.dataset.profileDetail;render();return;}
+ if(profileDetail){state.selected=profileDetail.dataset.profileDetail;state.timelinePage=1;render();return;}
  const openRoute=e.target.closest('[data-route-open]');
- if(openRoute){state.routeSelected=openRoute.dataset.routeOpen;render();return;}
+ if(openRoute){state.routeSelected=openRoute.dataset.routeOpen;state.detailPage=1;render();return;}
  const openDriver=e.target.closest('[data-driver-open]');
- if(openDriver){state.driverSelected=openDriver.dataset.driverOpen;render();return;}
+ if(openDriver){state.driverSelected=openDriver.dataset.driverOpen;state.detailPage=1;render();return;}
  const alertDetail=e.target.closest('[data-alert-detail]');
  if(alertDetail){const ref=alertDetail.dataset.alertDetail,kind=ref.split(':')[0];
   if(!permittedView(state.role,kind))return;
-  state.view=kind;state.selected=ref;render();return;
+  state.view=kind;state.selected=ref;state.timelinePage=1;render();return;
  }
  const compareInterval=e.target.closest('[data-compare-interval]');
  if(compareInterval){state.compareInterval=compareInterval.dataset.compareInterval;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;}
@@ -804,7 +911,7 @@ root.addEventListener('click',e=>{
   if(action==='load-comparison'){fetchPeriodComparison();return;}
   render();return;
  }
- const nav=e.target.closest('[data-nav]');if(nav){if(state.user?.mustChangePassword)return;if(!permittedView(state.role,nav.dataset.nav))return;state.view=nav.dataset.nav;state.clientSelected='';state.routeSelected='';state.driverSelected='';state.globalQuery='';state.search='';state.filter='todos';state.status='';state.sortKey='';state.page=1;state.menu=false;state.selected=null;render();if(state.view==='administracao'&&state.permissions.admin)loadAdminUsers();return;}
+ const nav=e.target.closest('[data-nav]');if(nav){if(state.user?.mustChangePassword)return;if(!permittedView(state.role,nav.dataset.nav))return;state.view=nav.dataset.nav;state.drilldown='';state.alertPriority='todos';state.alertKind='todos';state.alertStatus='todos';state.alertOwner='';state.clientSelected='';state.routeSelected='';state.driverSelected='';state.globalQuery='';state.search='';state.filter='todos';state.status='';state.sortKey='';state.page=1;state.menu=false;state.selected=null;render();if(state.view==='administracao'&&state.permissions.admin)loadAdminUsers();return;}
  const sorter=e.target.closest('[data-sort-metric]');
  if(sorter){
   const [kind,key]=(sorter.dataset.sortMetric||'').split(':');
@@ -817,7 +924,7 @@ root.addEventListener('click',e=>{
   }return;
  }
  const graphInterval=e.target.closest('[data-chart-interval]');if(graphInterval){state.chartInterval=graphInterval.dataset.chartInterval;render();return;}
- const detail=e.target.closest('[data-detail]');if(detail){state.selected=detail.dataset.detail;render();return;}
+ const detail=e.target.closest('[data-detail]');if(detail){state.selected=detail.dataset.detail;state.timelinePage=1;render();return;}
  const sort=e.target.closest('[data-sort]');if(sort){const k=sort.dataset.sort;state.sortDir=state.sortKey===k&&state.sortDir==='asc'?'desc':'asc';state.sortKey=k;state.page=1;render();return;}
  const report=e.target.closest('[data-report-select]');if(report){state.reportSelected=report.dataset.reportSelect;state.reportMulti=false;state.page=1;state.sortKey='';render();return;}
  const priority=e.target.closest('[data-alert-priority]');if(priority){state.alertPriority=priority.dataset.alertPriority;state.page=1;render();return;}
@@ -830,6 +937,15 @@ root.addEventListener('click',e=>{
  }
  const act=e.target.closest('[data-action]');if(!act)return;
  const action=act.dataset.action;
+ if(action==='close-task'){state.taskSelected=null;state.taskDetail=null;render();return;}
+ if(action==='reload-workflow'){state.taskIndexLoaded=false;state.taskIndexError='';loadTaskIndex(true);return;}
+ if(action==='detail-prev'||action==='detail-next'){state.detailPage+=action==='detail-prev'?-1:1;render();return;}
+ if(action==='timeline-prev'||action==='timeline-next'){state.timelinePage+=action==='timeline-prev'?-1:1;render();return;}
+ if(action==='clear-drilldown'){state.drilldown='';state.page=1;render();return;}
+ if(action==='apply-report-template'){applySelectedReportTemplate();return;}
+ if(action==='save-report-template'){saveReportTemplate();return;}
+ if(action==='delete-report-template'){deleteReportTemplate();return;}
+ if(action==='export-report-template'){try{exportAdvanced(state.reportSelected,state.reportFormat||'xlsx');}catch(err){alert(err.message);}return;}
  if(action==='close-overlay'&&e.target!==act)return;
  if(action==='switch-company'){switchCompany();return;}
  if(action==='close'||action==='close-overlay'){state.selected=null;state.connect=false;render();}
@@ -848,9 +964,9 @@ root.addEventListener('click',e=>{
  }
  if(['xlsx-export','csv-advanced','pdf-report'].includes(action)){try{exportAdvanced(state.reportSelected||'viagens',action==='xlsx-export'?'xlsx':action==='csv-advanced'?'csv':'pdf');}catch(err){alert('Erro ao gerar relatório: '+err.message);}}
  if(action==='clear-table-search'){state.search='';state.page=1;render();}
- if(action==='clear-filters'){Object.assign(state,{customer:'',vehicle:'',serviceType:'',status:'',filter:'todos',search:'',globalQuery:'',sortKey:'',sortDir:'desc',page:1,alertPriority:'todos',alertKind:'todos',routeSelected:'',driverSelected:''});render();}
- if(action==='save-filter'){const name=prompt('Nome para este conjunto de filtros:');if(name&&name.trim()){state.presets[name.trim().slice(0,45)]={from:state.from,to:state.to,customer:state.customer,vehicle:state.vehicle,serviceType:state.serviceType,status:state.status,filter:state.filter,search:state.search,sortKey:state.sortKey,sortDir:state.sortDir};localStorage.setItem('costalog_filter_presets_'+state.company,JSON.stringify(state.presets));render();}}
- if(action==='delete-filter'){const sel=document.getElementById('savedPreset'),name=sel?.value;if(!name){alert('Selecione primeiro um filtro salvo.');return;}if(confirm('Excluir o filtro salvo '+name+'?')){delete state.presets[name];localStorage.setItem('costalog_filter_presets_'+state.company,JSON.stringify(state.presets));render();}}
+ if(action==='clear-filters'){Object.assign(state,{legalEntity:'',drilldown:'',customer:'',vehicle:'',serviceType:'',status:'',filter:'todos',search:'',globalQuery:'',sortKey:'',sortDir:'desc',page:1,alertPriority:'todos',alertKind:'todos',alertStatus:'todos',alertOwner:'',routeSelected:'',driverSelected:''});render();}
+ if(action==='save-filter'){const name=prompt('Nome para este conjunto de filtros:');if(name&&name.trim()){state.presets={...state.presets};state.presets[name.trim().slice(0,45)]={legalEntity:state.legalEntity,drilldown:state.drilldown,from:state.from,to:state.to,customer:state.customer,vehicle:state.vehicle,serviceType:state.serviceType,status:state.status,filter:state.filter,search:state.search,sortKey:state.sortKey,sortDir:state.sortDir};localStorage.setItem('costalog_filter_presets_'+state.company,JSON.stringify(state.presets));render();}}
+ if(action==='delete-filter'){const sel=document.getElementById('savedPreset'),name=sel?.value;if(!name){alert('Selecione primeiro um filtro salvo.');return;}if(confirm('Excluir o filtro salvo '+name+'?')){state.presets={...state.presets};delete state.presets[name];localStorage.setItem('costalog_filter_presets_'+state.company,JSON.stringify(state.presets));render();}}
  if(action==='clear-settings'){if(confirm('Limpar filtros salvos e preferências de colunas?')){localStorage.removeItem('costalog_filter_presets_'+state.company);localStorage.removeItem('costalog_visible_columns');state.presets={};state.hiddenColumns={};state.autoRefresh=0;activateRefresh();render();}}
  if(action==='connect'){state.connect=true;state.selected=null;render();}
  if(action==='go-viagens'){state.view='viagens';state.page=1;render();}
@@ -863,6 +979,7 @@ root.addEventListener('click',e=>{
  if(action==='test-connect'){portalLogin();}
 });
 root.addEventListener('submit',e=>{
+ if(e.target?.id==='taskForm'){e.preventDefault();saveTask();return;}
  if(e.target?.id==='loginForm'){e.preventDefault();portalLogin();}
  if(e.target?.id==='createPortalUser'){e.preventDefault();createPortalUser();}
  if(e.target?.id==='forcePasswordChange'){e.preventDefault();changePortalPassword();}
@@ -872,6 +989,10 @@ root.addEventListener('submit',e=>{
  }
 });
 root.addEventListener('change',e=>{
+ if(e.target.id==='legalEntityFilter'){state.legalEntity=e.target.value;Object.assign(state,{page:1,detailPage:1,selected:null,customer:'',vehicle:'',serviceType:'',status:'',search:'',globalQuery:'',routeSelected:'',driverSelected:''});render();return;}
+ if(e.target.id==='alertStatusFilter'){state.alertStatus=e.target.value;state.page=1;render();return;}
+ if(e.target.id==='reportFormat'){state.reportFormat=e.target.value;return;}
+ if(e.target.id==='reportTemplateSelect'){state.templateSelected=e.target.value;if(e.target.value)applySelectedReportTemplate();else render();return;}
  if(e.target.dataset?.adminRole && state.permissions.admin){
   const username=e.target.dataset.adminRole,role=e.target.value;
   const previous=state.adminUsers.find(u=>u.username===username)?.role;
@@ -903,7 +1024,7 @@ root.addEventListener('change',e=>{
  if(e.target.id==='autoRefresh'){state.autoRefresh=0;activateRefresh();render();}
  if(e.target.id==='reportSelected'){state.reportSelected=e.target.value;state.page=1;state.sortKey='';render();}
  if(e.target.id==='reportMulti'){state.reportMulti=e.target.value==='all';render();}
- if(e.target.id==='savedPreset'&&e.target.value){const preset=state.presets[e.target.value];if(!preset)return;const allowed=['from','to','customer','vehicle','serviceType','status','filter','search','sortKey','sortDir'];Object.assign(state,{customer:'',vehicle:'',serviceType:'',status:'',filter:'todos',search:'',sortKey:'',sortDir:'desc'},Object.fromEntries(allowed.filter(key=>Object.hasOwn(preset,key)).map(key=>[key,preset[key]])),{page:1,prevDataset:null,routeSelected:'',driverSelected:''});render();}
+ if(e.target.id==='savedPreset'&&e.target.value){const preset=state.presets[e.target.value];if(!preset)return;const allowed=['legalEntity','drilldown','from','to','customer','vehicle','serviceType','status','filter','search','sortKey','sortDir'];Object.assign(state,{legalEntity:'',drilldown:'',customer:'',vehicle:'',serviceType:'',status:'',filter:'todos',search:'',sortKey:'',sortDir:'desc'},Object.fromEntries(allowed.filter(key=>Object.hasOwn(preset,key)).map(key=>[key,preset[key]])),{page:1,prevDataset:null,routeSelected:'',driverSelected:''});render();}
  if(e.target.id==='quickPeriod'&&e.target.value){
   const now=new Date(),today=new Date(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()));
   const iso=x=>x.toISOString().slice(0,10);let from,to;
@@ -924,11 +1045,12 @@ root.addEventListener('change',e=>{
   file.text().then(text=>{const records=parseCsv(text);if(!records.length){alert('Nenhum registro válido no CSV. Confira o cabeçalho.');return;}const imported=scopeCompanyData({mdfes:records.map(row=>({...row,empresa:row.empresa||state.company}))},state.company).mdfes;state.dataset={...state.dataset,mdfes:imported,sources:{...state.dataset.sources,mdfes:true}};state.importCount=imported.length;render();alert(imported.length+' MDF-e carregados para '+COMPANIES[state.company].label+'.');}).catch(()=>alert('Não foi possível ler o arquivo.'));
  }
 });
-root.addEventListener('toggle',e=>{if(e.target.id==='advancedFilters')state.filtersOpen=e.target.open;},true);
+root.addEventListener('toggle',e=>{if(e.target.id==='advancedFilters'&&state.filtersOpen!==e.target.open){state.filtersOpen=e.target.open;if(e.target.open)render();}},true);
 root.addEventListener('input',e=>{
- if(!['globalSearchInput','searchInput'].includes(e.target.id))return;
+ if(!['globalSearchInput','searchInput','alertOwnerFilter'].includes(e.target.id))return;
  const id=e.target.id,cursor=e.target.selectionStart;
  if(id==='globalSearchInput')state.globalQuery=e.target.value;
+ else if(id==='alertOwnerFilter'){state.alertOwner=e.target.value;state.page=1;}
  else{state.search=e.target.value;state.page=1;state.routeSelected='';state.driverSelected='';}
  if(textRenderTimer)clearTimeout(textRenderTimer);
  textRenderTimer=setTimeout(()=>{render();const input=document.getElementById(id);if(input){input.focus?.();if(typeof cursor==='number')input.setSelectionRange?.(cursor,cursor);}},160);
@@ -937,7 +1059,7 @@ root.addEventListener('keydown',e=>{
  const point=e.target?.closest?.('[data-chart-point]');
  if(point&&(e.key==='Enter'||e.key===' ')){e.preventDefault();activateChartPoint(point);}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(state.selected||state.connect)){state.selected=null;state.connect=false;render();}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(state.selected||state.connect||state.taskSelected)){state.selected=null;state.connect=false;state.taskSelected=null;render();}});
 loadMetricPreferences();
 render();
 // Nenhuma consulta automática ao abrir o portal.

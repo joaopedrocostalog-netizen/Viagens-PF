@@ -105,7 +105,17 @@ O esquema do DSS informa para `listarViagens` os campos `total_km_rodados`, `km_
 
 ## Cache mensal privado (primeira etapa de sincronização)
 
-O backend agora suporta `DSS_PERIOD_CACHE_DIR` (pasta privada de armazenamento) e `DSS_PERIOD_CACHE_HOURS` (validade padrão: 24 horas). Quando configurados, os resultados de viagens/pedidos de um mesmo período são guardados apenas após consulta integral concluída. Em novas consultas desse mesmo período, o backend reutiliza o arquivo até expirar. O cache bruto pode conter informações comerciais e pessoais: armazene **somente em volume privado protegido**, nunca no GitHub, em GitHub Pages nem numa pasta pública. No Render Free, o disco local é efêmero: **não é cache persistente entre deploys ou reinícios**. Não configure um caminho supondo que seja armazenamento durável. Para sincronização persistente real e controle de retenção/auditoria, será necessária a conexão de um banco durável como PostgreSQL.
+O backend agora suporta `DSS_PERIOD_CACHE_DIR` (pasta privada de armazenamento) e `DSS_PERIOD_CACHE_HOURS` (validade padrão: 24 horas). Quando configurados, os resultados de viagens/pedidos de um mesmo período são guardados apenas após consulta integral concluída. Em novas consultas desse mesmo período, o backend reutiliza o arquivo até expirar. O cache bruto pode conter informações comerciais e pessoais: armazene **somente em volume privado protegido**, nunca no GitHub, em GitHub Pages nem numa pasta pública. No Render Free, o disco local é efêmero: **não é cache persistente entre deploys ou reinícios**. Não configure um caminho supondo que seja armazenamento durável. O cache mensal também suporta o MariaDB já previsto para o Plesk, conforme o procedimento de migração em `CLAUDE.md`.
+
+### Tratamentos de pendências
+
+O acompanhamento das pendências é independente do cache da DSS. `PORTAL_WORKFLOW_FILE` indica o arquivo JSON privado de tratamentos, comentários e histórico. Sem essa variável, o backend usa `viagens-pf-workflow.json` no mesmo diretório de `PORTAL_USERS_FILE`; sem nenhum caminho configurado, a interface informa que não pode salvar.
+
+- O processo Node precisa de permissão de leitura/escrita no diretório privado. O arquivo é criado com permissão 0600 e substituído atomicamente.
+- Em produção, aponte para armazenamento persistente e inclua o arquivo nos backups. No Render Free, um caminho em `/tmp` permite testar a função, mas **o histórico pode desaparecer no próximo deploy/reinício**. Cache mensal no MariaDB não torna esse arquivo persistente.
+- O armazenamento atual pressupõe uma única instância Node. Antes de escalar para múltiplas instâncias, migrar o repositório de tratamentos para um armazenamento transacional compartilhado, com revisão otimista e isolamento por empresa. Não executar DDL no banco compartilhado sem autorização.
+- `GET /api/workflow?company=costalog` retorna o índice sem comentários; acrescentar `key` busca um tratamento. `PATCH` recebe chave, responsável, prazo, prioridade, situação, comentário novo e revisão lida anteriormente. Todos exigem autenticação operacional e senha provisória já alterada. Revisão desatualizada retorna 409.
+- Tratamentos são compartilhados pelos usuários do portal dentro da empresa ativa. Demonstração usa somente armazenamento local separado no navegador e não grava no backend.
 
 As variáveis são opcionais: sem elas, o portal continua como antes. A atualização da DSS permanece manual pelo botão. O cache tem validade e **não é uma atualização em tempo real**; estabeleça a validade conforme a necessidade operacional. É possível verificar se está habilitado no campo `periodStoreEnabled` de `/api/status`, acessível apenas para administradores autenticados.
 

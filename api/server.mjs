@@ -5,6 +5,7 @@
  */
 import http from 'node:http';
 import {validCompany} from '../src/companies.mjs';
+import {createWorkflowStore} from './workflow-store.mjs';
 import {readFile} from 'node:fs/promises';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -25,6 +26,8 @@ const timeout=Math.min(38000,Math.max(1000,Number(env.DSS_TIMEOUT_MS||32000)));
 const cacheMaxAge=Math.min(3600000,Math.max(0,Number(env.API_CACHE_SECONDS??60)*1000));
 const CACHE=new Map(),CACHE_LIMIT=3; // Render Free: evitar manter dezenas de respostas DSS enormes em memória.
 const periodStore=env.MARIADB_ENABLED==='true'?createMariaDbPeriodStore({env}):createPeriodStore({dir:env.DSS_PERIOD_CACHE_DIR||'',ttlMs:Math.max(60000,Number(env.DSS_PERIOD_CACHE_HOURS||24)*3600000)});
+const workflowFile=env.PORTAL_WORKFLOW_FILE||(env.PORTAL_USERS_FILE?join(dirname(env.PORTAL_USERS_FILE),'viagens-pf-workflow.json'):'');
+const workflowStore=createWorkflowStore({file:workflowFile});
 const INFLIGHT=new Map(); // Reutilizar consultas idênticas que chegam ao mesmo tempo.
 const rateTable=new Map();
 const rateLimit=Math.max(10,Number(env.PORTAL_REQUESTS_PER_MINUTE||120));
@@ -250,7 +253,7 @@ const staticFiles=new Map([
  ['/styles.css','styles.css'],
  ['/logo-costalog-sem-fundo-1024x876.png','logo-costalog-sem-fundo-1024x876.png'],
  ['/Ideallog.png','Ideallog.png'],
- ...['filtering.mjs','companies.mjs','app.js','dss-mapping.mjs','operational.mjs','reporting.mjs','advanced-ui.mjs','access-ui.mjs','admin-users.mjs','site-config.mjs','visual-dashboard.mjs','intelligence.mjs','intelligence-ui.mjs'].map(name=>['/src/'+name,'src/'+name])
+ ...['view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs','filtering.mjs','companies.mjs','app.js','dss-mapping.mjs','operational.mjs','reporting.mjs','advanced-ui.mjs','access-ui.mjs','admin-users.mjs','site-config.mjs','visual-dashboard.mjs','intelligence.mjs','intelligence-ui.mjs'].map(name=>['/src/'+name,'src/'+name])
 ]);
 async function serveLocalFrontend(req,res,url){
  if(req.method!=='GET'&&req.method!=='HEAD')return false;
@@ -336,6 +339,30 @@ const server=http.createServer(async(req,res)=>{
    return reply(res,500,{error:'Não foi possível salvar as contas. Verifique permissões do volume privado no servidor.'},origin);
   }
  }
+ if(url.pathname==='/api/workflow'){
+  const user=identify(req);
+  if(!user)return reply(res,401,{error:'Sessão inválida ou expirada.'},origin);
+  if(user.mustChangePassword)return reply(res,403,{error:'Altere sua senha provisória.'},origin);
+  if(!user.permissions.operacional)return reply(res,403,{error:'Acesso operacional necessário.'},origin);
+  if(!validCompany(company))return reply(res,400,{error:'Empresa inválida.'},origin);
+  if(!allowedRate(req))return reply(res,429,{error:'Limite de solicitações atingido.'},origin);
+  try{
+   if(req.method==='GET'){
+    const key=url.searchParams.get('key')||'';
+    const result=await workflowStore.get(company,key);
+    return reply(res,200,key?{task:result}:{tasks:result},origin);
+   }
+   if(req.method==='PATCH'){
+    const input=await bodyJSON(req).catch(()=>{const error=Error('Dados do tratamento inválidos.');error.status=400;throw error;});
+    const task=await workflowStore.save(company,input.key,input,user.username);
+    return reply(res,200,{task},origin);
+   }
+   return reply(res,405,{error:'Método não permitido.'},origin);
+  }catch(error){
+   const status=error.status||(/inválid|Prazo|Responsável|Situação|Histórico|Versão/.test(error.message)?400:500);
+   return reply(res,status,{error:status===500?'Não foi possível acessar os tratamentos no armazenamento privado.':error.message},origin);
+  }
+ }
  if(req.method!=='GET')return reply(res,405,{error:'Método não permitido'},origin);
  if(url.pathname==='/api/health')return reply(res,200,{status:'ok',configured:!!(base&&cfg.viagens.path&&cfg.pedidos.path&&dssCredentialsReady()&&(useAccounts||(allowLegacy&&env.PORTAL_ACCESS_TOKEN))),accounts:useAccounts},origin);
  const user=identify(req);
@@ -398,6 +425,7 @@ const server=http.createServer(async(req,res)=>{
    const windows=monthWindows(from,to);
    if(windows.length>12)throw Error('Período muito longo: selecione até 12 meses.');
    const combined=Object.fromEntries(Object.keys(cfg).map(k=>[k,[]]));
+   const quality={periods:[],sources:[]};
    // Lotes de ate 3 meses: impede que dez meses sejam processados em serie
    // sem disparar dezenas de chamadas simultaneas ao DSS.
    for(let offset=0;offset<windows.length;offset+=3){
@@ -409,33 +437,34 @@ const server=http.createServer(async(req,res)=>{
      const anchor=/^\d{4}-\d{2}-\d{2}$/.test(syncTo)&&syncTo>=to?syncTo:to;
      const recentBoundary=new Date(Date.UTC(Number(anchor.slice(0,4)),Number(anchor.slice(5,7))-2,1)).toISOString().slice(0,10);
      const refreshWindow=refreshMode==='1'||(refreshMode==='recent'&&window.to>=recentBoundary);
-     let result=refreshWindow?null:await periodStore.read(window.from,window.to);
+     let result=refreshWindow?null:await periodStore.read(window.from,window.to);const reused=!!result;
      if(result){
       console.info('[DSS] mês reutilizado do cache privado',window.from,window.to);
      }else{
       const pairs=await Promise.all(Object.keys(cfg).filter(name=>cfg[name].path).map(async name=>[name,await queryDssResilient(name,window.from,window.to)]));
-      result=Object.fromEntries(pairs);
+      result={...Object.fromEntries(pairs),_syncedAt:new Date().toISOString()};
       // Só guardar o mês se todos os serviços principais terminaram com sucesso.
       await periodStore.write(window.from,window.to,result);
       console.info('[DSS] mês consultado',window.from,window.to);
      }
-     return Object.entries(result);
+     quality.periods.push({from:window.from,to:window.to,syncedAt:result._syncedAt||null,reused});
+     return Object.entries(result).filter(([name])=>Object.hasOwn(combined,name));
     }));
     for(const result of results)for(const [name,rows] of result)combined[name].push(rows||[]);
    }
    const data=Object.fromEntries(Object.entries(combined).map(([name,groups])=>[name,mergeDssRows(groups,name)]));
    for(const catalog of optionalCatalogs){
-    if(!catalog.path)continue;
+    if(!catalog.path){quality.sources.push({name:catalog.name,status:'disabled'});continue;}
     try{
      if(catalog.name==='rotas')data.rotas=await optionalCatalog(catalog,from,to);
      else if(catalog.name==='ocorrencias'){
       // Consulta adicional limitada a um mês para evitar atrasar o painel principal.
-      if(monthWindows(from,to).length>1)continue;
+      if(monthWindows(from,to).length>1){quality.sources.push({name:catalog.name,status:'skipped'});continue;}
       data.ocorrencias=await optionalCatalog(catalog,from,to);
      }
      else{
       // Programacoes sao enriquecimento opcional e muito custoso em periodos longos.
-      if(monthWindows(from,to).length>1)continue;
+      if(monthWindows(from,to).length>1){quality.sources.push({name:catalog.name,status:'skipped'});continue;}
       const windows=monthWindows(from,to);
       const sets=[];
       sets.push(...await Promise.all(windows.map(win=>optionalCatalog(catalog,win.from,win.to))));
@@ -446,13 +475,16 @@ const server=http.createServer(async(req,res)=>{
        if(ids.has(id))return false;ids.add(id);return true;
       });
      }
-    }catch(err){console.warn('[DSS] catálogo opcional',catalog.name,'indisponível:',String(err.message).slice(0,110));}
+     quality.sources.push({name:catalog.name,status:'ok'});
+    }catch(err){quality.sources.push({name:catalog.name,status:'unavailable'});console.warn('[DSS] catálogo opcional',catalog.name,'indisponível:',String(err.message).slice(0,110));}
    }
    if(driversPath){
-    try{const names=await driverNames();attachDriverNames(data,names);}
-    catch(err){driverCatalog.expires=Date.now()+60_000;console.warn('[DSS] listarMotoristas indisponível:',err.name||'Error',String(err.message).slice(0,120));attachDriverNames(data,driverCatalog.items);}
+    try{const names=await driverNames();attachDriverNames(data,names);quality.sources.push({name:'motoristas',status:'ok'});}
+    catch(err){quality.sources.push({name:'motoristas',status:'unavailable'});driverCatalog.expires=Date.now()+60_000;console.warn('[DSS] listarMotoristas indisponível:',err.name||'Error',String(err.message).slice(0,120));attachDriverNames(data,driverCatalog.items);}
    }
-   const payload={mode:'live',updatedAt:new Date().toISOString(),cacheHit:false,data:{viagens:data.viagens||[],pedidos:data.pedidos||[],ctes:data.ctes||[],mdfes:data.mdfes||[],rotas:data.rotas||[],programacoes:data.programacoes||[],ocorrencias:data.ocorrencias||[],sources:{viagens:true,pedidos:true,ctes:!!cfg.ctes.path,mdfes:!!cfg.mdfes.path}}};
+   if(!driversPath)quality.sources.push({name:'motoristas',status:'disabled'});
+   quality.sources.push({name:'viagens',status:'ok'},{name:'pedidos',status:'ok'},{name:'mdfes',status:cfg.mdfes.path?'ok':'reference'});
+   const payload={mode:'live',quality,updatedAt:new Date().toISOString(),cacheHit:false,data:{viagens:data.viagens||[],pedidos:data.pedidos||[],ctes:data.ctes||[],mdfes:data.mdfes||[],rotas:data.rotas||[],programacoes:data.programacoes||[],ocorrencias:data.ocorrencias||[],sources:{viagens:true,pedidos:true,ctes:!!cfg.ctes.path,mdfes:!!cfg.mdfes.path}}};
    cachePut(cacheKey,payload);
    apiStats.success++;apiStats.lastSuccess=payload.updatedAt;
    console.info('[DSS] consulta concluída','período',from,to,'duração(ms)',Date.now()-started,'RVs',payload.data.viagens.length,'PFs',payload.data.pedidos.length);

@@ -161,7 +161,7 @@ export function dashboardMetrics(data,{financial=false}={}){
  const count=(fn)=>trips.filter(fn).length;
  const statuses=x=>norm(x.status);
  const completed=count(v=>/encerr|conclu|finaliz|entreg/.test(statuses(v)));
- const ongoing=count(v=>/andamento|inici|transito|rodando|em rota/.test(statuses(v))&&!/encerr|conclu|finaliz/.test(statuses(v)));
+ const ongoing=count(v=>/andamento|inici|transito|rodando|em rota/.test(statuses(v))&&!/encerr|conclu|finaliz|entreg/.test(statuses(v)));
  const km=metric(trips,'kmRodados'),freight=metric(orders,'valor'),fuel=metric(trips,'abastecimento');
  const map={
  viagens:trips.length,andamento:ongoing,concluidas:completed,pedidos:orders.length,ctes:orders.filter(p=>p.isCte).length,
@@ -173,7 +173,7 @@ export function dashboardMetrics(data,{financial=false}={}){
  return DASH_METRICS.filter(m=>financial||!m.financial).map(m=>({...m,value:map[m.id],
   coverage:({km,fretes:freight,abastecimento:fuel})[m.id]?.coverage??null}));
 }
-export const DEFAULT_METRICS=['viagens','andamento','concluidas','pedidos','ctes','sem_rv','entregas','km'];
+export const DEFAULT_METRICS=['viagens','andamento','concluidas','pedidos','ctes','sem_cte','sem_rv','entregas','km'];
 export function normalizedLayout(saved,{financial=false}={}){
  const allowed=new Set(DASH_METRICS.filter(m=>financial||!m.financial).map(m=>m.id));
  if(Array.isArray(saved))return [...new Set(saved.filter(x=>allowed.has(x)))];

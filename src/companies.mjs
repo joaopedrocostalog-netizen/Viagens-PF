@@ -6,6 +6,7 @@ export const COMPANIES=Object.freeze({
  ideallog:{name:'IDEALLOG',label:'Ideallog',description:'Ideallog',logo:'Ideallog.png'}
 });
 export const validCompany=value=>Object.hasOwn(COMPANIES,value);
+export const COSTALOG_ENTITIES=Object.freeze({acdacosta:'AC da Costa',crc:'CRC',comex:'Comex'});
 export function companyIdentity(row){
  const value=row?.empresa;
  const name=norm(value&&typeof value==='object'?(value.nome??value.razao_social??value.sigla??''):value);
@@ -39,22 +40,24 @@ function linkedGroup(row,links){
  return groups.size===1?[...groups][0]:null;
 }
 /** Funciona sobre respostas DSS ou dados já normalizados. Vínculos ambíguos ficam de fora. */
-export function scopeCompanyData(data,company){
- if(!validCompany(company))throw Error('Empresa inválida.');
+export function scopeCompanyData(data,company,entity=''){
+ if(!validCompany(company)||entity&&(company!=='costalog'||!Object.hasOwn(COSTALOG_ENTITIES,entity)))throw Error('Empresa inválida.');
+ const classify=entity?row=>companyIdentity(row)||null:companyOf;
+ const selected=entity||company;
  const trips=data.viagens||[],orders=data.pedidos||[],ctes=data.ctes||[];
- const tripIndex=index(trips,['rv_id','nro_rv','id','rvId','numero'],companyOf);
+ const tripIndex=index(trips,['rv_id','nro_rv','id','rvId','numero'],classify);
  const tripLinks=[[['rv_viagem','rvReferencia','viagemId','rv_id','nro_rv','idViagem'],tripIndex]];
- const groupOrder=row=>companyIdentity(row)?companyOf(row):linkedGroup(row,tripLinks);
+ const groupOrder=row=>companyIdentity(row)?classify(row):linkedGroup(row,tripLinks);
  const orderIndex=index([...orders,...ctes],['pf_id','nro_pf','id','pedidoNumero'],groupOrder);
  const tripSet=new Set(trips);
- const documentIndex=index([...trips,...orders,...ctes],['nro_mdf','nroMdf'],row=>tripSet.has(row)?companyOf(row):groupOrder(row));
- const related=(row,mdfe=false)=>companyIdentity(row)?companyOf(row):linkedGroup(row,[...tripLinks,[['pf_id','nro_pf','pedidoNumero'],orderIndex],[(mdfe?['nro_mdf','nroMdf','numeroMDFe','numero']:['nro_mdf','nroMdf']),documentIndex]]);
- const viagens=trips.filter(row=>companyOf(row)===company);
+ const documentIndex=index([...trips,...orders,...ctes],['nro_mdf','nroMdf'],row=>tripSet.has(row)?classify(row):groupOrder(row));
+ const related=(row,mdfe=false)=>companyIdentity(row)?classify(row):linkedGroup(row,[...tripLinks,[['pf_id','nro_pf','pedidoNumero'],orderIndex],[(mdfe?['nro_mdf','nroMdf','numeroMDFe','numero']:['nro_mdf','nroMdf']),documentIndex]]);
+ const viagens=trips.filter(row=>classify(row)===selected);
  const routeIds=new Set(viagens.map(row=>key(row.rota_id??row.rotaId)).filter(Boolean));
- return {...data,viagens,pedidos:orders.filter(row=>groupOrder(row)===company),ctes:ctes.filter(row=>groupOrder(row)===company),
-  mdfes:(data.mdfes||[]).filter(row=>related(row,true)===company),
-  ocorrencias:(data.ocorrencias||[]).filter(row=>related(row)===company),
-  programacoes:(data.programacoes||[]).filter(row=>related(row)===company),
-  rotas:(data.rotas||[]).filter(row=>companyIdentity(row)?companyOf(row)===company:routeIds.has(key(row.rota_id??row.rotaId))),
+ return {...data,viagens,pedidos:orders.filter(row=>groupOrder(row)===selected),ctes:ctes.filter(row=>groupOrder(row)===selected),
+  mdfes:(data.mdfes||[]).filter(row=>related(row,true)===selected),
+  ocorrencias:(data.ocorrencias||[]).filter(row=>related(row)===selected),
+  programacoes:(data.programacoes||[]).filter(row=>related(row)===selected),
+  rotas:(data.rotas||[]).filter(row=>companyIdentity(row)?classify(row)===selected:routeIds.has(key(row.rota_id??row.rotaId))),
   company};
 }

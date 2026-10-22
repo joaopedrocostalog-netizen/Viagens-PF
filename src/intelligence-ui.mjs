@@ -1,3 +1,5 @@
+import {memoView} from './view-cache.mjs';
+import {TASK_STATUSES,TASK_PRIORITIES,alertKey} from './workflow.mjs';
 import {unifiedSearch,customerProfiles,routeStats,driverStats,comparisonWindows,subsetPeriod,comparePeriodMetrics, dashboardMetrics,DASH_METRICS,normalizedLayout} from './intelligence.mjs';
 import {createAlertPager,searchRecords} from './operational.mjs';
 const esc=v=>String(v??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[x]));
@@ -22,9 +24,9 @@ const sortTableHeader=(label,key,state,kind)=>{
 
 const badge=(value,cl='red')=>'<span class="ins-badge '+cl+'">'+esc(value)+'</span>';
 const empty=message=>'<div class="ins-empty"><span>◇</span><p>'+esc(message)+'</p></div>';
-function metricPage(rows,state){
- const pages=Math.max(1,Math.ceil(rows.length/25));state.page=Math.min(pages,Math.max(1,state.page||1));
- return {rows:rows.slice((state.page-1)*25,state.page*25),html:'<div class="pagination"><span>'+n(rows.length)+' registros • Página '+state.page+' de '+pages+'</span><div class="pagination-actions"><button class="btn btn-sm" data-action="prev" '+(state.page===1?'disabled':'')+'>Anterior</button><button class="btn btn-sm" data-action="next" '+(state.page===pages?'disabled':'')+'>Próxima</button></div></div>'};
+function metricPage(rows,state,pageKey='page'){
+ const pages=Math.max(1,Math.ceil(rows.length/25));const current=Math.min(pages,Math.max(1,state[pageKey]||1));state[pageKey]=current;const prefix=pageKey==='page'?'':'detail-';
+ return {rows:rows.slice((current-1)*25,current*25),html:'<div class="pagination"><span>'+n(rows.length)+' registros • Página '+current+' de '+pages+'</span><div class="pagination-actions"><button class="btn btn-sm" data-action="'+prefix+'prev" '+(current===1?'disabled':'')+'>Anterior</button><button class="btn btn-sm" data-action="'+prefix+'next" '+(current===pages?'disabled':'')+'>Próxima</button></div></div>'};
 }
 const cards=items=>'<div class="ins-kpi-row">'+items.map(x=>'<div class="ins-kpi"><div>'+esc(x.label)+'</div><strong>'+esc(x.value)+'</strong><small>'+esc(x.note||'')+'</small></div>').join('')+'</div>';
 export const SEARCH_MIN_LENGTH=2;
@@ -57,7 +59,7 @@ export function renderCustomDashboard(data,state){
   return '<article class="ins-metric-card"><div class="ins-metric-top"><small>'+esc(m.label)+'</small><div class="ins-reorder">'+
   '<button data-metric-move="'+id+':-1" aria-label="Mover '+esc(m.label)+' para a esquerda" '+(i===0?'disabled':'')+'>←</button>'+
   '<button data-metric-move="'+id+':1" aria-label="Mover '+esc(m.label)+' para a direita" '+(i===visible.length-1?'disabled':'')+'>→</button></div></div>'+
-  '<strong>'+esc(val)+'</strong><span>'+esc(extra)+'</span></article>';
+  '<strong>'+esc(val)+'</strong><span>'+esc(extra)+'</span>'+(!m.financial?'<button class="btn btn-sm ins-metric-open" data-metric-open="'+id+'">Ver registros ↗</button>':'')+'</article>';
  }).join('');
  return '<section class="ins-module ins-custom-dashboard"><div class="ins-toolbar"><div><h2>MEU PAINEL</h2><p>Indicadores personalizados para '+esc(state.user?.displayName||state.user?.username||'visitante demonstrativo')+'</p></div>'+
  '<button class="btn btn-sm" data-ins-action="customize">'+(state.showMetricOptions?'Fechar configurações':'Personalizar cartões')+'</button></div>'+
@@ -93,35 +95,33 @@ export function renderCustomerProfiles(data,state){
 }
 export function renderDriverRouteDetails(data,state,view){
  const trips=data.viagens||[],orders=data.pedidos||[],q=state.search||'';
- const matchedTrips=searchRecords(trips,q),matchedOrders=searchRecords(orders,q);
- const routeNames=new Set(matchedTrips.map(v=>(v.origem||'Origem não informada')+' → '+(v.destino||'Destino não informado')));
- const driverIds=new Set([...matchedTrips,...matchedOrders].map(row=>String(row.motoristaId||'')));
- const routes=routeStats(trips).filter(row=>!q||routeNames.has(row.name)||searchRecords([row],q).length);
- const drivers=driverStats(trips,orders).filter(row=>!q||driverIds.has(row.id)||searchRecords([row],q).length);
- const paged=metricPage(view==='rotas'?sortedMetricRows(routes,state.tableSort?.rotas?.key||'count',state.tableSort?.rotas?.direction||state.sortDir||'desc'):sortedMetricRows(drivers,state.tableSort?.motoristas?.key||'trips',state.tableSort?.motoristas?.direction||state.sortDir||'desc'),state);
- const route=state.routeSelected?routes.find(r=>r.name===state.routeSelected):null;
- const driver=state.driverSelected?drivers.find(r=>r.id===state.driverSelected):null;
- if(view==='rotas'){
-  const relevant=route?trips.filter(v=>(v.origem||'Origem não informada')+' → '+(v.destino||'Destino não informado')===route.name):[];
-  return '<section class="ins-module"><div class="ins-toolbar"><div><h2>ROTAS & VOLUME OPERACIONAL</h2><p>Viagens, KM conhecidos, veículos e motoristas distintos</p></div>'+badge(n(routes.length)+' rotas')+'</div>'+
-  (route?'<div class="ins-selected"><button class="btn" data-ins-action="clear-route">← Voltar para todas</button><h3>'+esc(route.name)+'</h3>'+
-   cards([{label:'RVs',value:n(route.count)},{label:'KM identificados',value:route.km===null?'—':n(route.km)+' km',note:route.kmKnown+'/'+route.count+' RVs com KM'},
-   {label:'Placas distintas',value:n(route.vehicles)},{label:'Motoristas ID',value:n(route.drivers)}])+
-   (relevant.length?'<div class="ins-responsive-table"><table><thead><tr><th>RV</th><th>Início</th><th>Cliente</th><th>Placa</th><th>KM rodados</th></tr></thead><tbody>'+
-    relevant.map(v=>'<tr><td><button class="ins-link" data-profile-detail="viagens:'+esc(v.id)+'">'+esc(v.numero)+'</button></td><td>'+date(v.data)+'</td><td>'+esc(v.cliente)+'</td><td>'+esc(v.placa||'—')+'</td><td>'+n(v.kmRodados)+'</td></tr>').join('')+'</tbody></table></div>':'')+'</div>':'')+
-  (routes.length?'<div class="ins-responsive-table"><table><thead><tr>'+sortTableHeader('Origem → Destino','name',state,'rotas')+''+sortTableHeader('RVs','count',state,'rotas')+''+sortTableHeader('KM informados','km',state,'rotas')+''+sortTableHeader('KM médio*','kmPerTrip',state,'rotas')+''+sortTableHeader('Veículos','vehicles',state,'rotas')+''+sortTableHeader('Motoristas','drivers',state,'rotas')+'</tr></thead><tbody>'+
-  paged.rows.map(r=>'<tr><td><button class="ins-link" data-route-open="'+esc(r.name)+'">'+esc(r.name)+'</button></td><td>'+n(r.count)+'</td><td>'+n(r.km)+'</td><td>'+n(r.kmPerTrip)+'</td><td>'+n(r.vehicles)+'</td><td>'+n(r.drivers)+'</td></tr>').join('')+'</tbody></table></div>':empty('Sem viagens com dados de rota'))+paged.html+
-  '<p class="ins-hint">* KM médio apenas entre RVs com KM registrado. Não são estimativas de percurso por GPS. Sem dados de tempo de condução ou produtividade laboral.</p></section>';
+ const groups=memoView('metrics-'+view,[data],()=>view==='rotas'?routeStats(trips):driverStats(trips,orders));
+ const filtered=memoView('metrics-filter-'+view,[groups,q],()=>{
+  if(!q)return groups;
+  const matchedTrips=searchRecords(trips,q),matchedOrders=view==='motoristas'?searchRecords(orders,q):[];
+  const names=new Set(matchedTrips.map(v=>(v.origem||'Origem não informada')+' → '+(v.destino||'Destino não informado')));
+  const ids=new Set([...matchedTrips,...matchedOrders].map(row=>String(row.motoristaId||('nome:'+String(row.motoristaNome||'Não informado').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()))));
+  return groups.filter(row=>(view==='rotas'?names.has(row.name):ids.has(row.id))||searchRecords([row],q).length);
+ });
+ const sort=state.tableSort?.[view],key=sort?.key||(view==='rotas'?'count':'trips'),direction=sort?.direction||state.sortDir||'desc';
+ const sorted=memoView('metrics-sort-'+view,[filtered,key,direction],()=>sortedMetricRows(filtered,key,direction));
+ const selected=view==='rotas'?filtered.find(r=>r.name===state.routeSelected):filtered.find(r=>r.id===state.driverSelected);
+ if(selected){
+  const references=memoView('metric-detail-'+view,[data,selected],()=>{
+   if(view==='rotas')return trips.filter(v=>(v.origem||'Origem não informada')+' → '+(v.destino||'Destino não informado')===selected.name).map(record=>({record,kind:'viagens'}));
+   const matches=row=>String(row.motoristaId||('nome:'+String(row.motoristaNome||'Não informado').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()))===selected.id;
+   return [...trips.filter(matches).map(record=>({record,kind:'viagens'})),...orders.filter(matches).map(record=>({record,kind:'ctes'}))].sort((a,b)=>String(b.record.data||'').localeCompare(String(a.record.data||'')));
+  });
+  const paged=metricPage(references,state,'detailPage');
+  const items=view==='rotas'?[{label:'RVs',value:n(selected.count)},{label:'KM identificados',value:n(selected.km),note:selected.kmKnown+'/'+selected.count+' RVs com KM'},{label:'Placas distintas',value:n(selected.vehicles)},{label:'Motoristas',value:n(selected.drivers)}]:[{label:'RVs',value:n(selected.trips)},{label:'Pedidos PF',value:n(selected.orders)},{label:'CT-e numerados',value:n(selected.ctes)},{label:'KM conhecidos',value:n(selected.km)}];
+  return '<section class="ins-module"><div class="ins-toolbar"><h2>'+esc(selected.name)+'</h2><button class="btn" data-ins-action="'+(view==='rotas'?'clear-route':'clear-driver')+'">← Voltar</button></div>'+cards(items)+
+   '<div class="ins-responsive-table"><table><thead><tr><th>Registro</th><th>Data</th><th>Cliente</th><th>Placa</th></tr></thead><tbody>'+paged.rows.map(({record:r,kind})=>'<tr><td><button class="ins-link" data-profile-detail="'+kind+':'+esc(r.id)+'">'+(kind==='viagens'?'RV ':'PF ')+esc(kind==='viagens'?r.numero:r.pedidoNumero||r.numero)+'</button></td><td>'+date(r.data)+'</td><td>'+esc(r.cliente)+'</td><td>'+esc(r.placa||'—')+'</td></tr>').join('')+'</tbody></table></div>'+paged.html+'</section>';
  }
- const related=driver?{trips:trips.filter(v=>v.motoristaId&&String(v.motoristaId)===driver.id),orders:orders.filter(p=>p.motoristaId&&String(p.motoristaId)===driver.id)}:null;
- return '<section class="ins-module"><div class="ins-toolbar"><div><h2>MOTORISTAS & ATIVIDADE</h2><p>Volume observado nas RVs e pedidos PF do DSS</p></div>'+badge(n(drivers.length)+' motoristas','blue')+'</div>'+
- (driver?'<div class="ins-selected"><button class="btn" data-ins-action="clear-driver">← Voltar</button><h3>'+esc(driver.name)+'</h3>'+
- cards([{label:'RVs com ID',value:n(driver.trips)},{label:'Pedidos PF',value:n(driver.orders)},{label:'CT-e numerados',value:n(driver.ctes)},{label:'KM conhecidos',value:driver.km===null?'—':n(driver.km)+' km'}])+
- '<div class="ins-profile-columns"><div><h3>RVs identificadas</h3>'+(related.trips.length?related.trips.map(v=>'<div class="ins-info-row"><button class="ins-link" data-profile-detail="viagens:'+esc(v.id)+'">RV '+esc(v.numero)+'</button><span>'+date(v.data)+'</span></div>').join(''):empty('Nenhuma RV identificada para este ID'))+'</div>'+
- '<div><h3>Pedidos identificados</h3>'+(related.orders.length?related.orders.map(p=>'<div class="ins-info-row"><button class="ins-link" data-profile-detail="ctes:'+esc(p.id)+'">'+esc(p.pedidoNumero||p.numero)+'</button><span>'+date(p.data)+'</span></div>').join(''):empty('Nenhum pedido identificado'))+'</div></div></div>':'')+
- (drivers.length?'<div class="ins-responsive-table"><table><thead><tr>'+sortTableHeader('Motorista','name',state,'motoristas')+''+sortTableHeader('RVs','trips',state,'motoristas')+''+sortTableHeader('Pedidos','orders',state,'motoristas')+''+sortTableHeader('CT-e','ctes',state,'motoristas')+''+sortTableHeader('KM conhecidos','km',state,'motoristas')+''+sortTableHeader('KM médio*','kmPerTrip',state,'motoristas')+''+sortTableHeader('Rotas distintas','routes',state,'motoristas')+'</tr></thead><tbody>'+
- paged.rows.map(d=>'<tr><td><button class="ins-link" data-driver-open="'+esc(d.id)+'">'+esc(d.name)+'</button></td><td>'+n(d.trips)+'</td><td>'+n(d.orders)+'</td><td>'+n(d.ctes)+'</td><td>'+n(d.km)+'</td><td>'+n(d.kmPerTrip)+'</td><td>'+n(d.routes)+'</td></tr>').join('')+'</tbody></table></div>':empty('Sem registros de motorista disponíveis'))+paged.html+
- '<p class="ins-hint">Clique nos cabeçalhos para ordenar por mais CT-e, pedidos, viagens, KM ou motorista. “Nome não informado” significa que nenhum nome confiável foi retornado no período. A contagem depende do ID do motorista nas RVs e PFs; registros sem vínculo não são inferidos. * KM médio usa apenas viagens com informação de KM.</p></section>';
+ const paged=metricPage(sorted,state);
+ const columns=view==='rotas'?[['name','Origem → Destino'],['count','RVs'],['km','KM informados'],['kmPerTrip','KM médio*'],['vehicles','Veículos'],['drivers','Motoristas']]:[['name','Motorista'],['trips','RVs'],['orders','Pedidos'],['ctes','CT-e'],['km','KM conhecidos'],['kmPerTrip','KM médio*'],['routes','Rotas distintas']];
+ return '<section class="ins-module"><div class="ins-toolbar"><div><h2>'+(view==='rotas'?'ROTAS & VOLUME OPERACIONAL':'MOTORISTAS & ATIVIDADE')+'</h2><p>Volume observado nas RVs e pedidos PF do DSS</p></div>'+badge(n(filtered.length)+(view==='rotas'?' rotas':' motoristas'))+'</div>'+
+ (filtered.length?'<div class="ins-responsive-table"><table><thead><tr>'+columns.map(([key,label])=>sortTableHeader(label,key,state,view)).join('')+'</tr></thead><tbody>'+paged.rows.map(row=>'<tr>'+columns.map(([key])=>'<td>'+(key==='name'?'<button class="ins-link" '+(view==='rotas'?'data-route-open="'+esc(row.name):'data-driver-open="'+esc(row.id))+'">'+esc(row.name)+'</button>':n(row[key]))+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>':empty('Sem registros disponíveis para os filtros selecionados.'))+paged.html+
+ '<p class="ins-hint">Clique nos cabeçalhos para ordenar. * KM médio usa apenas RVs com informação de KM. Registros sem vínculo não são inferidos. Sem localização GPS ou produtividade laboral presumida.</p></section>';
 }
 let cachedAlerts=null;
 export function renderAlertsHub(data,state){
@@ -129,20 +129,22 @@ export function renderAlertsHub(data,state){
  const lateDays=state.lateDays??2,asOf=new Date().toISOString().slice(0,10);
  if(!cachedAlerts||cachedAlerts.data!==data||cachedAlerts.lateDays!==lateDays||cachedAlerts.asOf!==asOf){cachedAlerts={data,lateDays,asOf,pager:createAlertPager(data,{lateDays,asOf})};}
  const priority=state.alertPriority||'todos';let kind=state.alertKind||'todos';
- let result=cachedAlerts.pager.getPage({page:state.page,priority,kind,financial,query:state.search||''});
- if(kind!=='todos'&&!result.types.includes(kind)){kind='todos';state.alertKind='todos';result=cachedAlerts.pager.getPage({page:1,priority,kind,financial,query:state.search||''});}
+ let result=cachedAlerts.pager.getPage({page:state.page,priority,kind,financial,query:state.search||'',tasks:state.tasks||{},status:state.alertStatus||'todos',owner:state.alertOwner||''});
+ if(kind!=='todos'&&!result.types.includes(kind)){kind='todos';state.alertKind='todos';result=cachedAlerts.pager.getPage({page:1,priority,kind,financial,query:state.search||'',tasks:state.tasks||{},status:state.alertStatus||'todos',owner:state.alertOwner||''});}
  state.page=result.page;
- const allowed=result.rows,types=result.types;
+ const allowed=result.rows,types=result.types;state.visibleAlerts=allowed;
  const pagination='<div class="pagination"><span>'+n(result.total)+' registros • Página '+result.page+' de '+result.pages+'</span><div class="pagination-actions"><button type="button" class="btn btn-sm" data-action="prev" '+(result.page<=1?'disabled':'')+'>Anterior</button><button type="button" class="btn btn-sm" data-action="next" '+(result.page>=result.pages?'disabled':'')+'>Próxima</button></div></div>';
  const typeLabels={cte_pendente:'Pedido sem CT-e',rv_nao_localizada:'RV não localizada',rv_ambigua:'Vínculo ambíguo',sem_fatura:'Fatura pendente',comprovante_pendente:'Comprovante ausente',ocorrencia:'Ocorrência',rv_sem_termino:'RV sem término',km_acima:'Excesso de KM',cte_sem_rv:'CT-e sem RV',rv_sem_pedido:'RV sem pedido PF'};
- return '<section class="ins-module"><div class="ins-toolbar"><div><h2>CENTRAL INTELIGENTE DE PENDÊNCIAS</h2><p>Alertas derivados dos campos do DSS — somente leitura</p></div>'+badge(n(result.totalAlerts)+' alertas','red')+'</div>'+
+ return '<section class="ins-module"><div class="ins-toolbar"><div><h2>CENTRAL INTELIGENTE DE PENDÊNCIAS</h2><p>Alertas da DSS · acompanhamento e providências no portal</p></div>'+'<div class="filter-row">'+badge(n(result.totalAlerts)+' alertas','red')+'<button class="btn btn-sm" data-action="reload-workflow" '+(state.taskIndexLoading?'disabled':'')+'>'+(state.taskIndexLoading?'Carregando…':'Atualizar tratamentos')+'</button></div></div>'+
+ (state.taskIndexError?'<p class="ins-inline-error">'+esc(state.taskIndexError)+' <button class="btn btn-sm" data-action="reload-workflow">Tentar novamente</button></p>':'')+
  cards([{label:'Prioridade alta',value:n(result.counts.high)},{label:'Verificação',value:n(result.counts.warning)},
  {label:'Informativos',value:n(result.counts.info)},{label:'Registros encontrados',value:n(result.total)}])+
  '<div class="ins-alert-filters"><label>Prioridade<select id="alertPriorityFilter" class="control"><option value="todos">Todas</option>'+[['high','Alta'],['warning','Verificação'],['info','Informativa']].map(([k,v])=>'<option value="'+k+'" '+(priority===k?'selected':'')+'>'+v+'</option>').join('')+'</select></label>'+
- '<label>Tipo<select id="alertKindFilter" class="control"><option value="todos">Todos</option>'+types.map(t=>'<option value="'+esc(t)+'" '+(kind===t?'selected':'')+'>'+esc(typeLabels[t]||t)+'</option>').join('')+'</select></label></div>'+
+ '<label>Tipo<select id="alertKindFilter" class="control"><option value="todos">Todos</option>'+types.map(t=>'<option value="'+esc(t)+'" '+(kind===t?'selected':'')+'>'+esc(typeLabels[t]||t)+'</option>').join('')+'</select></label>'+
+ '<label>Situação<select id="alertStatusFilter" class="control"><option value="todos">Todas</option>'+Object.entries(TASK_STATUSES).map(([key,label])=>'<option value="'+key+'" '+(state.alertStatus===key?'selected':'')+'>'+esc(label)+'</option>').join('')+'</select></label><label>Responsável<input id="alertOwnerFilter" class="control" value="'+esc(state.alertOwner||'')+'" placeholder="Nome do responsável"></label></div>'+
  (allowed.length?'<div class="ins-alert-list">'+allowed.map(a=>'<article class="ins-alert-item"><span class="ins-alert-signal '+(a.level==='high'?'danger':a.level==='info'?'info':'warning')+'">!</span>'+
  '<div><strong>'+esc(a.title)+'</strong><p>'+esc(a.detail)+'</p><small>'+date(a.refDate)+' · '+esc(typeLabels[a.type]||a.type)+'</small></div>'+
- '<button type="button" class="btn btn-sm" data-alert-detail="'+esc(a.view+':'+a.recordId)+'">Abrir registro ↗</button></article>').join('')+'</div>':empty('Nenhuma pendência correspondente aos filtros.'))+pagination+
+ '<div class="task-card-actions"><small>'+esc(TASK_STATUSES[a.status]||'Aberta')+' · '+esc(a.owner||'Sem responsável')+(a.due?' · Prazo: '+date(a.due):'')+'</small><button type="button" class="btn btn-sm" data-alert-manage="'+esc(alertKey(a))+'">Tratar pendência</button><button type="button" class="btn btn-sm" data-alert-detail="'+esc(a.view+':'+a.recordId)+'">Abrir registro ↗</button></div></article>').join('')+'</div>':empty('Nenhuma pendência correspondente aos filtros.'))+pagination+
  '<p class="ins-hint">Uma RV ou CT-e não localizada pode estar fora do período consultado. Uma referência ausente não comprova irregularidade fiscal ou falta de emissão.</p></section>';
 }
 export function renderComparison(data,state){
