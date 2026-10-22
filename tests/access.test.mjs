@@ -40,7 +40,7 @@ test('Programações não vazam total de frete e navegação mantém operações
  for(const role of ['operacional','financeiro','administrador']){
   const response=projectOverview({data:{programacoes:[{pf_id:8,nro_rv:77,total_frete_pedido_frete:9999}]}},role);
   assert.deepEqual(response.data.programacoes,[{nro_rv:77,pf_id:8}]);
-  for(const view of ['painel','clientes','faturamento','analises','relatorios','administracao'])assert.equal(canView(role,view),false);
-  for(const view of ['viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','mdfes','ocorrencias'])assert.equal(canView(role,view),true);
+  for(const view of ['clientes','faturamento','analises','administracao'])assert.equal(canView(role,view),false);
+  for(const view of ['painel','relatorios','viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','mdfes','ocorrencias'])assert.equal(canView(role,view),true);
  }
 });

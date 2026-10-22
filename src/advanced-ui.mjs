@@ -1,4 +1,6 @@
-import {reportTypesFor} from './access-ui.mjs';
+import {renderAlertsHub} from './intelligence-ui.mjs';
+import {COMPANIES} from './companies.mjs';
+import {reportTypesFor,buildOperationalReport} from './access-ui.mjs';
 import {buildInsights,sortRecords,searchRecords,extractRows,REPORT_TYPES,groupRows} from './operational.mjs';
 const h=v=>String(v===null||v===undefined?'':v).replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
 const b=v=>v===true?'Sim':v===false?'Não':'—';
@@ -9,19 +11,19 @@ const chip=(label,color='gray')=>'<span class="pill '+color+'">'+h(label)+'</spa
 const tt=(label,value,sub='')=>'<article class="kpi"><div class="kpi-label">'+h(label)+'</div><div class="kpi-value">'+h(value)+'</div><div class="kpi-sub">'+h(sub)+'</div></article>';
 const opts=(arr,value)=>arr.map(v=>'<option value="'+h(v)+'" '+(String(v)===String(value)?'selected':'')+'>'+h(v)+'</option>').join('');
 export const ADVANCED_VIEWS=['pendencias','rotas','veiculos','motoristas','containers','entregas','faturamento','analises','administracao'];
-export const EXPORT_LABELS={viagens:'Relatório de viagens',pedidos:'Pedidos e CT-e',ctes:'Somente CT-e',clientes:'Por cliente',rotas:'Por rota',veiculos:'Frota',motoristas:'Motoristas',containers:'Containers',mdfes:'Referências MDF-e',pendencias:'Pendências',mensal:'Resumo mensal'};
+export const EXPORT_LABELS={entregas:'Entregas e comprovantes',ocorrencias:'Ocorrências',viagens:'Relatório de viagens',pedidos:'Pedidos e CT-e',ctes:'Somente CT-e',clientes:'Por cliente',rotas:'Por rota',veiculos:'Frota',motoristas:'Motoristas',containers:'Containers',mdfes:'Referências MDF-e',pendencias:'Pendências',mensal:'Resumo mensal'};
 export function operationalFilters(d,s){
  const clients=[...new Set([...(d.viagens||[]).map(x=>x.cliente),...(d.pedidos||[]).map(x=>x.cliente)].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
  const plates=[...new Set([...(d.viagens||[]).map(x=>x.placa),...(d.pedidos||[]).map(x=>x.placa)].filter(Boolean))].sort();
  const types=[...new Set((d.pedidos||[]).map(x=>x.tipoServico).filter(Boolean))].sort();
- const filter=(id,title,items,val)=>'<label class="filter grow filter-compact"><span>'+h(title)+'</span><select id="'+id+'" class="control full"><option value="">Todos</option>'+opts(items,val)+'</select></label>';
+ const filter=(id,title,items,val)=>{if(val&&!items.includes(val))items=[...items,val];return '<label class="filter grow filter-compact"><span>'+h(title)+'</span><select id="'+id+'" class="control full"><option value="">Todos</option>'+opts(items,val)+'</select></label>';};
  return '<div class="filter-advanced"><div class="filter-row">'+
  filter('filterClient','Cliente',clients,s.customer||'')+
  filter('filterPlate','Veículo / placa',plates,s.vehicle||'')+
  filter('filterType','Tipo de serviço',types,s.serviceType||'')+
  '<label class="filter"><span>Período rápido</span><select class="control" id="quickPeriod"><option value="">Selecionar</option><option value="this-month">Este mês</option><option value="last-month">Mês anterior</option><option value="this-year">Ano atual</option><option value="last-90">Últimos 90 dias</option></select></label>'+
  '</div><div class="filter-row filter-row-actions">'+
- '<label class="filter"><span>Ordenação</span><select id="sortDir" class="control"><option value="desc" '+(s.sortDir!=='asc'?'selected':'')+'>Decrescente</option><option value="asc" '+(s.sortDir==='asc'?'selected':'')+'>Crescente</option></select></label>'+
+ (!['painel','pendencias'].includes(s.view)&&!(s.view==='relatorios'&&s.reportSelected==='pendencias')?'<label class="filter"><span>Ordem da tabela</span><select id="sortDir" class="control"><option value="desc" '+(s.sortDir!=='asc'?'selected':'')+'>Decrescente</option><option value="asc" '+(s.sortDir==='asc'?'selected':'')+'>Crescente</option></select></label>':'')+
  '<button class="btn btn-sm" data-action="clear-filters">Limpar filtros</button><button class="btn btn-sm" data-action="save-filter">Salvar filtros</button>'+
  '<label class="filter"><span>Filtros salvos</span><select id="savedPreset" class="control"><option value="">Carregar</option>'+opts(Object.keys(s.presets||{}),'')+'</select></label>'+
  '<button class="btn btn-sm" data-action="delete-filter">Excluir filtro salvo</button>'+
@@ -41,6 +43,7 @@ export function tableAdvanced(rows,columns,s,view){
  const head=active.map(c=>'<th><button class="sort-link" data-sort="'+h(c.key)+'" title="Ordenar por '+h(c.label)+'">'+h(c.label)+' '+(s.sortKey===c.key?(s.sortDir==='asc'?'↑':'↓'):'↕')+'</button></th>').join('');
  const sorted=sortRecords(rows,s.sortKey||columns[0].key,s.sortDir||'desc');
  const total=sorted.length;const limit=25,pageCount=Math.max(1,Math.ceil(total/limit)),page=Math.min(Math.max(1,s.page||1),pageCount);
+ s.page=page;
  const pageRows=sorted.slice((page-1)*limit,page*limit);
  const body=pageRows.map(row=>'<tr>'+active.map(c=>{
   const v=row[c.key],val=c.detail&&v!==undefined?'<button class="row-link" data-detail="'+h(c.detail)+':'+h(row.id)+'">'+cell(v,c.format)+'</button>':cell(v,c.format);
@@ -69,7 +72,7 @@ function monthlyPanel(i,s){
  return rowTable('Evolução mensal',rows,cols,s,'mensal','Agrupamento por data de início da RV e emissão do pedido.');
 }
 export function renderAdvanced(view,d,s){
- const i=buildInsights(d,{year:Number((s.from||'').slice(0,4)||new Date().getFullYear()),lateDays:s.lateDays||2});
+ const i=buildInsights(d,{year:Number((s.from||'').slice(0,4)||new Date().getFullYear()),lateDays:s.lateDays||2,includeAlerts:false});
  if(view==='pendencias'){
   const count=i.alerts.reduce((v,a)=>(v[a.level]=(v[a.level]||0)+1,v),{});
   return '<div class="kpis">'+tt('PENDÊNCIAS TOTAIS',num(i.alerts.length),'Alertas calculados pelas APIs')+tt('PRIORIDADE ALTA',num(count.high||0),'Requer conferência')+tt('VERIFICAÇÃO',num(count.warning||0),'Vínculos, faturamento, RVs')+tt('INFORMATIVOS',num(count.info||0),'Ocorrências e quilometragem')+'</div>'+
@@ -138,7 +141,9 @@ export function renderReportHub(data,s){
  const allowed=reportTypesFor(s.role);
  const selected=allowed.includes(s.reportSelected)?s.reportSelected:allowed[0];
  const multi=s.reportMulti===true;
- return '<section class="card"><div class="card-head"><h3>Central de relatórios COSTALOG</h3><span>Excel real (.xlsx), CSV e impressão/PDF</span></div>'+
+ s.reportSelected=selected;
+ const preview=selected==='pendencias'?renderAlertsHub(data,s):(()=>{const model=buildOperationalReport(selected,data,s);const previewState={...s,sortKey:model.sortKey};const html=renderGrid(model.title,model.rows,model.columns.map(([key,label])=>({key,label,format:['data','dataTermino','dataCte','refDate'].includes(key)?'date':['entregaConcluida','comprovanteEntrega'].includes(key)?'bool':undefined})),previewState,'report-'+selected,'Prévia de 25 itens por página. A exportação inclui todos os resultados filtrados.');s.page=previewState.page;return html;})();
+ return '<section class="card"><div class="card-head"><h3>Relatórios '+h(COMPANIES[s.company||'costalog'].name)+'</h3><span>Excel real (.xlsx), CSV e impressão/PDF</span></div>'+
  '<div class="filter-row">'+
  '<label class="filter grow"><span>Tipo do relatório</span><select id="reportSelected" class="control full">'+allowed.map(t=>'<option value="'+t+'" '+(selected===t?'selected':'')+'>'+h(EXPORT_LABELS[t])+'</option>').join('')+'</select></label>'+
  '<label class="filter"><span>Escopo Excel</span><select id="reportMulti" class="control"><option value="single" '+(!multi?'selected':'')+'>Uma aba</option><option value="all" '+(multi?'selected':'')+'>Todas as abas</option></select></label>'+
@@ -146,6 +151,6 @@ export function renderReportHub(data,s){
  '<button class="btn btn-red" data-action="xlsx-export">Baixar Excel (.xlsx)</button>'+
  '<button class="btn" data-action="csv-advanced">Baixar CSV</button>'+
  '<button class="btn" data-action="pdf-report">Imprimir / Salvar PDF</button></div>'+
- '<p class="help">PDF é gerado pelo recurso de impressão do navegador (Salvar como PDF). Dados exportados correspondem ao período e aos filtros que estiverem selecionados. CSV e Excel incluem apenas informações disponibilizadas ou calculáveis pelo DSS. Evite exportar dados sensíveis em dispositivos compartilhados.</p></section>'+
- '<div class="section-title"><h2>Relatórios disponíveis</h2></div><div class="report-grid">'+allowed.map(t=>'<button class="report-card" data-report-select="'+t+'"><strong>'+h(EXPORT_LABELS[t])+'</strong><small>Exportar / analisar</small></button>').join('')+'</div>';
+ '<p class="help">PDF é gerado pelo recurso de impressão do navegador (Salvar como PDF). Os arquivos incluem os resultados da empresa ativa, do período e dos filtros selecionados.</p></section>'+
+ '<div class="section-title"><h2>Relatórios disponíveis</h2></div><div class="report-grid">'+allowed.map(t=>'<button class="report-card '+(selected===t?'active':'')+'" aria-pressed="'+(selected===t)+'" data-report-select="'+t+'"><strong>'+h(EXPORT_LABELS[t])+'</strong><small>Exportar / analisar</small></button>').join('')+'</div>'+preview;
 }

@@ -4,7 +4,7 @@ import {COMPANIES} from './companies.mjs';
  * Não inventa posição GPS, manutenção, frota disponível, lucro ou status fiscal.
  * Mantém perfis financeiro/operacional: preços só quando a permissão é verdadeira.
  */
-import {buildInsights,makeAlerts,groupRows} from './operational.mjs';
+import {buildInsights,makeAlerts,createAlertPager,groupRows} from './operational.mjs';
 const H=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const N=v=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:0}).format(v);
 const B=v=>Number.isFinite(v)?new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:2}).format(v):'—';
@@ -45,7 +45,7 @@ export function renderHero(view,d,{from,to,mode,financeiro,company='costalog'}){
   motoristas:['MOTORISTAS','Atividade nas viagens e pedidos de frete'],
   mdfes:['MDF-e','Referências documentais vinculadas às viagens'],
   ocorrencias:['OCORRÊNCIAS','Registros identificados para a empresa selecionada'],
-  relatorios:['RELATÓRIOS DE PERFORMANCE','Business Intelligence & Operational Metrics'],
+  relatorios:['RELATÓRIOS OPERACIONAIS','Consultas e exportações da empresa selecionada'],
   comparativos:['COMPARATIVOS','Evolução diária, semanal e mensal dos indicadores'],
   faturamento:['FATURAMENTO','Análise financeira dos pedidos de frete'],
   clientes:['CLIENTES & FRETES','Valores e distribuição por cliente'],
@@ -54,10 +54,11 @@ export function renderHero(view,d,{from,to,mode,financeiro,company='costalog'}){
  const t=titles[view]||[String(view||'painel').toUpperCase(),'Acompanhamento operacional COSTALOG'];
  return '<section class="v-hero"><div class="v-hero-mark">▦</div><div class="v-hero-copy"><div class="v-eyebrow">'+H(COMPANIES[company]?.name||'COSTALOG')+' <span> / INTELIGÊNCIA OPERACIONAL</span></div><h1>'+H(t[0])+' <span class="v-hero-badge">'+(mode==='live'?'DSS':'DEMONSTRAÇÃO')+'</span></h1><p>'+H(t[1])+'</p></div><div class="v-hero-side"><span>PERÍODO SELECIONADO</span><strong>'+H(PT(from))+' — '+H(PT(to))+'</strong><small>'+N(d.viagens.length)+' RVs • '+N(d.pedidos.length)+' pedidos</small></div></section>';
 }
+let summaryAlertsCache=null;
 export function renderSummary(d,settings){
  const viagens=d.viagens||[],pedidos=d.pedidos||[];
  const fin=!!settings.financeiro;
- const insights=buildInsights(d,{year:Number(settings.from?.slice(0,4)||new Date().getFullYear())});
+ const insights=fin?buildInsights(d,{year:Number(settings.from?.slice(0,4)||new Date().getFullYear()),includeAlerts:false}):null;
  const statuses=groupRows(viagens,classify),counts=Object.fromEntries(statuses.map(x=>[x.name,x.count]));
  const underway=counts['Em viagem']||0,completed=counts['Concluídas']||0;
  const docs=pedidos.filter(p=>p.isCte),unlinked=docs.filter(p=>!p.viagemId);
@@ -84,13 +85,15 @@ export function renderSummary(d,settings){
  row.map(n=>'<td><span class="v-matrix-cell'+(n?' filled':'')+'">'+N(n)+'</span></td>').join('')+
  '<td class="v-matrix-total">'+N(counts[cat]||0)+'</td></tr>';
  }).join('')+'</tbody></table></div>';
- const warnings=makeAlerts(d).filter(a=>fin||a.type!=='sem_fatura').slice(0,6);
+ const asOf=new Date().toISOString().slice(0,10);
+ if(summaryAlertsCache?.data!==d||summaryAlertsCache.asOf!==asOf)summaryAlertsCache={data:d,asOf,pager:createAlertPager(d,{asOf})};
+ const warnings=summaryAlertsCache.pager.getPage({financial:fin}).rows.slice(0,6);
  const alertHtml=warnings.length?warnings.map(a=>'<div class="v-alert '+(a.level==='high'?'critical':'')+'"><div class="v-alert-title">'+H(a.title)+'</div><p>'+H(a.detail)+'</p><span>'+H(a.refDate||'')+'</span></div>').join(''):empty('Nenhuma pendência identificada nos registros selecionados');
  return (settings.showCards===false?'':'<div class="v-stats-grid">'+cards.join('')+'</div>')+
  (settings.showCards===false?'':'<div class="v-stats-grid v-secondary-stats">'+extras.join('')+'</div>')+
  '<div class="v-section-grid">'+panel('STATUS & CATEGORIA','Distribuição por tipo e situação informada na RV',matrix,'v-span-7')+
  panel('ALERTAS & PENDÊNCIAS','Conferência dos registros disponíveis', '<div class="v-alert-list">'+alertHtml+'</div>','v-span-5')+'</div>'+
- '<div class="v-bottom-actions"><button class="btn btn-red" data-nav="viagens">VER TODAS AS VIAGENS →</button><button class="btn" data-nav="graficos">ABRIR VISÃO GRÁFICA ↗</button><button class="btn" data-nav="ctes">CONSULTAR CT-e</button></div>';
+ '<div class="v-bottom-actions"><button class="btn btn-red" data-nav="viagens">VER TODAS AS VIAGENS →</button><button class="btn" data-nav="relatorios">ABRIR RELATÓRIOS ↗</button><button class="btn" data-nav="ctes">CONSULTAR PEDIDOS</button></div>';
 }
 function pct(n,total){return total?100*n/total:0;}
 function donutArc(start,end){

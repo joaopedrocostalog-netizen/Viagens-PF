@@ -86,3 +86,13 @@
 - `createAlertPager` mantém referências aos registros ordenados e contagens por tipo/prioridade. Títulos, detalhes e cartões são gerados somente para a página solicitada; não guardar arrays ou HTML de outras páginas nem usar `makeAlerts` para materializar a lista inteira nesta tela.
 - A verificação de RVs sem pedido usa um `Set` de vínculos, evitando a varredura de todos os PFs para cada RV. O cálculo financeiro legado de `totals` não é executado nas telas operacionais.
 - Esta paginação opera sobre os dados-base já sincronizados por `/api/overview`; não equivale a buscar os registros DSS no servidor em lotes de 25. Preservar a separação por empresa e os filtros ao evoluir a sincronização.
+
+
+## Painel, relatórios e filtros — 22/10/2026
+
+- O Painel voltou a ser a tela inicial. A aba Relatórios oferece relatórios operacionais de RVs, PF/CT-e, entregas, rotas, frota, motoristas, MDF-e, pendências, ocorrências e resumo mensal. Administração e faturamento permanecem ocultos.
+- `src/filtering.mjs` centraliza buscas sem distinção de acentos, placas com/sem separadores, vários termos e datas brasileiras. Buscas locais se aplicam ao conteúdo da aba; a pesquisa global abre registros da empresa e do período ativos.
+- Opções dos filtros vêm da empresa/período antes dos filtros de cliente, placa e serviço, permitindo mudar uma seleção diretamente. MDF-e e ocorrências também respeitam os vínculos dos registros filtrados. Situação do registro e vínculo documental são controles separados.
+- `buildOperationalReport` usa o mesmo modelo filtrado, ordenado e com colunas operacionais na prévia e nas exportações CSV/Excel/PDF. A prévia pagina em 25 itens; pendências conserva o gerador sob demanda. Somente exportações explícitas produzem relatórios completos.
+- Digitação tem atraso de 160 ms para atualizar a tela, preservando foco e cursor. Filtros avançados continuam abertos após alterações. Limpar filtros restaura a consulta, e filtros salvos incluem situação/vínculo/ordenação; a troca de empresa limpa filtros e seleções.
+- A consulta DSS continua manual. Ao selecionar um intervalo ainda não carregado, a interface solicita Atualizar dados da DSS; não iniciar uma consulta automaticamente por causa de busca, filtros ou navegação.

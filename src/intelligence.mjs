@@ -1,3 +1,4 @@
+import {matchesSearch,normalizeSearch} from './filtering.mjs';
 /** Índices operacionais DSS; somente registros normalizados, sem consultas diretas nem valores inventados. */
 const str=v=>String(v??'').trim();
 const norm=v=>str(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
@@ -8,17 +9,17 @@ const order=(a,b)=>b.count-a.count||a.name.localeCompare(b.name,'pt-BR');
 const validDate=s=>/^\d{4}-\d{2}-\d{2}$/.test(str(s))&&!Number.isNaN(Date.parse(s+'T12:00:00Z'));
 export const SEARCH_GROUPS=Object.freeze(['viagens','pedidos','mdfes','clientes']);
 export function unifiedSearch(data,term,{financial=false,limit=40}={}){
- const q=norm(term);
+ const q=normalizeSearch(term);
  if(q.length<2)return [];
  const groups=[
-  ['viagens',data.viagens||[],v=>[v.numero,v.rvId,v.id,v.cliente,v.placa,v.container,v.nroMdf,v.origem,v.destino,v.status,v.motoristaId],v=>'RV '+str(v.numero)+' · '+str(v.cliente),v=>[v.placa,v.origem+' → '+v.destino].filter(Boolean).join(' · ')],
-  ['pedidos',data.pedidos||[],v=>[v.pedidoNumero,v.cteNumero,v.numero,v.id,v.cliente,v.placa,v.container,v.rvReferencia,v.nroMdf,v.motoristaNome],v=>'PF '+str(v.pedidoNumero||v.id)+(v.cteNumero?' · CT-e '+v.cteNumero:''),v=>[v.cliente,v.placa].filter(Boolean).join(' · ')],
+  ['viagens',data.viagens||[],v=>[v.numero,v.rvId,v.id,v.cliente,v.placa,v.container,v.nroMdf,v.origem,v.destino,v.status,v.motoristaId,v.motoristaNome],v=>'RV '+str(v.numero)+' · '+str(v.cliente),v=>[v.placa,v.origem+' → '+v.destino].filter(Boolean).join(' · ')],
+  ['pedidos',[...new Map([...(data.pedidos||[]),...(data.ctes||[])].map(row=>[row.id,row])).values()],v=>[v.pedidoNumero,v.cteNumero,v.numero,v.id,v.cliente,v.placa,v.container,v.rvReferencia,v.nroMdf,v.motoristaNome],v=>'PF '+str(v.pedidoNumero||v.id)+(v.cteNumero?' · CT-e '+v.cteNumero:''),v=>[v.cliente,v.placa].filter(Boolean).join(' · ')],
   ['mdfes',data.mdfes||[],v=>[v.numero,v.id,v.placa],v=>'Referência MDF-e '+str(v.numero),v=>str(v.placa||'Referência documental (situação fiscal não validada)')]
  ];
  const results=[];
  for(const [group,rows,keys,title,subtitle] of groups){
   for(const row of rows){
-   if(keys(row).some(v=>norm(v).includes(q))){
+   if(matchesSearch(Object.fromEntries(keys(row).map((value,i)=>[i,value])),q)){
     results.push({group,id:str(row.id),title:title(row),subtitle:subtitle(row),date:str(row.data)});
     if(results.length>=limit)return results;
    }

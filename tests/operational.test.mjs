@@ -57,7 +57,7 @@ test('Agregação mensal separa datas de RV e PF',()=>{
 });
 test('Relatórios compatíveis usam campos públicos existentes e preservam ausência',()=>{
  const d=data();
- assert.equal(REPORT_TYPES.length,11);
+ assert.equal(REPORT_TYPES.length,13);
  for(const type of REPORT_TYPES){
   const r=extractRows(type,{...d,allViagens:d.viagens});
   assert(r.columns.length>=3,'sem colunas: '+type);

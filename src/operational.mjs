@@ -1,3 +1,4 @@
+import {matchesSearch} from './filtering.mjs';
 /** COSTALOG - índices e análises baseadas exclusivamente em listarViagens/listarPedidosFrete.
  * Qualquer cálculo de lucro, status fiscal ou rastreamento requer outras fontes.
  */
@@ -20,17 +21,14 @@ export function sortRecords(rows,key='data',dir='desc'){
  const flip=dir==='asc'?1:-1;
  return [...rows].sort((a,b)=>{
   const x=a[key],y=b[key];
+  if((x===null||x===undefined||x==='')&&(y===null||y===undefined||y===''))return 0;
   if(x===null||x===undefined||x==='')return 1;
   if(y===null||y===undefined||y==='')return -1;
   if(typeof x==='number'&&typeof y==='number')return flip*(x-y);
   return flip*String(x).localeCompare(String(y),'pt-BR',{numeric:true,sensitivity:'base'});
  });
 }
-export function searchRecords(rows,term,fields){
- const q=lc(String(term||'').trim());
- if(!q)return rows;
- return rows.filter(r=>(fields||Object.keys(r)).some(k=>lc(r[k]).includes(q)));
-}
+export function searchRecords(rows,term,fields){return rows.filter(row=>matchesSearch(row,term,fields));}
 export function monthsOverview(viagens,pedidos,year){
  const start=Number(year);
  return Array.from({length:12},(_,i)=>{
@@ -102,16 +100,17 @@ export function createAlertPager(data,options={}){
   const bucket=buckets.get(ref.type)||{type:ref.type,level:ref.level,count:0};
   bucket.count++;buckets.set(ref.type,bucket);
  }
- return {getPage({page=1,priority='todos',kind='todos',financial=false}={}){
+ return {getPage({page=1,priority='todos',kind='todos',financial=false,query=''}={}){
   const visible=[...buckets.values()].filter(b=>financial||b.type!=='sem_fatura');
   const matches=ref=>(financial||ref.type!=='sem_fatura')&&(priority==='todos'||ref.level===priority)&&(kind==='todos'||ref.type===kind);
-  const total=visible.filter(matches).reduce((sum,b)=>sum+b.count,0);
+  const matchesQuery=ref=>!String(query).trim()||matchesSearch(materializeAlert(ref),query);
+  const total=String(query).trim()?(()=>{let count=0;for(const ref of refs())if(matches(ref)&&matchesQuery(ref))count++;return count;})():visible.filter(matches).reduce((sum,b)=>sum+b.count,0);
   const pages=Math.max(1,Math.ceil(total/ALERT_PAGE_SIZE));
   const current=Math.min(pages,Math.max(1,Number.parseInt(page,10)||1));
   const offset=(current-1)*ALERT_PAGE_SIZE,rows=[];
   let skipped=0;
   if(total)for(const ref of refs()){
-   if(!matches(ref))continue;
+   if(!matches(ref)||!matchesQuery(ref))continue;
    if(skipped++<offset)continue;
    rows.push(materializeAlert(ref));
    if(rows.length===ALERT_PAGE_SIZE)break;
@@ -155,25 +154,28 @@ export function buildInsights(data,opts={}){
  })).sort((a,b)=>b.viagens+b.pedidos-a.viagens-a.pedidos);
  const serviceTypes=groupRows(pedidos,p=>p.tipoServico||p.operacaoTransporte).map(g=>({name:g.name,orders:g.count,freight:add(g.items,null,p=>p.valor)})).sort((a,b)=>b.orders-a.orders);
  const insured=pedidos.filter(p=>ok(p.numeroAverbacao)),averbacao=result(pedidos,p=>p.valorAverbacao);
- const alerts=makeAlerts(data,{lateDays:opts.lateDays??2});
+ const alerts=opts.includeAlerts===false?[]:makeAlerts(data,{lateDays:opts.lateDays??2});
  return {totals:{trips:viagens.length,ongoing:inProgress.length,completed:finished.length,orders:pedidos.length,ctes:docs.length,withoutCT:withoutCT.length,withoutTrip:withoutTrip.length,missingDelivery:missingDelivery.length,readyToInvoice:readyToInvoice.length,withoutInvoice:withoutInvoice.length,freight,fuel,planned,actual,kmDifference:actual.known===viagens.length&&planned.known===viagens.length&&viagens.length?actual.sum-planned.sum:null,insured:insured.length,averbacao,uniqueContainers:containers.length,uniqueVehicles:vehicles.filter(v=>v.name!=='Veículo ID ?').length},months:periodMonths,customers,routes,vehicles,drivers,containers,serviceTypes,alerts,uniqueClients:uniq(pedidos.map(p=>p.cliente)).length};
 }
 export function extractRows(type,data){
- const v=data.viagens||[],p=data.pedidos||[],m=data.mdfes||[],i=buildInsights(data);
+ const v=data.viagens||[],p=data.pedidos||[],m=data.mdfes||[];
+ const i=['clientes','rotas','veiculos','motoristas','containers'].includes(type)?buildInsights(data,{includeAlerts:false}):null;
  switch(type){
  case 'viagens':return {
-  title:'Relatório de viagens (RV)',columns:[['numero','RV'],['data','Início'],['dataTermino','Término'],['cliente','Cliente'],['placa','Placa'],['motoristaId','Motorista ID'],['container','Container'],['nroMdf','Ref. MDF-e'],['origem','Origem'],['destino','Destino'],['kmPrevisto','KM previsto'],['kmRodados','KM rodado'],['desvioKm','Desvio de KM'],['custoAbastecimentoKm','Abastecimento por KM (R$)'],['abastecimento','Abastecimento (R$)'],['receita','Pedidos vinculados (R$)'],['status','Situação']],rows:v};
+  title:'Relatório de viagens (RV)',columns:[['numero','RV'],['data','Início'],['dataTermino','Término'],['cliente','Cliente'],['placa','Placa'],['motoristaId','Motorista ID'],['motoristaNome','Motorista'],['container','Container'],['nroMdf','Ref. MDF-e'],['origem','Origem'],['destino','Destino'],['kmPrevisto','KM previsto'],['kmRodados','KM rodado'],['desvioKm','Desvio de KM'],['custoAbastecimentoKm','Abastecimento por KM (R$)'],['abastecimento','Abastecimento (R$)'],['receita','Pedidos vinculados (R$)'],['status','Situação']],rows:v};
  case 'pedidos':return {title:'Pedidos de frete e CT-e',columns:[['pedidoNumero','Pedido'],['cteNumero','CT-e'],['data','Emissão'],['dataCte','Emissão CT-e'],['cliente','Cliente'],['motoristaNome','Motorista'],['placa','Placa'],['container','Container'],['rvReferencia','Referência RV'],['nroMdf','Referência MDF-e'],['valor','Frete (R$)'],['valorReceber','A receber (R$)'],['liberadoFaturamento','Liberado faturamento'],['numeroFatura','Fatura'],['entregaConcluida','Entrega concluída'],['comprovanteEntrega','Comprovante'],['ocorrencia','Ocorrência'],['status','Situação']],rows:p};
- case 'ctes':return {title:'CT-e identificados',columns:[['pedidoNumero','Pedido'],['cteNumero','CT-e'],['dataCte','Emissão CT-e'],['cliente','Cliente'],['rvReferencia','Referência RV'],['viagemId','RV vinculada ID'],['nroMdf','MDF-e'],['valor','Frete (R$)'],['status','Situação']],rows:p.filter(x=>x.isCte)};
+ case 'ctes':return {title:'CT-e identificados',columns:[['pedidoNumero','Pedido'],['cteNumero','CT-e'],['dataCte','Emissão CT-e'],['cliente','Cliente'],['rvReferencia','Referência RV'],['viagemId','RV vinculada ID'],['nroMdf','MDF-e'],['valor','Frete (R$)'],['status','Situação']],rows:[...new Map([...p.filter(x=>x.isCte),...(data.ctes||[])].map(row=>[row.id||row.cteNumero,row])).values()]};
  case 'clientes':return {title:'Resumo por cliente',columns:[['name','Cliente'],['orders','Pedidos'],['ctes','CT-e'],['linkedTrips','Viagens vinculadas'],['freight','Total fretes (R$)'],['ticket','Ticket médio (R$)']],rows:i.customers};
  case 'rotas':return {title:'Resumo por rota',columns:[['name','Rota'],['viagens','Viagens'],['km','KM rodados'],['fuel','Abastecimento (R$)'],['freight','Fretes vinculados (R$)']],rows:i.routes};
  case 'veiculos':return {title:'Resumo da frota',columns:[['name','Veículo'],['viagens','Viagens'],['km','KM rodados'],['fuel','Abastecimento (R$)'],['freight','Fretes vinculados (R$)']],rows:i.vehicles};
  case 'motoristas':return {title:'Pedidos por motorista',columns:[['name','Motorista'],['orders','Pedidos'],['ctes','CT-e'],['freight','Fretes (R$)']],rows:i.drivers};
  case 'containers':return {title:'Histórico por container',columns:[['name','Container'],['viagens','Registros RV'],['pedidos','Pedidos'],['lastDate','Último registro']],rows:i.containers};
  case 'mdfes':return {title:'Referências de MDF-e',columns:[['numero','MDF-e'],['data','Data'],['viagemId','RV ID'],['placa','Placa'],['status','Situação declarada']],rows:m};
- case 'pendencias':return {title:'Pendências operacionais',columns:[['type','Tipo'],['level','Prioridade'],['recordId','Registro'],['title','Ocorrência'],['detail','Detalhes'],['refDate','Data']],rows:i.alerts};
- case 'mensal':return {title:'Indicadores por mês',columns:[['month','Mês'],['trips','Viagens'],['orders','Pedidos'],['ctes','CT-e'],['freight','Fretes (R$)'],['fuel','Abastecimento (R$)'],['km','KM rodado']],rows:i.months};
+ case 'entregas':return {title:'Acompanhamento de entregas',columns:[['pedidoNumero','Pedido PF'],['cteNumero','CT-e'],['data','Emissão'],['cliente','Cliente'],['motoristaNome','Motorista'],['placa','Placa'],['entregaConcluida','Entrega concluída'],['comprovanteEntrega','Comprovante'],['ocorrencia','Ocorrência'],['status','Situação']],rows:p};
+ case 'ocorrencias':return {title:'Ocorrências operacionais',columns:[['id','ID'],['data','Data'],['placa','Placa'],['tipo','Tipo'],['descricao','Descrição'],['relato','Relato'],['status','Situação'],['providencia','Providência']],rows:data.ocorrencias||[]};
+ case 'pendencias':return {title:'Pendências operacionais',columns:[['type','Tipo'],['level','Prioridade'],['recordId','Registro'],['title','Ocorrência'],['detail','Detalhes'],['refDate','Data']],rows:makeAlerts(data)};
+ case 'mensal':return {title:'Indicadores por mês',columns:[['month','Mês'],['trips','Viagens'],['orders','Pedidos'],['ctes','CT-e'],['freight','Fretes (R$)'],['fuel','Abastecimento (R$)'],['km','KM rodado']],rows:[...new Set([...v,...p].map(row=>String(row.data||'').slice(0,4)).filter(year=>/^\d{4}$/.test(year)))].sort().flatMap(year=>monthsOverview(v,p,Number(year))).filter(row=>row.trips||row.orders)};
  default:throw Error('Relatório desconhecido: '+type);
  }
 }
-export const REPORT_TYPES=['viagens','pedidos','ctes','clientes','rotas','veiculos','motoristas','containers','mdfes','pendencias','mensal'];
+export const REPORT_TYPES=['entregas','ocorrencias','viagens','pedidos','ctes','clientes','rotas','veiculos','motoristas','containers','mdfes','pendencias','mensal'];

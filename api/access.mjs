@@ -6,10 +6,10 @@ export const ROLE_PERMISSIONS=Object.freeze({
   administrador:Object.freeze({operacional:true,financeiro:false,admin:true})
 });
 export function permissionsFor(role){return ROLE_PERMISSIONS[role]||null;}
-export const OPERATIONAL_VIEWS=Object.freeze(['viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','mdfes','ocorrencias']);
+export const OPERATIONAL_VIEWS=Object.freeze(['painel','relatorios','viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','mdfes','ocorrencias']);
 export const FINANCIAL_VIEWS=Object.freeze([]);
 export const ADMIN_VIEWS=Object.freeze([]);
-export const OPERATIONAL_REPORTS=Object.freeze(['viagens','pedidos','mdfes']);
+export const OPERATIONAL_REPORTS=Object.freeze(['viagens','pedidos','ctes','entregas','rotas','veiculos','motoristas','mdfes','pendencias','ocorrencias','mensal']);
 export const FINANCIAL_REPORTS=Object.freeze([]); // Este portal publica somente relatórios operacionais.
 export function canView(role,view){
  const p=permissionsFor(role);if(!p)return false;

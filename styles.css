@@ -434,3 +434,12 @@ body{background:#08090b;color:#f6f7f8}
 .v-accountbar .btn-company-switch{white-space:nowrap;border-color:#d71e30;color:inherit;min-height:36px}
 .v-topbrand .v-ideal-logo{width:120px;max-height:72px;object-fit:contain}
 @media(max-width:700px){.v-accountbar{flex-wrap:wrap;justify-content:flex-end}.v-topbrand .v-ideal-logo{width:90px}.btn-company-switch{font-size:12px}}
+
+/* Barras de consulta, filtros e relatórios. */
+.v-tools-row{align-items:flex-end;flex-wrap:wrap;gap:12px}.v-tools-row>.filters{flex:1;min-width:0;gap:12px;align-items:end}
+.v-tools-row .filter{min-width:140px}.v-tools-row .filter.grow{min-width:240px;flex:1}.v-tools-row .filter .control{width:100%;min-width:0;min-height:42px}
+.search-field{display:flex;align-items:center;gap:6px;min-width:0}.search-field input{flex:1;min-width:0}.search-field .btn{flex-shrink:0}
+.filter-advanced .filter{min-width:170px}.filter-row-actions{align-items:end;gap:10px}.filter-row-actions .btn{min-height:40px}
+.ins-search-control:focus-within{outline:2px solid #d71e30;outline-offset:5px;border-radius:5px}.control:focus-visible{outline:2px solid #d71e30;outline-offset:2px}
+.report-grid{margin-bottom:20px}.report-card{text-align:left;min-height:72px}.v-heading-tools{flex-wrap:wrap}
+@media(max-width:700px){.v-tools-row>.filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}.v-tools-row .filter,.v-tools-row .filter.grow{min-width:0}.v-tools-row .filter.grow{grid-column:1/-1}.v-tools-row .v-heading-tools{width:100%}.filter-advanced .filter{min-width:0;flex:1 1 45%}.ins-alert-filters label{min-width:0;flex:1 1 45%}.search-field .btn{font-size:11px;padding:8px}}
