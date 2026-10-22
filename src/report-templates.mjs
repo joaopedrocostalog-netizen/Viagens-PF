@@ -1,6 +1,6 @@
 import {OP_REPORTS,OP_COLUMNS} from './access-ui.mjs';
 import {COSTALOG_ENTITIES} from './companies.mjs';
-const FILTERS=['from','to','customer','vehicle','serviceType','status','filter','search','sortKey','sortDir','legalEntity','alertKind','alertPriority','alertStatus','alertOwner','drilldown'];
+const FILTERS=['from','to','customer','vehicle','serviceType','status','filter','search','sortKey','sortDir','legalEntity','alertKind','alertPriority','alertStatus','alertOwner','alertScope','alertDue','tripFocus','drilldown'];
 export function reportTemplate(state){
  const type=state.reportSelected;if(!OP_REPORTS.includes(type))throw Error('Relatório inválido.');
  const allowed=OP_COLUMNS[type],hidden=state.hiddenColumns?.['report-'+type]||[];

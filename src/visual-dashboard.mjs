@@ -1,3 +1,4 @@
+import {operationalToday} from './workflow.mjs';
 import {memoView} from './view-cache.mjs';
 import {COMPANIES} from './companies.mjs';
 /**
@@ -5,7 +6,7 @@ import {COMPANIES} from './companies.mjs';
  * Não inventa posição GPS, manutenção, frota disponível, lucro ou status fiscal.
  * Mantém perfis financeiro/operacional: preços só quando a permissão é verdadeira.
  */
-import {buildInsights,makeAlerts,createAlertPager,groupRows} from './operational.mjs';
+import {buildInsights,makeAlerts,cachedAlertPager,groupRows} from './operational.mjs';
 const H=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const numbers=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:0}),currency=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:2});
 const N=v=>numbers.format(v);
@@ -87,8 +88,8 @@ export function renderSummary(d,settings){
  row.map(n=>'<td><span class="v-matrix-cell'+(n?' filled':'')+'">'+N(n)+'</span></td>').join('')+
  '<td class="v-matrix-total">'+N(counts[cat]||0)+'</td></tr>';
  }).join('')+'</tbody></table></div>');
- const asOf=new Date().toISOString().slice(0,10);
- if(summaryAlertsCache?.data!==d||summaryAlertsCache.asOf!==asOf)summaryAlertsCache={data:d,asOf,pager:createAlertPager(d,{asOf})};
+ const asOf=operationalToday();
+ if(summaryAlertsCache?.data!==d||summaryAlertsCache.asOf!==asOf)summaryAlertsCache={data:d,asOf,pager:cachedAlertPager(d,{asOf})};
  const warnings=summaryAlertsCache.pager.getPage({financial:fin}).rows.slice(0,6);
  const alertHtml=warnings.length?warnings.map(a=>'<div class="v-alert '+(a.level==='high'?'critical':'')+'"><div class="v-alert-title">'+H(a.title)+'</div><p>'+H(a.detail)+'</p><span>'+H(a.refDate||'')+'</span><button class="btn btn-sm" data-alert-detail="'+H(a.view+':'+a.recordId)+'">Abrir registro ↗</button></div>').join(''):empty('Nenhuma pendência identificada nos registros selecionados');
  return (settings.showCards===false?'':'<div class="v-stats-grid">'+cards.join('')+'</div>')+

@@ -1,7 +1,7 @@
 import {memoView} from './view-cache.mjs';
-import {TASK_STATUSES,TASK_PRIORITIES,alertKey} from './workflow.mjs';
+import {TASK_STATUSES,TASK_PRIORITIES,alertKey,operationalToday,taskDueBucket} from './workflow.mjs';
 import {unifiedSearch,customerProfiles,routeStats,driverStats,comparisonWindows,subsetPeriod,comparePeriodMetrics, dashboardMetrics,DASH_METRICS,normalizedLayout} from './intelligence.mjs';
-import {createAlertPager,searchRecords} from './operational.mjs';
+import {cachedAlertPager,searchRecords} from './operational.mjs';
 const esc=v=>String(v??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[x]));
 const fmt=new Intl.NumberFormat('pt-BR');
 const money=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
@@ -123,28 +123,46 @@ export function renderDriverRouteDetails(data,state,view){
  (filtered.length?'<div class="ins-responsive-table"><table><thead><tr>'+columns.map(([key,label])=>sortTableHeader(label,key,state,view)).join('')+'</tr></thead><tbody>'+paged.rows.map(row=>'<tr>'+columns.map(([key])=>'<td>'+(key==='name'?'<button class="ins-link" '+(view==='rotas'?'data-route-open="'+esc(row.name):'data-driver-open="'+esc(row.id))+'">'+esc(row.name)+'</button>':n(row[key]))+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>':empty('Sem registros disponíveis para os filtros selecionados.'))+paged.html+
  '<p class="ins-hint">Clique nos cabeçalhos para ordenar. * KM médio usa apenas RVs com informação de KM. Registros sem vínculo não são inferidos. Sem localização GPS ou produtividade laboral presumida.</p></section>';
 }
-let cachedAlerts=null;
+const dueLabels={todos:'Todos os prazos',vencidas:'Vencidas',hoje:'Para hoje',proximas:'Próximas',sem_prazo:'Sem prazo'};
+function alertPager(data,state){
+ const asOf=operationalToday(),lateDays=state.lateDays??2;
+ return cachedAlertPager(data,{asOf,lateDays});
+}
+export function renderMyTasksSummary(data,state){
+ if(!state.user?.username||state.user.mustChangePassword)return '';
+ if(state.mode==='live'&&!state.loadedRange)return '<section class="ins-module my-tasks-summary"><h2>MINHAS PENDÊNCIAS</h2><p class="help">Atualize os dados da DSS para conferir as pendências do período.</p></section>';
+ const ready=!!state.taskIndexLoaded,failed=!!state.taskIndexError;
+ const result=ready?alertPager(data,state).getPage({scope:'mine',user:state.user,tasks:state.tasks||{},status:'ativas',includeRows:false}):null;
+ return '<section class="ins-module my-tasks-summary"><div class="ins-toolbar"><div><h2>MINHAS PENDÊNCIAS</h2><p>Responsável: '+esc(state.user.displayName||state.user.username)+' · alertas presentes no período consultado</p></div><button class="btn" data-mine-due="todos">Ver minhas pendências ↗</button></div>'+
+ (!ready?'<p class="help" role="status">'+esc(failed?state.taskIndexError:'Carregando os tratamentos do portal…')+'</p>'+(failed?'<button class="btn btn-sm" data-action="reload-workflow">Tentar novamente</button>':''):
+ '<div class="my-task-buckets">'+Object.entries(dueLabels).filter(([key])=>key!=='todos').map(([key,label])=>'<button class="my-task-bucket '+key+'" data-mine-due="'+key+'"><span>'+label+'</span><strong>'+n(result.dueCounts[key])+'</strong></button>').join('')+'</div><p class="help">Somente abertas e em tratamento. Prazos seguem o horário de São Paulo.</p>')+'</section>';
+}
 export function renderAlertsHub(data,state){
  const financial=!!state.permissions.financeiro;
- const lateDays=state.lateDays??2,asOf=new Date().toISOString().slice(0,10);
- if(!cachedAlerts||cachedAlerts.data!==data||cachedAlerts.lateDays!==lateDays||cachedAlerts.asOf!==asOf){cachedAlerts={data,lateDays,asOf,pager:createAlertPager(data,{lateDays,asOf})};}
+ const pager=alertPager(data,state),mine=state.alertScope==='mine';
+ const scopeTabs='<div class="alert-scope-tabs" role="group" aria-label="Responsabilidade pelas pendências"><button class="btn '+(!mine?'btn-red':'')+'" data-alert-scope="todos" aria-pressed="'+!mine+'">Todas as pendências</button><button class="btn '+(mine?'btn-red':'')+'" data-alert-scope="mine" aria-pressed="'+mine+'" '+(!state.user?.username?'disabled':'')+'>Minhas pendências</button></div>';
+ if(mine&&!state.user?.username)return '<section class="ins-module"><h2>MINHAS PENDÊNCIAS</h2>'+scopeTabs+'<p class="help">Entre no portal para ver as pendências atribuídas à sua conta.</p><button class="btn btn-sm" data-action="connect">Entrar</button></section>';
+ if(mine&&state.mode==='live'&&!state.loadedRange)return '<section class="ins-module"><h2>MINHAS PENDÊNCIAS</h2>'+scopeTabs+'<p class="help">Atualize os dados da DSS para conferir as pendências do período.</p></section>';
+ if(mine&&!state.taskIndexLoaded)return '<section class="ins-module"><h2>MINHAS PENDÊNCIAS</h2>'+scopeTabs+'<p class="help" role="status">'+esc(state.taskIndexError||'Carregando os tratamentos do portal…')+'</p><button class="btn btn-sm" data-action="reload-workflow">Atualizar tratamentos</button></section>';
  const priority=state.alertPriority||'todos';let kind=state.alertKind||'todos';
- let result=cachedAlerts.pager.getPage({page:state.page,priority,kind,financial,query:state.search||'',tasks:state.tasks||{},status:state.alertStatus||'todos',owner:state.alertOwner||''});
- if(kind!=='todos'&&!result.types.includes(kind)){kind='todos';state.alertKind='todos';result=cachedAlerts.pager.getPage({page:1,priority,kind,financial,query:state.search||'',tasks:state.tasks||{},status:state.alertStatus||'todos',owner:state.alertOwner||''});}
+ let result=pager.getPage({page:state.page,priority,kind,financial,query:state.search||'',tasks:state.tasks||{},status:state.alertStatus||'todos',owner:state.alertOwner||'',scope:state.alertScope||'todos',user:state.user,due:state.alertDue||'todos'});
+ if(kind!=='todos'&&!result.types.includes(kind)){kind='todos';state.alertKind='todos';result=pager.getPage({page:1,priority,kind,financial,query:state.search||'',tasks:state.tasks||{},status:state.alertStatus||'todos',owner:state.alertOwner||'',scope:state.alertScope||'todos',user:state.user,due:state.alertDue||'todos'});}
  state.page=result.page;
  const allowed=result.rows,types=result.types;state.visibleAlerts=allowed;
  const pagination='<div class="pagination"><span>'+n(result.total)+' registros • Página '+result.page+' de '+result.pages+'</span><div class="pagination-actions"><button type="button" class="btn btn-sm" data-action="prev" '+(result.page<=1?'disabled':'')+'>Anterior</button><button type="button" class="btn btn-sm" data-action="next" '+(result.page>=result.pages?'disabled':'')+'>Próxima</button></div></div>';
  const typeLabels={cte_pendente:'Pedido sem CT-e',rv_nao_localizada:'RV não localizada',rv_ambigua:'Vínculo ambíguo',sem_fatura:'Fatura pendente',comprovante_pendente:'Comprovante ausente',ocorrencia:'Ocorrência',rv_sem_termino:'RV sem término',km_acima:'Excesso de KM',cte_sem_rv:'CT-e sem RV',rv_sem_pedido:'RV sem pedido PF'};
- return '<section class="ins-module"><div class="ins-toolbar"><div><h2>CENTRAL INTELIGENTE DE PENDÊNCIAS</h2><p>Alertas da DSS · acompanhamento e providências no portal</p></div>'+'<div class="filter-row">'+badge(n(result.totalAlerts)+' alertas','red')+'<button class="btn btn-sm" data-action="reload-workflow" '+(state.taskIndexLoading?'disabled':'')+'>'+(state.taskIndexLoading?'Carregando…':'Atualizar tratamentos')+'</button></div></div>'+
+ return '<section class="ins-module"><div class="ins-toolbar"><div><h2>'+(mine?'MINHAS PENDÊNCIAS':'CENTRAL INTELIGENTE DE PENDÊNCIAS')+'</h2><p>Alertas da DSS · acompanhamento e providências no portal</p></div>'+'<div class="filter-row">'+badge(n(result.totalAlerts)+' alertas','red')+'<button class="btn btn-sm" data-action="reload-workflow" '+(state.taskIndexLoading?'disabled':'')+'>'+(state.taskIndexLoading?'Carregando…':'Atualizar tratamentos')+'</button></div></div>'+
  (state.taskIndexError?'<p class="ins-inline-error">'+esc(state.taskIndexError)+' <button class="btn btn-sm" data-action="reload-workflow">Tentar novamente</button></p>':'')+
+ scopeTabs+
+ (mine?'<div class="my-task-buckets">'+Object.entries(dueLabels).filter(([key])=>key!=='todos').map(([key,label])=>'<button class="my-task-bucket '+key+' '+(state.alertDue===key?'active':'')+'" data-alert-due="'+key+'"><span>'+label+'</span><strong>'+n(result.dueCounts[key])+'</strong></button>').join('')+'</div>':'')+
  cards([{label:'Prioridade alta',value:n(result.counts.high)},{label:'Verificação',value:n(result.counts.warning)},
  {label:'Informativos',value:n(result.counts.info)},{label:'Registros encontrados',value:n(result.total)}])+
  '<div class="ins-alert-filters"><label>Prioridade<select id="alertPriorityFilter" class="control"><option value="todos">Todas</option>'+[['high','Alta'],['warning','Verificação'],['info','Informativa']].map(([k,v])=>'<option value="'+k+'" '+(priority===k?'selected':'')+'>'+v+'</option>').join('')+'</select></label>'+
  '<label>Tipo<select id="alertKindFilter" class="control"><option value="todos">Todos</option>'+types.map(t=>'<option value="'+esc(t)+'" '+(kind===t?'selected':'')+'>'+esc(typeLabels[t]||t)+'</option>').join('')+'</select></label>'+
- '<label>Situação<select id="alertStatusFilter" class="control"><option value="todos">Todas</option>'+Object.entries(TASK_STATUSES).map(([key,label])=>'<option value="'+key+'" '+(state.alertStatus===key?'selected':'')+'>'+esc(label)+'</option>').join('')+'</select></label><label>Responsável<input id="alertOwnerFilter" class="control" value="'+esc(state.alertOwner||'')+'" placeholder="Nome do responsável"></label></div>'+
+ '<label>Prazo<select id="alertDueFilter" class="control">'+Object.entries(dueLabels).map(([key,label])=>'<option value="'+key+'" '+((state.alertDue||'todos')===key?'selected':'')+'>'+label+'</option>').join('')+'</select></label><label>Situação<select id="alertStatusFilter" class="control"><option value="todos">Todas</option><option value="ativas" '+(state.alertStatus==='ativas'?'selected':'')+'>Abertas e em tratamento</option>'+Object.entries(TASK_STATUSES).map(([key,label])=>'<option value="'+key+'" '+(state.alertStatus===key?'selected':'')+'>'+esc(label)+'</option>').join('')+'</select></label><label>Responsável<input id="alertOwnerFilter" class="control" value="'+esc(state.alertOwner||'')+'" placeholder="Nome do responsável"></label></div>'+
  (allowed.length?'<div class="ins-alert-list">'+allowed.map(a=>'<article class="ins-alert-item"><span class="ins-alert-signal '+(a.level==='high'?'danger':a.level==='info'?'info':'warning')+'">!</span>'+
  '<div><strong>'+esc(a.title)+'</strong><p>'+esc(a.detail)+'</p><small>'+date(a.refDate)+' · '+esc(typeLabels[a.type]||a.type)+'</small></div>'+
- '<div class="task-card-actions"><small>'+esc(TASK_STATUSES[a.status]||'Aberta')+' · '+esc(a.owner||'Sem responsável')+(a.due?' · Prazo: '+date(a.due):'')+'</small><button type="button" class="btn btn-sm" data-alert-manage="'+esc(alertKey(a))+'">Tratar pendência</button><button type="button" class="btn btn-sm" data-alert-detail="'+esc(a.view+':'+a.recordId)+'">Abrir registro ↗</button></div></article>').join('')+'</div>':empty('Nenhuma pendência correspondente aos filtros.'))+pagination+
+ '<div class="task-card-actions"><small>'+esc(TASK_STATUSES[a.status]||'Aberta')+' · '+esc(a.owner||'Sem responsável')+(a.due?' · Prazo: '+date(a.due):'')+(taskDueBucket(a)==='vencidas'?' · Vencida':'')+'</small><button type="button" class="btn btn-sm" data-alert-manage="'+esc(alertKey(a))+'">Tratar pendência</button><button type="button" class="btn btn-sm" data-alert-detail="'+esc(a.view+':'+a.recordId)+'">Abrir registro ↗</button></div></article>').join('')+'</div>':empty('Nenhuma pendência correspondente aos filtros.'))+pagination+
  '<p class="ins-hint">Uma RV ou CT-e não localizada pode estar fora do período consultado. Uma referência ausente não comprova irregularidade fiscal ou falta de emissão.</p></section>';
 }
 export function renderComparison(data,state){

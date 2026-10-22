@@ -73,17 +73,18 @@ test('backend DSS converte filtros para dd/mm/aaaa, lê registros e mantém aute
  assert.equal((await request('/api/overview?from=2026-10-15&to=2026-10-16&company=todas')).status,400);
  assert.equal((await request('/Ideallog.png')).status,200);
  assert.equal((await request('/src/companies.mjs')).status,200);
- for(const name of ['view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs'])assert.equal((await request('/src/'+name)).status,200,name);
+ for(const name of ['rv-checklist.mjs','view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs'])assert.equal((await request('/src/'+name)).status,200,name);
  assert.equal((await fetch('http://127.0.0.1:'+port+'/api/workflow?company=costalog')).status,401);
  const patch=input=>fetch('http://127.0.0.1:'+port+'/api/workflow?company=costalog',{method:'PATCH',headers:{Authorization:'Bearer local-test-token','Content-Type':'application/json'},body:JSON.stringify(input)});
- const taskInput={key:'cte_sem_rv:ctes:acdacosta~8',owner:'João',due:'2026-10-25',priority:'high',status:'tratamento',comment:'Conferir referência',revision:0};
+ const taskInput={key:'cte_sem_rv:ctes:acdacosta~8',owner:'João',ownerUsername:'joao.pedro',due:'2026-10-25',priority:'high',status:'tratamento',comment:'Conferir referência',revision:0};
  assert.equal((await patch(taskInput)).status,200);
  const index=await(await request('/api/workflow?company=costalog')).json();
- assert.equal(index.tasks[taskInput.key].owner,'João');assert.equal(index.tasks[taskInput.key].comments,undefined);
+ assert.equal(index.tasks[taskInput.key].owner,'João');assert.equal(index.tasks[taskInput.key].ownerUsername,'joao.pedro');assert.equal(index.tasks[taskInput.key].comments,undefined);
  const detail=await(await request('/api/workflow?company=costalog&key='+encodeURIComponent(taskInput.key))).json();
  assert.equal(detail.task.comments[0].text,'Conferir referência');
  assert.equal((await patch(taskInput)).status,409,'Não sobrescrever a versão de outro funcionário');
  assert.equal((await patch({...taskInput,key:'cte_sem_rv:ctes:ideallog~8'})).status,400);
+ assert.equal((await patch({...taskInput,ownerUsername:'../conta'})).status,400);
  assert.deepEqual((await(await request('/api/workflow?company=ideallog')).json()).tasks,{});
  assert.equal((await request('/api/workflow?company=todas')).status,400);
 

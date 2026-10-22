@@ -1,5 +1,5 @@
 import {memoView} from './view-cache.mjs';
-import {taskFor} from './workflow.mjs';
+import {taskFor,taskBelongsToUser,taskDueBucket,operationalToday} from './workflow.mjs';
 import {matchesSearch} from './filtering.mjs';
 /** COSTALOG - índices e análises baseadas exclusivamente em listarViagens/listarPedidosFrete.
  * Qualquer cálculo de lucro, status fiscal ou rastreamento requer outras fontes.
@@ -40,7 +40,7 @@ export function monthsOverview(viagens,pedidos,year){
   return {month:key,trips:trips.length,orders:orders.length,ctes:orders.filter(p=>p.isCte).length,freight:add(orders,null,p=>p.valor),fuel:add(trips,null,v=>v.abastecimento),km:add(trips,null,v=>v.kmRodados)};
  });
 }
-function alertContext(data,{asOf=new Date().toISOString().slice(0,10),lateDays=2}={}){
+function alertContext(data,{asOf=operationalToday(),lateDays=2}={}){
  return {asOf,lateDays,asOfTime:Date.parse(asOf+'T12:00:00Z'),hasOrders:data.sources?.pedidos===true,
   linkedTrips:new Set((data.pedidos||[]).map(p=>p.viagemId).filter(Boolean))};
 }
@@ -102,27 +102,51 @@ export function createAlertPager(data,options={}){
   const bucket=buckets.get(ref.type)||{type:ref.type,level:ref.level,count:0};
   bucket.count++;buckets.set(ref.type,bucket);
  }
- return {getPage({page=1,priority='todos',kind='todos',financial=false,query='',tasks={},status='todos',owner=''}={}){
+ const emptyTasks=Object.freeze({});let statsCache=[];
+ return {getPage({page=1,priority='todos',kind='todos',financial=false,query='',tasks=emptyTasks,status='todos',owner='',scope='todos',user=null,due='todos',includeRows=true}={}){
   const visible=[...buckets.values()].filter(b=>financial||b.type!=='sem_fatura'),hasTasks=Object.keys(tasks).length>0;
   const task=ref=>taskFor({type:ref.type,view:ref.view,recordId:ref.record.id,level:ref.level},tasks);
-  const matches=ref=>{const t=task(ref);return (financial||ref.type!=='sem_fatura')&&(priority==='todos'||t.priority===priority)&&(kind==='todos'||ref.type===kind)&&(status==='todos'||t.status===status)&&(!owner||matchesSearch({owner:t.owner},owner));};
-  const matchesQuery=ref=>!String(query).trim()||matchesSearch({...materializeAlert(ref),...task(ref)},query);
-  const total=String(query).trim()||hasTasks&&priority!=='todos'||status!=='todos'||owner?(()=>{let count=0;for(const ref of refs())if(matches(ref)&&matchesQuery(ref))count++;return count;})():visible.filter(b=>(priority==='todos'||b.level===priority)&&(kind==='todos'||b.type===kind)).reduce((sum,b)=>sum+b.count,0);
+  const inScope=t=>scope!=='mine'||taskBelongsToUser(t,user);
+  const statusMatches=t=>status==='todos'||status==='ativas'&&t.status!=='resolvida'||t.status===status;
+  const matchesBase=(ref,t)=>inScope(t)&&(priority==='todos'||t.priority===priority)&&(kind==='todos'||ref.type===kind)&&statusMatches(t)&&(!owner||matchesSearch({owner:t.owner},owner));
+  const matchesQuery=(ref,t)=>!String(query).trim()||matchesSearch({...materializeAlert(ref),...t},query);
+  const deps=[priority,kind,financial,query,tasks,status,owner,scope,user?.username,user?.displayName,user?.name,due];
+  let stats=statsCache.find(entry=>deps.every((value,i)=>value===entry.deps[i]));
+  if(!stats){
+   const counts={high:0,warning:0,info:0},dueCounts={vencidas:0,hoje:0,proximas:0,sem_prazo:0};let total=0,totalAlerts=0,mineTotal=0;
+   for(const ref of refs()){
+    if(!financial&&ref.type==='sem_fatura')continue;
+    const t=task(ref),mine=taskBelongsToUser(t,user);
+    if(mine&&t.status!=='resolvida')mineTotal++;
+    if(!inScope(t))continue;
+    totalAlerts++;counts[t.priority]++;
+    if(!matchesBase(ref,t)||!matchesQuery(ref,t))continue;
+    const bucket=taskDueBucket(t,context.asOf);
+    if(bucket!=='resolvidas')dueCounts[bucket]++;
+    if(due==='todos'||bucket===due)total++;
+   }
+   stats={deps,total,totalAlerts,mineTotal,counts,dueCounts};
+   statsCache=[stats,...statsCache].slice(0,4);
+  }
+  const {total,totalAlerts,mineTotal,counts,dueCounts}=stats;
   const pages=Math.max(1,Math.ceil(total/ALERT_PAGE_SIZE));
   const current=Math.min(pages,Math.max(1,Number.parseInt(page,10)||1));
-  const offset=(current-1)*ALERT_PAGE_SIZE,rows=[];
-  let skipped=0;
-  if(total)for(const ref of refs()){
-   if(!matches(ref)||!matchesQuery(ref))continue;
+  const offset=(current-1)*ALERT_PAGE_SIZE,rows=[];let skipped=0;
+  if(total&&includeRows)for(const ref of refs()){
+   if(!financial&&ref.type==='sem_fatura')continue;
+   const t=task(ref);
+   if(!matchesBase(ref,t)||!matchesQuery(ref,t)||(due!=='todos'&&taskDueBucket(t,context.asOf)!==due))continue;
    if(skipped++<offset)continue;
-   const alert=materializeAlert(ref);rows.push(hasTasks?{...alert,...task(ref),level:task(ref).priority}:alert);
+   const alert=materializeAlert(ref);rows.push(hasTasks?{...alert,...t,level:t.priority}:alert);
    if(rows.length===ALERT_PAGE_SIZE)break;
   }
-  const counts={high:0,warning:0,info:0};
-  if(hasTasks){for(const ref of refs())if(financial||ref.type!=='sem_fatura')counts[task(ref).priority]++;}
-  else for(const bucket of visible)counts[bucket.level]+=bucket.count;
-  return {rows,page:current,pages,pageSize:ALERT_PAGE_SIZE,total,totalAlerts:visible.reduce((sum,b)=>sum+b.count,0),counts,types:visible.map(b=>b.type).sort()};
+  return {rows,page:current,pages,pageSize:ALERT_PAGE_SIZE,total,totalAlerts,mineTotal,counts,dueCounts,types:visible.map(b=>b.type).sort()};
  }};
+}
+
+/** Índice compartilhado pelo painel e pela central; não guarda páginas materializadas. */
+export function cachedAlertPager(data,{asOf=operationalToday(),lateDays=2}={}){
+ return memoView('alert-pager',[data,asOf,lateDays],()=>createAlertPager(data,{asOf,lateDays}));
 }
 export function buildInsights(data,opts={}){
  const viagens=data.viagens||[],pedidos=data.pedidos||[];
