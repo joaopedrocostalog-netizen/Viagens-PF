@@ -40,35 +40,86 @@ export function monthsOverview(viagens,pedidos,year){
   return {month:key,trips:trips.length,orders:orders.length,ctes:orders.filter(p=>p.isCte).length,freight:add(orders,null,p=>p.valor),fuel:add(trips,null,v=>v.abastecimento),km:add(trips,null,v=>v.kmRodados)};
  });
 }
-export function makeAlerts(data,{asOf=new Date().toISOString().slice(0,10),lateDays=2}={}){
- const trips=data.viagens||[],orders=data.pedidos||[];
- const alerts=[];
- const push=(type,level,recordId,title,detail,view,refDate)=>alerts.push({type,level,recordId,title,detail,view,refDate});
- for(const p of orders){
-  if(!p.isCte)push('cte_pendente','high',p.id,'Pedido sem número de CT-e','PF '+(p.pedidoNumero||p.id)+' • '+p.cliente,'ctes',p.data);
-  if(p.isCte&&!p.viagemId)push('cte_sem_rv','warning',p.id,'CT-e sem RV localizada na consulta','CT-e '+(p.cteNumero||p.numero)+' • PF '+(p.pedidoNumero||p.id),'ctes',p.data);
-  if(p.rvReferencia&&!p.viagemId)push('rv_nao_localizada','warning',p.id,'RV não localizada na consulta','PF '+(p.pedidoNumero||p.id)+' • referência '+p.rvReferencia,'ctes',p.data);
-  if(p.ambiguous)push('rv_ambigua','warning',p.id,'Vínculo da RV ambíguo','PF '+(p.pedidoNumero||p.id),'ctes',p.data);
-  if(p.entregaConcluida===true&&p.comprovanteEntrega===false)push('comprovante_pendente','high',p.id,'Entrega sem comprovante','PF '+(p.pedidoNumero||p.id)+' • '+p.cliente,'ctes',p.data);
-  if(p.liberadoFaturamento===true&&!p.numeroFatura)push('sem_fatura','warning',p.id,'Pedido liberado sem número de fatura','PF '+(p.pedidoNumero||p.id)+' • '+p.cliente,'ctes',p.data);
-  if(ok(p.ocorrencia))push('ocorrencia','info',p.id,'Ocorrência registrada','PF '+(p.pedidoNumero||p.id)+' • '+String(p.ocorrencia).slice(0,85),'ctes',p.data);
+function alertContext(data,{asOf=new Date().toISOString().slice(0,10),lateDays=2}={}){
+ return {asOf,lateDays,asOfTime:Date.parse(asOf+'T12:00:00Z'),hasOrders:data.sources?.pedidos===true,
+  linkedTrips:new Set((data.pedidos||[]).map(p=>p.viagemId).filter(Boolean))};
+}
+function* recordAlerts(record,view,context){
+ const ref=(type,level,age)=>({type,level,record,view,age});
+ if(view==='ctes'){
+  const p=record;
+  if(!p.isCte)yield ref('cte_pendente','high');
+  if(p.isCte&&!p.viagemId)yield ref('cte_sem_rv','warning');
+  if(p.rvReferencia&&!p.viagemId)yield ref('rv_nao_localizada','warning');
+  if(p.ambiguous)yield ref('rv_ambigua','warning');
+  if(p.entregaConcluida===true&&p.comprovanteEntrega===false)yield ref('comprovante_pendente','high');
+  if(p.liberadoFaturamento===true&&!p.numeroFatura)yield ref('sem_fatura','warning');
+  if(ok(p.ocorrencia))yield ref('ocorrencia','info');
+  return;
  }
- for(const v of trips){
-  // Não concluir que a viagem não tem pedido: ele pode ter sido emitido fora das datas consultadas.
-  if(data.sources?.pedidos===true&&!orders.some(p=>p.viagemId===v.id)){
-   push('rv_sem_pedido','info',v.id,'RV sem pedido PF localizado','RV '+v.numero+' • confira também outros períodos de emissão','viagens',v.data);
-  }
-  const status=realStatus(v),complete=/encerr|conclu|finaliz|entreg/.test(status);
-  const active=/inici|transito|andamento|viagem|rota|rodando/.test(status) && !complete;
-  if(v.data&&!v.dataTermino&&active){
-   const age=(Date.parse(asOf+'T12:00:00Z')-Date.parse(v.data+'T12:00:00Z'))/86400000;
-   if(Number.isFinite(age)&&age>lateDays)push('rv_sem_termino','warning',v.id,'RV iniciada sem término informado',v.numero+' • '+Math.floor(age)+' dias desde o início','viagens',v.data);
-  }
-  if(Number.isFinite(v.kmRodados)&&Number.isFinite(v.kmPrevisto)&&v.kmPrevisto>0&&v.kmRodados>v.kmPrevisto*1.15){
-   push('km_acima','info',v.id,'Quilometragem acima do previsto','RV '+v.numero+' • '+Math.round((v.kmRodados/v.kmPrevisto-1)*100)+'% acima','viagens',v.data);
-  }
+ const v=record;
+ // Indexar vínculos uma vez evita percorrer todos os pedidos para cada RV.
+ if(context.hasOrders&&!context.linkedTrips.has(v.id))yield ref('rv_sem_pedido','info');
+ const status=realStatus(v),complete=/encerr|conclu|finaliz|entreg/.test(status);
+ const active=/inici|transito|andamento|viagem|rota|rodando/.test(status)&&!complete;
+ if(v.data&&!v.dataTermino&&active){
+  const age=(context.asOfTime-Date.parse(v.data+'T12:00:00Z'))/86400000;
+  if(Number.isFinite(age)&&age>context.lateDays)yield ref('rv_sem_termino','warning',age);
  }
+ if(Number.isFinite(v.kmRodados)&&Number.isFinite(v.kmPrevisto)&&v.kmPrevisto>0&&v.kmRodados>v.kmPrevisto*1.15)yield ref('km_acima','info');
+}
+function materializeAlert({type,level,record:r,view,age}){
+ let title,detail;
+ switch(type){
+ case 'cte_pendente':title='Pedido sem número de CT-e';detail='PF '+(r.pedidoNumero||r.id)+' • '+r.cliente;break;
+ case 'cte_sem_rv':title='CT-e sem RV localizada na consulta';detail='CT-e '+(r.cteNumero||r.numero)+' • PF '+(r.pedidoNumero||r.id);break;
+ case 'rv_nao_localizada':title='RV não localizada na consulta';detail='PF '+(r.pedidoNumero||r.id)+' • referência '+r.rvReferencia;break;
+ case 'rv_ambigua':title='Vínculo da RV ambíguo';detail='PF '+(r.pedidoNumero||r.id);break;
+ case 'comprovante_pendente':title='Entrega sem comprovante';detail='PF '+(r.pedidoNumero||r.id)+' • '+r.cliente;break;
+ case 'sem_fatura':title='Pedido liberado sem número de fatura';detail='PF '+(r.pedidoNumero||r.id)+' • '+r.cliente;break;
+ case 'ocorrencia':title='Ocorrência registrada';detail='PF '+(r.pedidoNumero||r.id)+' • '+String(r.ocorrencia).slice(0,85);break;
+ case 'rv_sem_pedido':title='RV sem pedido PF localizado';detail='RV '+r.numero+' • confira também outros períodos de emissão';break;
+ case 'rv_sem_termino':title='RV iniciada sem término informado';detail=r.numero+' • '+Math.floor(age)+' dias desde o início';break;
+ case 'km_acima':title='Quilometragem acima do previsto';detail='RV '+r.numero+' • '+Math.round((r.kmRodados/r.kmPrevisto-1)*100)+'% acima';break;
+ }
+ return {type,level,recordId:r.id,title,detail,view,refDate:r.data};
+}
+export function makeAlerts(data,options={}){
+ const context=alertContext(data,options),alerts=[];
+ for(const record of data.pedidos||[])for(const ref of recordAlerts(record,'ctes',context))alerts.push(materializeAlert(ref));
+ for(const record of data.viagens||[])for(const ref of recordAlerts(record,'viagens',context))alerts.push(materializeAlert(ref));
  return sortRecords(alerts,'refDate','desc');
+}
+export const ALERT_PAGE_SIZE=25;
+/** Mantém somente referências aos registros e contagens; nenhum conteúdo de outra página. */
+export function createAlertPager(data,options={}){
+ const context=alertContext(data,options);
+ const records=[...(data.pedidos||[]).map(record=>({record,view:'ctes'})),...(data.viagens||[]).map(record=>({record,view:'viagens'}))];
+ records.sort((a,b)=>{const x=String(a.record.data||''),y=String(b.record.data||'');return x===y?0:x<y?1:-1;});
+ function* refs(){for(const {record,view} of records)yield* recordAlerts(record,view,context);}
+ const buckets=new Map();
+ for(const ref of refs()){
+  const bucket=buckets.get(ref.type)||{type:ref.type,level:ref.level,count:0};
+  bucket.count++;buckets.set(ref.type,bucket);
+ }
+ return {getPage({page=1,priority='todos',kind='todos',financial=false}={}){
+  const visible=[...buckets.values()].filter(b=>financial||b.type!=='sem_fatura');
+  const matches=ref=>(financial||ref.type!=='sem_fatura')&&(priority==='todos'||ref.level===priority)&&(kind==='todos'||ref.type===kind);
+  const total=visible.filter(matches).reduce((sum,b)=>sum+b.count,0);
+  const pages=Math.max(1,Math.ceil(total/ALERT_PAGE_SIZE));
+  const current=Math.min(pages,Math.max(1,Number.parseInt(page,10)||1));
+  const offset=(current-1)*ALERT_PAGE_SIZE,rows=[];
+  let skipped=0;
+  if(total)for(const ref of refs()){
+   if(!matches(ref))continue;
+   if(skipped++<offset)continue;
+   rows.push(materializeAlert(ref));
+   if(rows.length===ALERT_PAGE_SIZE)break;
+  }
+  const counts={high:0,warning:0,info:0};
+  for(const bucket of visible)counts[bucket.level]+=bucket.count;
+  return {rows,page:current,pages,pageSize:ALERT_PAGE_SIZE,total,totalAlerts:visible.reduce((sum,b)=>sum+b.count,0),counts,types:visible.map(b=>b.type).sort()};
+ }};
 }
 export function buildInsights(data,opts={}){
  const viagens=data.viagens||[],pedidos=data.pedidos||[];

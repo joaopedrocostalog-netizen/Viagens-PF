@@ -219,7 +219,7 @@ function render(){
  const brand=COMPANIES[state.company],other=state.company==='costalog'?'ideallog':'costalog';
  if(document.title!==undefined)document.title=brand.name+' · Viagens e pedidos de frete';
  state.view=safeView(state.role,state.view);
- const d=scoped(),stats=totals(d);
+ const d=scoped(),stats=state.view==='painel'?totals(d):null;
  const allowed=navItems.filter(x=>x[0]!=='integracoes'&&permittedView(state.role,x[0]));
  const PRIMARY=['viagens','ctes'];
  const secondary=allowed.filter(x=>!PRIMARY.includes(x[0]));
@@ -889,8 +889,8 @@ root.addEventListener('change',e=>{
  if(e.target.id==='compareAnchorInput'){
   state.compareAnchor=e.target.value;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;
  }
- if(e.target.id==='alertPriorityFilter'){state.alertPriority=e.target.value;render();return;}
- if(e.target.id==='alertKindFilter'){state.alertKind=e.target.value;render();return;}
+ if(e.target.id==='alertPriorityFilter'){state.alertPriority=e.target.value;state.page=1;render();return;}
+ if(e.target.id==='alertKindFilter'){state.alertKind=e.target.value;state.page=1;render();return;}
  if(e.target.dataset?.metricToggle){
   const id=e.target.dataset.metricToggle;
   const current=normalizedLayout(state.metricLayout,{financial:!!state.permissions.financeiro});

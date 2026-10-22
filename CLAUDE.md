@@ -78,3 +78,11 @@
 - A classificação usa `empresa` e vínculos documentais inequívocos, nunca o cliente ou a placa isoladamente. Registros com empresa desconhecida ou vínculos ambíguos não entram em nenhuma visão. Ocorrências sem empresa precisam de referência segura a RV/PF/MDF-e para serem exibidas.
 - Trocar de empresa limpa seleções e filtros. Dados já carregados são guardados separadamente por empresa e intervalo; respostas de consultas iniciadas antes da troca são descartadas. Exportações usam somente o conjunto da empresa ativa e sua identificação.
 - A logo `Ideallog.png` foi reaproveitada do repositório Faturamento e faz parte dos arquivos publicados no Pages e no backend. As contas e endpoints de gestão continuam preservados para manutenção, sem aba ou consulta automática de usuários na interface.
+
+
+## Pendências paginadas sob demanda — 22/10/2026
+
+- Pendências exibe **25 itens por página**, com Anterior/Próxima. Alterar prioridade ou tipo volta à primeira página; trocar empresa/período invalida o índice anterior.
+- `createAlertPager` mantém referências aos registros ordenados e contagens por tipo/prioridade. Títulos, detalhes e cartões são gerados somente para a página solicitada; não guardar arrays ou HTML de outras páginas nem usar `makeAlerts` para materializar a lista inteira nesta tela.
+- A verificação de RVs sem pedido usa um `Set` de vínculos, evitando a varredura de todos os PFs para cada RV. O cálculo financeiro legado de `totals` não é executado nas telas operacionais.
+- Esta paginação opera sobre os dados-base já sincronizados por `/api/overview`; não equivale a buscar os registros DSS no servidor em lotes de 25. Preservar a separação por empresa e os filtros ao evoluir a sincronização.

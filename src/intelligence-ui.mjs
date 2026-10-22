@@ -1,5 +1,5 @@
-import {unifiedSearch,customerProfiles,routeStats,driverStats,comparisonWindows,subsetPeriod,comparePeriodMetrics, dashboardMetrics,DASH_METRICS,normalizedLayout,alertsForRole} from './intelligence.mjs';
-import {makeAlerts} from './operational.mjs';
+import {unifiedSearch,customerProfiles,routeStats,driverStats,comparisonWindows,subsetPeriod,comparePeriodMetrics, dashboardMetrics,DASH_METRICS,normalizedLayout} from './intelligence.mjs';
+import {createAlertPager} from './operational.mjs';
 const esc=v=>String(v??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[x]));
 const fmt=new Intl.NumberFormat('pt-BR');
 const money=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
@@ -116,21 +116,22 @@ export function renderDriverRouteDetails(data,state,view){
 let cachedAlerts=null;
 export function renderAlertsHub(data,state){
  const financial=!!state.permissions.financeiro;
- const lateDays=state.lateDays??2;
- if(!cachedAlerts||cachedAlerts.data!==data||cachedAlerts.lateDays!==lateDays){cachedAlerts={data,lateDays,alerts:makeAlerts(data,{lateDays})};}
- const alerts=alertsForRole(cachedAlerts.alerts,financial);
+ const lateDays=state.lateDays??2,asOf=new Date().toISOString().slice(0,10);
+ if(!cachedAlerts||cachedAlerts.data!==data||cachedAlerts.lateDays!==lateDays||cachedAlerts.asOf!==asOf){cachedAlerts={data,lateDays,asOf,pager:createAlertPager(data,{lateDays,asOf})};}
  const priority=state.alertPriority||'todos',kind=state.alertKind||'todos';
- const allowed=alerts.filter(a=>(priority==='todos'||a.level===priority)&&(kind==='todos'||a.type===kind));
- const types=[...new Set(alerts.map(x=>x.type))].sort();
+ const result=cachedAlerts.pager.getPage({page:state.page,priority,kind,financial});
+ state.page=result.page;
+ const allowed=result.rows,types=result.types;
+ const pagination='<div class="pagination"><span>'+n(result.total)+' registros • Página '+result.page+' de '+result.pages+'</span><div class="pagination-actions"><button type="button" class="btn btn-sm" data-action="prev" '+(result.page<=1?'disabled':'')+'>Anterior</button><button type="button" class="btn btn-sm" data-action="next" '+(result.page>=result.pages?'disabled':'')+'>Próxima</button></div></div>';
  const typeLabels={cte_pendente:'Pedido sem CT-e',rv_nao_localizada:'RV não localizada',rv_ambigua:'Vínculo ambíguo',sem_fatura:'Fatura pendente',comprovante_pendente:'Comprovante ausente',ocorrencia:'Ocorrência',rv_sem_termino:'RV sem término',km_acima:'Excesso de KM',cte_sem_rv:'CT-e sem RV',rv_sem_pedido:'RV sem pedido PF'};
- return '<section class="ins-module"><div class="ins-toolbar"><div><h2>CENTRAL INTELIGENTE DE PENDÊNCIAS</h2><p>Alertas derivados dos campos do DSS — somente leitura</p></div>'+badge(n(alerts.length)+' alertas','red')+'</div>'+
- cards([{label:'Prioridade alta',value:n(alerts.filter(x=>x.level==='high').length)},{label:'Verificação',value:n(alerts.filter(x=>x.level==='warning').length)},
- {label:'Informativos',value:n(alerts.filter(x=>x.level==='info').length)},{label:'Registros encontrados',value:n(allowed.length)}])+
+ return '<section class="ins-module"><div class="ins-toolbar"><div><h2>CENTRAL INTELIGENTE DE PENDÊNCIAS</h2><p>Alertas derivados dos campos do DSS — somente leitura</p></div>'+badge(n(result.totalAlerts)+' alertas','red')+'</div>'+
+ cards([{label:'Prioridade alta',value:n(result.counts.high)},{label:'Verificação',value:n(result.counts.warning)},
+ {label:'Informativos',value:n(result.counts.info)},{label:'Registros encontrados',value:n(result.total)}])+
  '<div class="ins-alert-filters"><label>Prioridade<select id="alertPriorityFilter" class="control"><option value="todos">Todas</option>'+[['high','Alta'],['warning','Verificação'],['info','Informativa']].map(([k,v])=>'<option value="'+k+'" '+(priority===k?'selected':'')+'>'+v+'</option>').join('')+'</select></label>'+
  '<label>Tipo<select id="alertKindFilter" class="control"><option value="todos">Todos</option>'+types.map(t=>'<option value="'+esc(t)+'" '+(kind===t?'selected':'')+'>'+esc(typeLabels[t]||t)+'</option>').join('')+'</select></label></div>'+
  (allowed.length?'<div class="ins-alert-list">'+allowed.map(a=>'<article class="ins-alert-item"><span class="ins-alert-signal '+(a.level==='high'?'danger':a.level==='info'?'info':'warning')+'">!</span>'+
  '<div><strong>'+esc(a.title)+'</strong><p>'+esc(a.detail)+'</p><small>'+date(a.refDate)+' · '+esc(typeLabels[a.type]||a.type)+'</small></div>'+
- '<button type="button" class="btn btn-sm" data-alert-detail="'+esc(a.view+':'+a.recordId)+'">Abrir registro ↗</button></article>').join('')+'</div>':empty('Nenhuma pendência correspondente aos filtros.'))+(allowed.length>100?'<p class="ins-hint">Exibindo as primeiras 100 pendências dos '+n(allowed.length)+' registros. Refine os filtros para localizar outros resultados.</p>':'')+
+ '<button type="button" class="btn btn-sm" data-alert-detail="'+esc(a.view+':'+a.recordId)+'">Abrir registro ↗</button></article>').join('')+'</div>':empty('Nenhuma pendência correspondente aos filtros.'))+pagination+
  '<p class="ins-hint">Uma RV ou CT-e não localizada pode estar fora do período consultado. Uma referência ausente não comprova irregularidade fiscal ou falta de emissão.</p></section>';
 }
 export function renderComparison(data,state){
