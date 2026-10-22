@@ -24,7 +24,7 @@ test('Primeira conta administrador é criada SOMENTE pelo terminal privado, sem 
   assert.notEqual(duplicate.status,0);
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
-test('Admin gerencia usuários, libera faturamento, redefine senha e bloqueia sem expor hashes',async t=>{
+test('Admin gerencia perfis, redefine senha e bloqueia sem expor hashes',async t=>{
  const dir=mkdtempSync(join(tmpdir(),'costalog-admin-crud-'));
  t.after(()=>rmSync(dir,{recursive:true,force:true}));
  const path=join(dir,'portal-users.json');
@@ -54,7 +54,7 @@ test('Admin gerencia usuários, libera faturamento, redefine senha e bloqueia se
  const provisional=await login('financeiro01','senha-provisoria-forte-2026');assert.equal(provisional.status,200);
  const provisionalJson=await provisional.json();
  assert.equal(provisionalJson.user.mustChangePassword,true);
- assert.equal(provisionalJson.permissions.financeiro,true);
+ assert.equal(provisionalJson.permissions.financeiro,false);
  assert.equal((await api('/api/overview?from=2026-10-01&to=2026-10-15','GET',provisionalJson.token)).status,403);
  assert.equal((await api('/api/users','GET',provisionalJson.token)).status,403);
  const change=await api('/api/change-password','POST',provisionalJson.token,{currentPassword:'senha-provisoria-forte-2026',newPassword:'nova-senha-pessoal-forte-2026'});

@@ -36,7 +36,7 @@ export function renderHero(view,d,{from,to,mode,financeiro}){
   painel:['STATUS & CATEGORIA','Visão operacional unificada de viagens e pedidos de frete'],
   graficos:['VISÃO GRÁFICA','Indicadores, tendências e distribuição dos registros DSS'],
   viagens:['VIAGENS / RV','Relatórios de viagem, placas, clientes e situações'],
-  ctes:['PEDIDOS DE FRETE / CT-e','Acompanhamento de documentos vinculados às viagens'],
+  ctes:['PEDIDOS DE FRETE','Consulta de pedidos e suas referências de viagem'],
   relatorios:['RELATÓRIOS DE PERFORMANCE','Business Intelligence & Operational Metrics'],
   comparativos:['COMPARATIVOS','Evolução diária, semanal e mensal dos indicadores'],
   faturamento:['FATURAMENTO','Análise financeira dos pedidos de frete'],

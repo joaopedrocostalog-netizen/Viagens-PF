@@ -28,7 +28,7 @@ test('GitHub Pages aceita administrador temporário, troca senha e gerencia usu�
  assert(!app.innerHTML.includes('id="apiUrl"'));
  submit('loginForm');await tick();
  assert(app.innerHTML.includes('Defina sua senha pessoal'),'Deve forçar troca de senha.');
- assert(!app.innerHTML.includes('data-nav="faturamento"')===false || app.innerHTML.includes('Defina sua senha pessoal'));
+ assert(!app.innerHTML.includes('data-nav="faturamento"'));
  submit('forcePasswordChange');await tick();
  fields.loginPassword.value='SenhaPessoal-Que-Vou-Trocar-2026!';
  submit('loginForm');await tick();

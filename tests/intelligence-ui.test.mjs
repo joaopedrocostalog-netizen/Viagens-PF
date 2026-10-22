@@ -11,7 +11,8 @@ test('Busca global gera resultados clicáveis, sem perfis de cliente para operac
  const op=renderGlobalSearch(state(false),d),fin=renderGlobalSearch(state(true),d);
  assert(op.includes('data-search-result="viagens:rv7"'));
  assert(!op.includes('data-search-result="clientes:Cliente Alfa"'));
- assert(fin.includes('data-search-result="clientes:Cliente Alfa"'));
+ assert(!fin.includes('data-search-result="clientes:Cliente Alfa"'));
+ assert(!fin.includes('data-search-result="mdfes:'));
 });
 test('Painel personalizado respeita ordem, botão de mover e campos financeiros',()=>{
  const st=state(false);st.metricLayout=['pedidos','viagens','fretes'];st.showMetricOptions=true;

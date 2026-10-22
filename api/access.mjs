@@ -1,15 +1,15 @@
 /** Projeção de resposta DSS por papel: proteção acontece ANTES da resposta HTTP. */
 export const ROLE_PERMISSIONS=Object.freeze({
   operacional:Object.freeze({operacional:true,financeiro:false,admin:false}),
-  financeiro:Object.freeze({operacional:true,financeiro:true,admin:false}),
-  administrador:Object.freeze({operacional:true,financeiro:true,admin:true})
+  financeiro:Object.freeze({operacional:true,financeiro:false,admin:false}),
+  administrador:Object.freeze({operacional:true,financeiro:false,admin:true})
 });
 export function permissionsFor(role){return ROLE_PERMISSIONS[role]||null;}
-export const OPERATIONAL_VIEWS=Object.freeze(['painel','viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','ocorrencias','containers','mdfes','relatorios']);
-export const FINANCIAL_VIEWS=Object.freeze(['faturamento','clientes','analises']);
-export const ADMIN_VIEWS=Object.freeze(['administracao','integracoes']);
-export const OPERATIONAL_REPORTS=Object.freeze(['viagens','pedidos','ctes','rotas','veiculos','motoristas','containers','mdfes','pendencias','mensal']);
-export const FINANCIAL_REPORTS=Object.freeze(['clientes']); // Exportações de operações terão ainda colunas financeiros removidas no navegador
+export const OPERATIONAL_VIEWS=Object.freeze(['viagens','ctes']);
+export const FINANCIAL_VIEWS=Object.freeze([]);
+export const ADMIN_VIEWS=Object.freeze(['administracao']);
+export const OPERATIONAL_REPORTS=Object.freeze(['viagens','pedidos']);
+export const FINANCIAL_REPORTS=Object.freeze([]); // Este portal publica somente relatórios operacionais.
 export function canView(role,view){
  const p=permissionsFor(role);if(!p)return false;
  if(ADMIN_VIEWS.includes(view))return p.admin;
@@ -35,7 +35,6 @@ export const OP_ORDERS=Object.freeze([
  'placa_veiculo','empresa','data_emissao_cte','remetente','destinatario',
  'nro_container','local_coleta','produto_predominante','nro_ref_cliente','rv_viagem'
 ]);
-const PII=new Set(['motorista_cpf','cliente_cnpjcpf','created_by']);
 function project(row,allowed){
  const result={};
  if(!row||typeof row!=='object')return result;
@@ -46,14 +45,13 @@ export function projectOverview(raw,role){
  const permissions=permissionsFor(role);
  if(!permissions)throw new Error('Papel de acesso inválido');
  const payload=raw?.data||{};
- const operationalOnly=!permissions.financeiro;
  const cleaned={
-  viagens:(payload.viagens||[]).map(x=>operationalOnly?project(x,OP_TRIPS):Object.fromEntries(Object.entries(x).filter(([k])=>!PII.has(k)))),
-  pedidos:(payload.pedidos||[]).map(x=>operationalOnly?project(x,OP_ORDERS):Object.fromEntries(Object.entries(x).filter(([k])=>!PII.has(k)))),
-  ctes:(payload.ctes||[]).map(x=>operationalOnly?project(x,OP_ORDERS):Object.fromEntries(Object.entries(x).filter(([k])=>!PII.has(k)))),
-  mdfes:(payload.mdfes||[]).map(x=>operationalOnly?project(x,['nro_mdf','numero','numeroMDFe','nroMDFe','nrMDFe','data_emissao','data','rv_id','viagemId','idViagem','rv_viagem','placa_veiculo','placa','status','situacao']):Object.fromEntries(Object.entries(x).filter(([k])=>!PII.has(k)))),
+  viagens:(payload.viagens||[]).map(x=>project(x,OP_TRIPS)),
+  pedidos:(payload.pedidos||[]).map(x=>project(x,OP_ORDERS)),
+  ctes:(payload.ctes||[]).map(x=>project(x,OP_ORDERS)),
+  mdfes:(payload.mdfes||[]).map(x=>project(x,['nro_mdf','numero','numeroMDFe','nroMDFe','nrMDFe','data_emissao','data','rv_id','viagemId','idViagem','rv_viagem','placa_veiculo','placa','status','situacao'])),
   rotas:(payload.rotas||[]).map(x=>project(x,['rota_id','km_previsto_rota','dsc_rota','cidade_origem_rota','cidade_destino_rota'])),
-  programacoes:(payload.programacoes||[]).map(x=>project(x,['programacao_id','nro_programacao','rv_id','nro_rv','pf_id','motorista_id','veiculo_id','data_emissao','nro_cte','total_frete_pedido_frete'])),
+  programacoes:(payload.programacoes||[]).map(x=>project(x,['programacao_id','nro_programacao','rv_id','nro_rv','pf_id','motorista_id','veiculo_id','data_emissao','nro_cte'])),
   ocorrencias:(payload.ocorrencias||[]).map(x=>project(x,['ocorrencia_id','data_ocorrencia','descricao','veiculo_id','placa_veiculo','ocorrencia_de','relato','causa_raiz','providencia_tomada','responsavel_atendimento','envolvido','data','status'])),
   sources:payload.sources
  };

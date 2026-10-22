@@ -18,17 +18,29 @@ test('RBAC operacional não entrega custo, receita, faturamento ou CPF nem campo
   assert(!JSON.stringify(response).includes(secret),'dado sensível retornou ao Operacional: '+secret);
  }
 });
-test('RBAC financeiro recebe valores e não acessa administração',()=>{
- const response=projectOverview(raw,'financeiro');
- assert.equal(response.data.viagens[0].valor_total_abastecido,1200);
- assert.equal(response.data.pedidos[0].total_frete,9999);
+test('Perfis financeiro e administrador também recebem somente dados operacionais',()=>{
+ for(const role of ['financeiro','administrador']){
+ const response=projectOverview(raw,role);
+ assert.equal(response.data.viagens[0].valor_total_abastecido,undefined);
+ assert.equal(response.data.pedidos[0].total_frete,undefined);
  assert.equal(response.data.pedidos[0].motorista_cpf,undefined);
  assert.equal(canView('financeiro','administracao'),false);
- assert.equal(canView('financeiro','faturamento'),true);
+ assert.equal(canView(role,'faturamento'),false);
+ assert.equal(response.permissions.financeiro,false);
+ }
 });
 test('Sem role válida não existe projeção',()=>{
  assert.equal(permissionsFor(''),null);
  assert.throws(()=>projectOverview(raw,'invalido'));
  assert.equal(canView('operacional','faturamento'),false);
- assert.equal(canView('operacional','entregas'),true);
+ assert.equal(canView('operacional','entregas'),false);
+});
+
+test('Programações não vazam total de frete e navegação mantém somente viagens/PF',()=>{
+ for(const role of ['operacional','financeiro','administrador']){
+  const response=projectOverview({data:{programacoes:[{pf_id:8,nro_rv:77,total_frete_pedido_frete:9999}]}},role);
+  assert.deepEqual(response.data.programacoes,[{nro_rv:77,pf_id:8}]);
+  for(const view of ['painel','clientes','faturamento','analises','entregas','relatorios','mdfes'])assert.equal(canView(role,view),false);
+  for(const view of ['viagens','ctes'])assert.equal(canView(role,view),true);
+ }
 });

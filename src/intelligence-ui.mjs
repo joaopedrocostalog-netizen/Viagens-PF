@@ -25,8 +25,8 @@ const empty=message=>'<div class="ins-empty"><span>◇</span><p>'+esc(message)+'
 const cards=items=>'<div class="ins-kpi-row">'+items.map(x=>'<div class="ins-kpi"><div>'+esc(x.label)+'</div><strong>'+esc(x.value)+'</strong><small>'+esc(x.note||'')+'</small></div>').join('')+'</div>';
 export const SEARCH_MIN_LENGTH=2;
 export function renderGlobalSearch(state,data){
- const q=String(state.globalQuery||''),result=unifiedSearch(data,q,{financial:!!state.permissions.financeiro,limit:35});
- const tags={viagens:'RV',pedidos:'PF / CT-e',mdfes:'MDF-e',clientes:'Cliente'};
+ const q=String(state.globalQuery||''),result=unifiedSearch({...data,mdfes:[]},q,{financial:false,limit:35});
+ const tags={viagens:'RV',pedidos:'PF',mdfes:'MDF-e',clientes:'Cliente'};
  return '<section class="ins-search"><div class="ins-search-control"><span class="ins-search-symbol">⌕</span>'+
  '<label for="globalSearchInput" class="sr-only">Busca global por RV, CT-e, PF, placa ou cliente</label>'+
  '<input id="globalSearchInput" class="control" type="search" autocomplete="off" placeholder="Pesquisa global — placa, cliente, pedido PF, RV, CT-e, container..." value="'+esc(q)+'">'+

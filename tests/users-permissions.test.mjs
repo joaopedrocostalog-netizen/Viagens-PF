@@ -70,13 +70,17 @@ test('Login individual, projeção por perfil, revogação e bloqueio de status 
  assert.equal((await fetch(base+'/api/status',{headers:{Authorization:'Bearer '+op}})).status,403);
  const finance=await login('financeiro');
  const financial=await req(finance);assert.equal(financial.status,200);
- const f=await financial.json();assert.equal(f.data.pedidos[0].total_frete,9999);
- assert.equal(f.data.viagens[0].valor_total_abastecido,1870);
+ const f=await financial.json();assert.equal(f.data.pedidos[0].total_frete,undefined);
+ assert.equal(f.data.viagens[0].valor_total_abastecido,undefined);
  assert.equal((await fetch(base+'/api/status',{headers:{Authorization:'Bearer '+finance}})).status,403);
  // Uma segunda consulta deve usar cache bruto projetado por role, nunca o JSON de outro funcionário.
  const opAgain=await(await req(op)).json();
  assert.equal(opAgain.data.pedidos[0].total_frete,undefined,'Cache vazou valores financeiros.');
  const admin=await login('diretoria');
+ const adminData=await(await req(admin)).json();
+ assert.equal(adminData.data.pedidos[0].nro_pf,'PF9');
+ assert.equal(adminData.data.pedidos[0].total_frete,undefined);
+ assert.equal(adminData.data.viagens[0].valor_total_abastecido,undefined);
  assert.equal((await fetch(base+'/api/status',{headers:{Authorization:'Bearer '+admin}})).status,200);
  await fetch(base+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+op}});
  assert.equal((await req(op)).status,401,'Logout precisa revogar sessão');

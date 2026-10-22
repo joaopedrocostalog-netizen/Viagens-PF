@@ -1,10 +1,10 @@
 /** Regras visuais: segurança real é aplicada em api/access.mjs no servidor. */
-export const OP_VIEWS=['painel','graficos','comparativos','viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','containers','mdfes','relatorios'];
-export const FIN_VIEWS=['faturamento','clientes','analises'];
-export const ADMIN_VIEWS=['administracao','integracoes'];
-export const OP_REPORTS=['viagens','pedidos','ctes','rotas','veiculos','motoristas','containers','mdfes','pendencias','mensal'];
+export const OP_VIEWS=['viagens','ctes'];
+export const FIN_VIEWS=[];
+export const ADMIN_VIEWS=['administracao'];
+export const OP_REPORTS=['viagens','pedidos'];
 const OP_COLUMNS={
- viagens:['numero','data','dataTermino','cliente','placa','motoristaId','container','nroMdf','origem','destino','kmPrevisto','kmRodados','status'],
+ viagens:['numero','data','dataTermino','cliente','placa','motoristaId','container','nroMdf','origem','destino','kmPrevisto','kmRodados','desvioKm','status'],
  pedidos:['pedidoNumero','cteNumero','data','dataCte','cliente','motoristaNome','placa','container','rvReferencia','nroMdf','entregaConcluida','comprovanteEntrega','ocorrencia','status'],
  ctes:['pedidoNumero','cteNumero','dataCte','cliente','rvReferencia','viagemId','nroMdf','status'],
  rotas:['name','viagens','km'],
@@ -21,12 +21,25 @@ export function permittedView(role,view){
  return OP_VIEWS.includes(view)&&['operacional','financeiro','administrador'].includes(role);
 }
 export function reportTypesFor(role){
- return role==='financeiro'||role==='administrador'?[...OP_REPORTS,'clientes']:OP_REPORTS.slice();
+ return ['operacional','financeiro','administrador'].includes(role)?OP_REPORTS.slice():[];
 }
 export function secureReport(report,type,role){
  if(!reportTypesFor(role).includes(type))throw Error('Relatório não permitido para este perfil.');
- if(role==='financeiro'||role==='administrador')return report;
  const columns=report.columns.filter(([key])=>OP_COLUMNS[type]?.includes(key));
- return {...report,columns};
+ const rows=report.rows.map(row=>Object.fromEntries(columns.map(([key])=>[key,row[key]])));
+ return {...report,columns,rows};
 }
-export function safeView(role,view){return permittedView(role,view)?view:'painel';}
+export function safeView(role,view){return permittedView(role,view)?view:'viagens';}
+
+/** Mesmo em demonstração ou conectado a um backend antigo, este portal não mostra finanças. */
+export function operationalPermissions(permissions={}){
+ return {...permissions,financeiro:false};
+}
+const TRIP_DETAILS=[...OP_COLUMNS.viagens,'id','rvId','motoristaNome','pedidosVinculados','tipoRv','veiculoId','carreta1Id','carreta2Id','carreta3Id','rotaMdf','solicitacaoMonitoramento','programacaoId','nroProgramacao','rotaId','kmPrevistoFonte','empresa','clientePredominante','proprietario','createdOn'];
+const ORDER_DETAILS=[...OP_COLUMNS.pedidos,'id','numero','viagemId','isCte','origem','destino','tipoCte','tipoDocumento','numeroPf','veiculoId','motoristaId','operacaoTransporte','tipoServico','processoId','numeroProcesso','nroProgramacao','programacaoId','empresa','remetente','destinatario','localColeta','produtoPredominante','refCliente','numeroDocumento','matchMethod','ambiguous'];
+function operationalRow(row,keys){return Object.fromEntries(keys.filter(key=>Object.hasOwn(row,key)).map(key=>[key,row[key]]));}
+export function operationalDataset(data){
+ return {...data,viagens:(data.viagens||[]).map(row=>operationalRow(row,TRIP_DETAILS)),
+  pedidos:(data.pedidos||[]).map(row=>operationalRow(row,ORDER_DETAILS)),
+  ctes:(data.ctes||[]).map(row=>operationalRow(row,ORDER_DETAILS))};
+}

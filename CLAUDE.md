@@ -60,3 +60,11 @@
 - Requer o token do portal e respeita projeção dos campos de cada perfil. Páginas de 1 a 100 registros, total de registros e páginas. Busca e ordenação executadas no servidor **sobre dados mensais já sincronizados**.
 - Retorna HTTP 409 se um mês do intervalo ainda não estiver no armazenamento persistente. Não consulta a DSS automaticamente, preservando atualização manual.
 - A interface ainda usa o carregamento completo do `/api/overview` para relatórios, métricas e gráficos. A troca da tabela para a paginação do backend deve ser feita gradualmente, garantindo coerência dos filtros, detalhes e permissões; **não anunciar paginação integral do site até essa segunda etapa**.
+
+
+## Escopo atual do portal — 22/10/2026
+
+- A pedido do proprietário, a navegação de negócio mantém somente **Viagens / RV** e **Pedidos de frete**. Administração fica disponível apenas para gestão das contas.
+- Faturamento, clientes/fretes, análises financeiras e as demais telas ficam ocultos. As referências operacionais de CT-e/MDF-e continuam disponíveis nos registros de RV/PF.
+- Todos os perfis, inclusive financeiro e administrador, recebem somente campos operacionais. A projeção vale para `/api/overview`, cache e `/api/records`; exportações de viagens/PF também removem campos financeiros.
+- Preservar autenticação, contas existentes, sincronização DSS e armazenamento. Não reativar dados de faturamento por perfil nem restaurar abas ocultas sem novo pedido.

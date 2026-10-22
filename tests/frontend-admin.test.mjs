@@ -17,7 +17,7 @@ function fakeBrowser(){
  return {events,fields,root};
 }
 const tick=()=>new Promise(r=>setTimeout(r,40));
-test('Admin vê cadastro de funcionários e cria usuário com acesso Financeiro sem precisar alterar o GitHub',async()=>{
+test('Admin vê cadastro de funcionários e cria usuário de perfil Financeiro com acesso operacional sem precisar alterar o GitHub',async()=>{
  const {events,root}=fakeBrowser();const calls=[];let accounts=[{username:'admin',name:'Admin',role:'administrador',disabled:false}];
  globalThis.fetch=async(url,options={})=>{
   const target=String(url);calls.push({url:target,method:options.method||'GET',body:options.body});
@@ -43,7 +43,7 @@ test('Admin vê cadastro de funcionários e cria usuário com acesso Financeiro 
  events.click({target:{closest:(name)=>name==='[data-nav]'?{dataset:{nav:'administracao'}}:null}});
  await tick();
  assert(root.innerHTML.includes('Cadastrar funcionário'));
- assert(root.innerHTML.includes('Financeiro — acesso ao faturamento'));
+ assert(root.innerHTML.includes('Financeiro — viagens e pedidos'));
  assert(root.innerHTML.includes('adminNewUsername'));
  events.submit({target:{id:'createPortalUser'},preventDefault(){}});
  await tick();await tick();

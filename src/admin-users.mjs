@@ -2,7 +2,7 @@
  * A autorização real de cada operação é feita no backend.
  */
 const escape=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const roles={operacional:'Operacional — sem valores',financeiro:'Financeiro — acesso ao faturamento',administrador:'Administrador — acesso total'};
+const roles={operacional:'Operacional — viagens e pedidos',financeiro:'Financeiro — viagens e pedidos',administrador:'Administrador — operações e usuários'};
 const options=(selected)=>Object.entries(roles).map(([key,value])=>'<option value="'+key+'" '+(key===selected?'selected':'')+'>'+escape(value)+'</option>').join('');
 export function renderUsersManagement(users,loading=false,error=''){
  const rows=users?.length?users.map(u=>{
@@ -16,7 +16,7 @@ export function renderUsersManagement(users,loading=false,error=''){
    '</tr>';
  }).join(''):'<tr><td colspan="4" class="empty">Nenhum usuário carregado. Clique em Atualizar lista.</td></tr>';
  return '<section class="card" id="userAdminPanel"><div class="card-head"><h3>Gerenciamento de funcionários</h3><span>Somente administrador</span></div>'+
- '<div class="info-strip">Contas individuais, permissões aplicadas no servidor. O perfil <strong>Financeiro</strong> tem acesso ao faturamento e aos relatórios financeiros. O perfil <strong>Administrador</strong> também pode criar e bloquear usuários.</div>'+
+ '<div class="info-strip">Contas individuais, permissões aplicadas no servidor. Todos os perfis consultam viagens, RVs e pedidos de frete. O perfil <strong>Administrador</strong> também pode criar e bloquear usuários.</div>'+
  '<div class="admin-user-columns">'+
  '<form id="createPortalUser" class="admin-user-create" autocomplete="off">'+
  '<h3>Cadastrar funcionário</h3>'+
@@ -35,7 +35,7 @@ export function renderUsersManagement(users,loading=false,error=''){
 export function renderForcePasswordChange(){
  return '<div class="overlay admin-password-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Alteração obrigatória de senha">'+
  '<div class="drawer-top"><h2>Defina sua senha pessoal</h2></div>'+
- '<p class="help">Sua conta foi criada com uma senha provisória. Para acessar viagens ou faturamento, você precisa alterá-la.</p>'+
+ '<p class="help">Sua conta foi criada com uma senha provisória. Para acessar viagens e pedidos de frete, você precisa alterá-la.</p>'+
  '<form id="forcePasswordChange">'+
  '<label for="currentPortalPassword">Senha provisória</label><input class="control full" type="password" id="currentPortalPassword" autocomplete="current-password" required>'+
  '<label for="newPortalPassword">Nova senha (mínimo 12 caracteres)</label><input class="control full" type="password" id="newPortalPassword" autocomplete="new-password" minlength="12" maxlength="256" required>'+
