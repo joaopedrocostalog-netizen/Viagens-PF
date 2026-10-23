@@ -59,3 +59,12 @@ export function projectOverview(raw,role,company=null){
  const {quality,...publicRaw}=raw||{};
  return {...publicRaw,...(permissions.admin?{quality}:{}),permissions,role,...(company?{company}:{}),data:cleaned};
 }
+
+/** A única consulta DSS já contém as duas empresas; projetar cada conjunto antes de enviar. */
+export function projectPortalOverview(raw,role,company,{includeCompanies=false}={}){
+ const {companions,...payload}=raw||{};
+ const primary=projectOverview(payload,role,company);
+ if(!includeCompanies)return primary;
+ const other=company==='costalog'?'ideallog':'costalog';
+ return {...primary,companions:{[other]:projectOverview(payload,role,other)}};
+}

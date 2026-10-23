@@ -1,3 +1,4 @@
+import {projectPortalOverview} from '../api/access.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -21,7 +22,7 @@ test('Painel, buscas, filtros salvos e relatório CSV usam a empresa e os filtro
   {empresa:'CRC',pf_id:2,nro_pf:'PF-BETA',rv_viagem:102,data_emissao:'02/10/2026',cliente_nome:'Beta',placa_veiculo:'DEF-4G56',motorista_id:8,motorista_nome:'José Lima',tipo_servico:'B'},
   {empresa:'Ideallog',pf_id:1,nro_pf:'PF-IDEAL',rv_viagem:201,data_emissao:'01/10/2026',cliente_nome:'Ideal Cliente'}
  ],sources:{pedidos:true}};
- globalThis.fetch=async url=>({ok:true,status:200,json:async()=>String(url).includes('/api/login')?{token:'token-teste',user:{username:'operador',role:'operacional'},permissions:{operacional:true,financeiro:false,admin:false}}:{data}});
+ globalThis.fetch=async url=>({ok:true,status:200,json:async()=>String(url).includes('/api/login')?{token:'token-teste',user:{username:'operador',role:'operacional'},permissions:{operacional:true,financeiro:false,admin:false}}:projectPortalOverview({data},'operacional',new URL(url).searchParams.get('company')||'costalog',{includeCompanies:true})});
  const tick=ms=>new Promise(resolve=>setTimeout(resolve,ms||25));
  const click=(selector,dataset)=>events.click({target:{closest:name=>name===selector?{dataset}:null}});
  const change=(id,value)=>events.change({target:{id,value,dataset:{}}});
@@ -55,7 +56,7 @@ test('Painel, buscas, filtros salvos e relatório CSV usam a empresa e os filtro
  const csv=await downloads[0].text();
  assert(csv.includes('PF-ALFA'));assert(!csv.includes('PF-BETA'));assert(!csv.includes('PF-IDEAL'));assert(!csv.includes('987654'));
  assert(anchors[0].download.startsWith('COSTALOG_pedidos_'));
- change('searchScope','portal');await input('searchInput','JOAO');
+ await input('searchInput','JOAO');
  assert(root.innerHTML.includes('data-search-result="viagens:acdacosta~1"'));
  click('[data-action]',{action:'switch-company'});await tick();
  assert(root.innerHTML.includes('Relatórios IDEALLOG'));assert(!root.innerHTML.includes('PF-ALFA'));

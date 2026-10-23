@@ -12,7 +12,7 @@ import {fileURLToPath} from 'node:url';
 import {timingSafeEqual} from 'node:crypto';
 import {gzip} from 'node:zlib';
 import {configuredUsers,login,authenticate,logout,listAccounts,createAccount,updateAccount,changeOwnPassword,AccountError} from './auth.mjs';
-import {projectOverview,permissionsFor} from './access.mjs';
+import {projectOverview,projectPortalOverview,permissionsFor} from './access.mjs';
 import {monthWindows,mergeDssRows} from './dss-periods.mjs';
 import {createPeriodStore} from './period-store.mjs';
 import {createMariaDbPeriodStore} from './mariadb-store.mjs';
@@ -416,8 +416,9 @@ const server=http.createServer(async(req,res)=>{
  const refreshMode=url.searchParams.get('refresh')||'';
  const forceRefresh=refreshMode==='1'||refreshMode==='recent';
  const cacheKey=from+'|'+to+(forceRefresh?'|refresh':'');
+ const includeCompanies=url.searchParams.get('include_companies')==='1';
  const cached=forceRefresh?null:cacheGet(cacheKey);
- if(cached){apiStats.cached++;return reply(res,200,projectOverview({...cached,cacheHit:true},user.role,company),origin,req.headers['accept-encoding']||'');}
+ if(cached){apiStats.cached++;return reply(res,200,projectPortalOverview({...cached,cacheHit:true},user.role,company,{includeCompanies}),origin,req.headers['accept-encoding']||'');}
  const started=Date.now();
  let pending=INFLIGHT.get(cacheKey);
  if(!pending){
@@ -495,7 +496,7 @@ const server=http.createServer(async(req,res)=>{
  }else console.info('[DSS] consulta idêntica reutilizada, período',from,to);
  try{
   const payload=await pending;
-  return reply(res,200,projectOverview(payload,user.role,company),origin,req.headers['accept-encoding']||'');
+  return reply(res,200,projectPortalOverview(payload,user.role,company,{includeCompanies}),origin,req.headers['accept-encoding']||'');
  }catch(err){
   apiStats.failed++;apiStats.lastFailure=new Date().toISOString();
   console.error('[DSS]',err.name,err.message);

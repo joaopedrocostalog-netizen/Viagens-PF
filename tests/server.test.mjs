@@ -53,6 +53,12 @@ test('backend DSS converte filtros para dd/mm/aaaa, lê registros e mantém aute
  assert(body.quality.sources.some(source=>source.name==='motoristas'&&source.status==='ok'));
  assert(body.quality.sources.some(source=>source.name==='ocorrencias'&&source.status==='unavailable'));
  const request=path=>fetch('http://127.0.0.1:'+port+path,{headers:{Authorization:'Bearer local-test-token'}});
+ const shared=await(await request('/api/overview?from=2026-10-15&to=2026-10-16&company=costalog&include_companies=1')).json();
+ assert.equal(shared.company,'costalog');assert.equal(shared.companions.ideallog.company,'ideallog');
+ assert.equal(shared.data.viagens.length,1);assert.equal(shared.companions.ideallog.data.viagens.length,1);
+ assert.equal(shared.data.viagens[0].empresa,'AC da Costa');assert.equal(shared.companions.ideallog.data.viagens[0].empresa,'Ideallog');
+ assert(!JSON.stringify(shared.companions.ideallog).includes('9999'));
+ assert.equal(calls.length,4,'A segunda empresa usa a consulta existente sem chamar nenhuma fonte DSS novamente');
  const ideal=await(await request('/api/overview?from=2026-10-15&to=2026-10-16&company=ideallog')).json();
  assert.equal(ideal.company,'ideallog');
  assert.equal(ideal.cacheHit,true);

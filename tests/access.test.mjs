@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {projectOverview,permissionsFor,canView} from '../api/access.mjs';
+import {projectOverview,projectPortalOverview,permissionsFor,canView} from '../api/access.mjs';
 const raw={mode:'live',data:{viagens:[{
  rv_id:7,nro_rv:77,placa_veiculo:'ABC1D23',cliente_nome:'Empresa Teste',valor_total_abastecido:1200,valor_adiantamento_vf:300,
  valor_liquido_vf:400,motorista_id:6,cliente_cnpjcpf:'11111111111',extra_secreta:'sigilo'}],
@@ -42,5 +42,18 @@ test('Programações não vazam total de frete e navegação mantém operações
   assert.deepEqual(response.data.programacoes,[{nro_rv:77,pf_id:8}]);
   for(const view of ['clientes','faturamento','analises','administracao'])assert.equal(canView(role,view),false);
   for(const view of ['painel','relatorios','viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','mdfes','ocorrencias'])assert.equal(canView(role,view),true);
+ }
+});
+
+test('Sincronização conjunta projeta as empresas separadamente e restringe ambas por perfil',()=>{
+ const data={viagens:[{...raw.data.viagens[0],empresa:'CRC'},{...raw.data.viagens[0],empresa:'Ideallog'}],pedidos:[{...raw.data.pedidos[0],empresa:'CRC'},{...raw.data.pedidos[0],empresa:'Ideallog'}]};
+ for(const role of ['operacional','financeiro','administrador'])for(const company of ['costalog','ideallog']){
+  const other=company==='costalog'?'ideallog':'costalog',response=projectPortalOverview({data,quality:{sources:[]}},role,company,{includeCompanies:true});
+  assert.equal(response.data.viagens.length,1);assert.equal(response.companions[other].data.viagens.length,1);
+  assert.equal(response.data.viagens[0].empresa,company==='costalog'?'CRC':'Ideallog');
+  assert.equal(response.companions[other].data.viagens[0].empresa,other==='costalog'?'CRC':'Ideallog');
+  const json=JSON.stringify(response);for(const secret of ['9999','FAT-7','11111111111','22222222222','sigilo'])assert(!json.includes(secret));
+  assert.equal(Object.hasOwn(response.companions[other],'quality'),role==='administrador');
+  assert(!Object.hasOwn(projectPortalOverview({data},role,company),'companions'));
  }
 });

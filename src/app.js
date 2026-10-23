@@ -147,7 +147,7 @@ const companySnapshots=new Map();
 let sharedIntent=parsePortalLink(window.location);
 let sharedLoginPending=sharedIntent.hasLink;
 const state = {
- company:initialCompany,technicalOpen:false,searchScope:'aba',alertGrouping:'lista',alertGroup:'',dayDate:localToday(),tripFocus:'',alertScope:'todos',alertDue:'todos',legalEntity:'',drilldown:'',detailPage:1,timelinePage:1,
+ company:initialCompany,technicalOpen:false,alertGrouping:'lista',alertGroup:'',dayDate:localToday(),tripFocus:'',alertScope:'todos',alertDue:'todos',legalEntity:'',drilldown:'',detailPage:1,timelinePage:1,
  visibleAlerts:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',taskSelected:null,taskDetail:null,taskLoading:false,taskSaving:false,taskError:'',taskUnavailable:false,alertStatus:'todos',alertOwner:'',syncMetadata:[],
  reportTemplates:{},templateSelected:'',reportFormat:'xlsx',reportColumnOrder:{},
   compareCustom:true,compareCurrentFrom:String(year)+'-10-01',compareCurrentTo:localToday(),comparePreviousFrom:String(year)+'-09-01',comparePreviousTo:String(year)+'-09-30',view:'painel', chartInterval:'mensal', compareInterval:'mensal',compareAnchor:new Date().toISOString().slice(0,10), from:String(year)+'-01-01',to:localToday(),search:'',filter:'todos',page:1,
@@ -266,10 +266,9 @@ function render(){
  if((state.view==='pendencias'||state.view==='painel'&&state.user?.username&&!state.user.mustChangePassword||state.view==='relatorios'&&state.reportSelected==='pendencias')&&!state.user?.mustChangePassword&&!state.taskIndexLoaded&&!state.taskIndexLoading&&!state.taskIndexError)loadTaskIndex();
 }
 function renderFilters(){
- const placeholders={painel:'RV, pedido, placa, cliente ou motorista',pendencias:'Pedido, RV, cliente ou descrição da pendência',rotas:'Origem, destino, cliente ou placa',motoristas:'Nome, ID, placa, RV ou pedido',veiculos:'Placa ou veículo',relatorios:'Buscar no relatório selecionado',ocorrencias:'Placa, descrição, relato ou providência'};
  const validDates=/^\d{4}-\d{2}-\d{2}$/.test(state.from)&&/^\d{4}-\d{2}-\d{2}$/.test(state.to)&&state.from<=state.to;
  return '<div class="filters">'+(state.company==='costalog'?'<div class="filter"><label for="legalEntityFilter">Empresa Costalog</label><select id="legalEntityFilter" class="control"><option value="">Todas: AC · CRC · Comex</option>'+Object.entries(COSTALOG_ENTITIES).map(([key,label])=>'<option value="'+key+'" '+(state.legalEntity===key?'selected':'')+'>'+label+'</option>').join('')+'</select></div>':'')+'<div class="filter"><label for="from">De</label><input class="control" id="from" type="date" max="'+localToday()+'" value="'+attr(state.from)+'"></div><div class="filter"><label for="to">Até</label><input class="control" id="to" type="date" max="'+localToday()+'" value="'+attr(state.to)+'"></div>'+
- '<div class="filter grow"><label for="searchInput">Pesquisar</label><div class="search-field"><input id="searchInput" class="control full" type="search" autocomplete="off" placeholder="'+attr(placeholders[state.view]||'Número, placa, cliente, motorista ou situação')+'" value="'+attr(state.search)+'">'+(state.search?button('clear-table-search','Limpar busca','btn-sm'):'')+'</div><select id="searchScope" class="control search-scope" aria-label="Alcance da pesquisa"><option value="aba" '+(state.searchScope!=='portal'?'selected':'')+'>Nesta aba</option><option value="portal" '+(state.searchScope==='portal'?'selected':'')+'>Todo o portal</option></select></div>'+
+ '<div class="filter grow"><label for="searchInput">Pesquisar no portal</label><div class="search-field"><input id="searchInput" class="control full" type="search" autocomplete="off" placeholder="'+attr('RV, pedido, CT-e, MDF-e, placa, cliente ou motorista')+'" value="'+attr(state.search)+'">'+(state.search?button('clear-table-search','Limpar busca','btn-sm'):'')+'</div></div>'+
  (state.mode==='live'&&!PUBLIC_DEMO?'<div class="filter"><label>Consulta DSS</label><button type="button" class="btn btn-red" data-action="refresh" '+(state.loading||!validDates?'disabled':'')+'>'+(state.loading?(state.loadingProgress||'Consultando DSS...'):'Atualizar dados da DSS')+'</button></div>':'')+
  '</div>';
 }
@@ -620,14 +619,15 @@ function switchCompany(){
  localStorage.setItem('viagens_pf_company',JSON.stringify(company));
  if(window.history?.replaceState){const url=new URL(window.location.href);url.search='';url.hash='';url.searchParams.set('empresa',company);window.history.replaceState(null,'',url);}
  const saved=companySnapshots.get(company);
- const reusable=saved&&saved.range.from===state.from&&saved.range.to===state.to;
+ const reusable=saved&&saved.range.from<=state.from&&saved.range.to>=state.to;
+ const syncing=state.loading,loadingProgress=state.loadingProgress;
  state.dataset=state.mode==='demo'?demo:reusable?saved.dataset:emptyDataset();
- Object.assign(state,{technicalOpen:false,pendingRecord:'',linkMessage:'',alertGroup:'',tripFocus:'',alertScope:'todos',alertDue:'todos',legalEntity:'',drilldown:'',detailPage:1,timelinePage:1,visibleAlerts:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',taskSelected:null,taskDetail:null,taskLoading:false,taskSaving:false,taskUnavailable:false,alertStatus:'todos',alertOwner:'',syncMetadata:reusable?saved.syncMetadata||[]:[],selected:null,page:1,customer:'',vehicle:'',serviceType:'',status:'',search:'',globalQuery:'',filter:'todos',sortKey:'',clientSelected:'',routeSelected:'',driverSelected:'',alertPriority:'todos',alertKind:'todos',comparison:null,prevDataset:null,error:'',loading:false,loadingProgress:'',loadedRange:reusable?saved.range:null,lastSync:reusable?saved.lastSync:null,presets:readPrefs('costalog_filter_presets_'+company,{})});
+ Object.assign(state,{technicalOpen:false,pendingRecord:'',linkMessage:'',alertGroup:'',tripFocus:'',alertScope:'todos',alertDue:'todos',legalEntity:'',drilldown:'',detailPage:1,timelinePage:1,visibleAlerts:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',taskSelected:null,taskDetail:null,taskLoading:false,taskSaving:false,taskUnavailable:false,alertStatus:'todos',alertOwner:'',syncMetadata:reusable?saved.syncMetadata||[]:[],selected:null,page:1,customer:'',vehicle:'',serviceType:'',status:'',search:'',globalQuery:'',filter:'todos',sortKey:'',clientSelected:'',routeSelected:'',driverSelected:'',alertPriority:'todos',alertKind:'todos',comparison:null,comparisonLoading:false,comparisonError:'',prevDataset:null,error:'',loading:false,loadingProgress:'',loadedRange:reusable?saved.range:null,lastSync:reusable?saved.lastSync:null,presets:readPrefs('costalog_filter_presets_'+company,{})});
+ state.loading=syncing;state.loadingProgress=loadingProgress;
  loadMetricPreferences();render();
- if(state.mode==='live'&&state.token&&!reusable)loadData();
 }
 function clearSession(){
- identityEpoch++;comparisonSeq++;companySnapshots.clear();clearViewCache();
+ identityEpoch++;comparisonSeq++;syncSeq++;companySnapshots.clear();clearViewCache();
  Object.assign(state,{technicalOpen:false,pendingRecord:'',linkMessage:'',alertGroup:'',tripFocus:'',alertScope:'todos',alertDue:'todos',legalEntity:'',drilldown:'',detailPage:1,timelinePage:1,visibleAlerts:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',taskSelected:null,taskDetail:null,taskLoading:false,taskSaving:false,taskUnavailable:false,alertStatus:'todos',alertOwner:'',syncMetadata:[],reportTemplates:{},templateSelected:'',reportColumnOrder:{},reportFormat:'xlsx'});
  const token=state.token,url=state.apiUrl;
  if(token&&url)fetch(url.replace(/\/$/,'')+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+token},credentials:'omit'}).catch(()=>{});
@@ -660,7 +660,7 @@ function splitMonths(from,to){
 }
 async function fetchDssWindow(range,token,syncTo,company=state.company){
  // O botão Atualizar deve ir à DSS mesmo que o MariaDB tenha uma cópia válida.
- const url=(state.apiUrl||window.location.origin).replace(/\/$/,'')+'/api/overview?from='+encodeURIComponent(range.from)+'&to='+encodeURIComponent(range.to)+'&refresh=recent&sync_to='+encodeURIComponent(syncTo)+'&company='+encodeURIComponent(company);
+ const url=(state.apiUrl||window.location.origin).replace(/\/$/,'')+'/api/overview?from='+encodeURIComponent(range.from)+'&to='+encodeURIComponent(range.to)+'&refresh=recent&sync_to='+encodeURIComponent(syncTo)+'&company='+encodeURIComponent(company)+'&include_companies=1';
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),90000);
  try{
   const response=await fetch(url,{headers:{Authorization:'Bearer '+token},credentials:'omit',signal:controller.signal});
@@ -675,47 +675,50 @@ async function fetchDssWindow(range,token,syncTo,company=state.company){
   return body;
  }finally{clearTimeout(timer);}
 }
+function snapshotForCompany(results,company,requestCompany,range,lastSync){
+ const parts=results.map(result=>company===requestCompany?result:result.companions?.[company]);
+ // Backend antigo não confirma a outra empresa: não inventar uma consulta vazia nem chamar a DSS.
+ if(parts.some(part=>!part||company!==requestCompany&&part.company!==company||!Array.isArray(part.data?.viagens)||!Array.isArray(part.data?.pedidos)))return null;
+ const data={};for(const key of ['viagens','pedidos','ctes','mdfes','rotas','programacoes','ocorrencias'])data[key]=parts.flatMap(part=>part.data[key]||[]);
+ data.sources=parts.reduce((acc,part)=>{for(const [key,value] of Object.entries(part.data.sources||{}))acc[key]=Object.hasOwn(acc,key)?acc[key]&&value:value;return acc;},{});
+ return {dataset:normalizePayload({data},company),range,lastSync,syncMetadata:parts.map(part=>part.quality||{})};
+}
 async function loadData(){
- const epoch=identityEpoch;
  if(!/^\d{4}-\d{2}-\d{2}$/.test(state.from)||!/^\d{4}-\d{2}-\d{2}$/.test(state.to)||state.from>state.to){state.error='Informe datas válidas para consultar a DSS.';render();return;}
  if(!state.token){state.connect=true;state.loading=false;state.error='Faça login para consultar a DSS.';render();return;}
- const requestFrom=state.from,requestTo=state.to,token=state.token,requestCompany=state.company;
+ const requestFrom=state.from,requestTo=state.to,token=state.token,requestCompany=state.company,seq=++syncSeq;
+ const current=()=>seq===syncSeq&&state.token===token;
  state.loading=true;state.loadingProgress='Preparando consulta...';state.connect=false;state.error='';render();
  try{
   const windows=splitMonths(requestFrom,requestTo),results=new Array(windows.length);
-  // Máximo duas requisições simultâneas, evitando sobrecarregar o DSS/Render Free.
-  let next=0;
+  // Duas chamadas no máximo; cada resposta fornece as duas empresas já separadas.
+  let next=0,failed=false;
   const worker=async()=>{
-   while(next<windows.length&&epoch===identityEpoch){
+   try{while(next<windows.length&&current()&&!failed){
     const index=next++;
     results[index]=await fetchDssWindow(windows[index],token,requestTo,requestCompany);
-    if(epoch===identityEpoch){
-     const loaded=results.filter(Boolean).length;
-     state.loadingProgress='Consultando DSS: '+loaded+' de '+windows.length+' meses';
-     const button=document.querySelector('[data-action="refresh"]');
-     if(button)button.textContent=state.loadingProgress;
+    if(current()&&!failed){
+     state.loadingProgress='Consultando DSS: '+results.filter(Boolean).length+' de '+windows.length+' meses';
+     const button=document.querySelector('[data-action="refresh"]');if(button)button.textContent=state.loadingProgress;
     }
-   }
+   }}catch(error){failed=true;throw error;}
   };
   await Promise.all(Array.from({length:Math.min(2,windows.length)},worker));
-  if(epoch!==identityEpoch||state.from!==requestFrom||state.to!==requestTo||state.company!==requestCompany)return;
-  // Só substitui os dados depois que TODOS os meses forem recebidos com sucesso.
-  const data={mode:'live',updatedAt:new Date().toISOString(),data:{
-   viagens:results.flatMap(x=>x.data.viagens||[]),pedidos:results.flatMap(x=>x.data.pedidos||[]),
-   ctes:results.flatMap(x=>x.data.ctes||[]),mdfes:results.flatMap(x=>x.data.mdfes||[]),
-   rotas:results.flatMap(x=>x.data.rotas||[]),programacoes:results.flatMap(x=>x.data.programacoes||[]),
-   ocorrencias:results.flatMap(x=>x.data.ocorrencias||[]),
-   sources:results.reduce((acc,x)=>{for(const [key,value] of Object.entries(x.data.sources||{}))acc[key]=Object.hasOwn(acc,key)?acc[key]&&value:value;return acc;},{})
-  }};
-  clearViewCache();state.dataset=normalizePayload(data);state.loadedRange={from:requestFrom,to:requestTo};state.mode='live';state.error='';
-  state.page=1;state.comparison=null;state.lastSync=data.updatedAt;state.syncMetadata=results.map(result=>result.quality||{});state.prevDataset=null;
-  companySnapshots.set(state.company,{dataset:state.dataset,range:state.loadedRange,lastSync:state.lastSync,syncMetadata:state.syncMetadata});
+  if(!current())return;
+  const range={from:requestFrom,to:requestTo},lastSync=new Date().toISOString();
+  // Preparar as duas bases antes de substituir qualquer cópia da sessão.
+  const snapshots=Object.fromEntries(Object.keys(COMPANIES).map(company=>[company,snapshotForCompany(results,company,requestCompany,range,lastSync)]));
+  for(const [company,snapshot] of Object.entries(snapshots))if(snapshot)companySnapshots.set(company,snapshot);
+  const active=snapshots[state.company];
+  if(active&&state.from>=range.from&&state.to<=range.to){
+   clearViewCache();Object.assign(state,{dataset:active.dataset,loadedRange:range,mode:'live',error:'',page:1,comparison:null,lastSync,syncMetadata:active.syncMetadata,prevDataset:null});
+  }
  }catch(err){
-  if(epoch!==identityEpoch)return;
+  if(!current())return;
   const alreadyLive=state.mode==='live';
   if(!alreadyLive){state.mode='demo';state.dataset=demo;state.loadedRange=null;}
   state.error='API indisponível: '+(err.name==='AbortError'?'tempo limite na consulta mensal':err.message)+(alreadyLive?'. Dados anteriores mantidos.':'. Exibindo somente dados fictícios.');
- }finally{if(epoch===identityEpoch){state.loading=false;state.loadingProgress='';render();}}
+ }finally{if(current()){state.loading=false;state.loadingProgress='';render();}}
 }
 
 function exportAdvanced(type,format){
@@ -735,6 +738,7 @@ function exportAdvanced(type,format){
 }
 let refreshTimer=null;
 let identityEpoch=0;
+let syncSeq=0;
 function activateRefresh(){if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null;}state.autoRefresh=0;}
 
 async function comparePeriods(){
@@ -1010,7 +1014,6 @@ root.addEventListener('submit',e=>{
 root.addEventListener('change',e=>{
  if(e.target.id==='alertGrouping'){state.alertGrouping=e.target.value==='rv'?'rv':'lista';state.alertGroup='';state.page=1;render();return;}
  if(e.target.id==='dayDate'){state.dayDate=e.target.value;state.page=1;state.programPage=1;render();return;}
- if(e.target.id==='searchScope'){state.searchScope=e.target.value==='portal'?'portal':'aba';render();return;}
  if(e.target.id==='legalEntityFilter'){state.legalEntity=e.target.value;state.tripFocus='';Object.assign(state,{page:1,detailPage:1,selected:null,customer:'',vehicle:'',serviceType:'',status:'',search:'',globalQuery:'',routeSelected:'',driverSelected:''});render();return;}
  if(e.target.id==='alertDueFilter'){state.alertDue=e.target.value;state.page=1;render();return;}
  if(e.target.id==='alertStatusFilter'){state.alertStatus=e.target.value;state.page=1;render();return;}
@@ -1084,7 +1087,7 @@ root.addEventListener('keydown',e=>{
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(state.selected||state.connect||state.taskSelected)){state.selected=null;state.connect=false;state.taskSelected=null;render();}});
 function applyIncomingLink(link){
- identityEpoch++;comparisonSeq++;clearViewCache();
+ identityEpoch++;comparisonSeq++;syncSeq++;clearViewCache();
  Object.assign(state,{dataset:state.token?emptyDataset():demo,selected:null,pendingRecord:'',tripFocus:'',drilldown:'',customer:'',vehicle:'',serviceType:'',search:'',status:'',filter:'todos',alertGroup:'',alertScope:'todos',alertDue:'todos',alertStatus:'todos',alertKind:'todos',alertPriority:'todos',alertOwner:'',comparison:null,comparisonLoading:false,comparisonError:'',loading:false,loadedRange:null,lastSync:null,syncMetadata:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',technicalOpen:false,page:1},link.state);
  if(!PUBLIC_DEMO){state.mode='live';state.dataset=emptyDataset();state.linkMessage=state.token?'Consulta compartilhada. Atualize os dados para ver os registros autorizados.':'Link compartilhado. Entre no portal e atualize os dados para consultar.';}
  sharedIntent=link;sharedLoginPending=!state.token&&link.hasLink;

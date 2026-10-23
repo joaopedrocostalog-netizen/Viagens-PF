@@ -1,3 +1,4 @@
+import {projectPortalOverview} from '../api/access.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -13,9 +14,10 @@ test('Resposta antiga de Costalog não substitui a Ideallog depois da troca',asy
  globalThis.fetch=async input=>{
   const url=new URL(input);
   if(url.pathname==='/api/login')return reply({token:'token-teste',user:{username:'operador',role:'operacional'},permissions:{operacional:true,financeiro:false,admin:false}});
-  const data={viagens:[{empresa:url.searchParams.get('company'),rv_id:1,nro_rv:1,data_inicio:'01/10/2026',cliente_nome:url.searchParams.get('company')==='ideallog'?'CLIENTE IDEAL ATIVO':'CLIENTE COSTA ANTIGO'}],pedidos:[]};
-  if(url.searchParams.get('company')==='costalog')return new Promise(resolve=>finishCostalog=()=>resolve(reply({data})));
-  return reply({data});
+  const data={viagens:[{empresa:'Costalog',rv_id:1,nro_rv:1,data_inicio:'01/10/2026',cliente_nome:'CLIENTE COSTA ANTIGO'},{empresa:'Ideallog',rv_id:1,nro_rv:1,data_inicio:'01/10/2026',cliente_nome:'CLIENTE IDEAL ATIVO'}],pedidos:[]};
+  const payload=projectPortalOverview({data},'operacional','costalog',{includeCompanies:true});
+  if(url.searchParams.get('company')==='costalog')return new Promise(resolve=>finishCostalog=()=>resolve(reply(payload)));
+  return reply(payload);
  };
  const click=(selector,dataset)=>events.click({target:{closest:name=>name===selector?{dataset}:null}});
  const tick=()=>new Promise(resolve=>setTimeout(resolve,20));
@@ -29,7 +31,8 @@ test('Resposta antiga de Costalog não substitui a Ideallog depois da troca',asy
  click('[data-action]',{action:'switch-company'});await tick();
  // Conferir a lista visível; filtros fechados não pré-carregam opções de clientes.
  click('[data-nav]',{nav:'viagens'});
- assert(root.innerHTML.includes('CLIENTE IDEAL ATIVO'));
+ assert(!root.innerHTML.includes('CLIENTE COSTA ANTIGO'));
+ assert(!root.innerHTML.includes('CLIENTE IDEAL ATIVO'));
  finishCostalog();await tick();
  assert(root.innerHTML.includes('CLIENTE IDEAL ATIVO'));
  assert(!root.innerHTML.includes('CLIENTE COSTA ANTIGO'));

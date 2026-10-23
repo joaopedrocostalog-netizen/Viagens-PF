@@ -461,8 +461,7 @@ body{background:#08090b;color:#f6f7f8}
 /* Compact controls, private diagnostics and mobile record details. */
 .v-tools-row .filters{gap:10px;align-items:flex-end;flex:1;min-width:0}
 .v-tools-row{flex-wrap:wrap;gap:10px}
-.v-tools-row .filter.grow{min-width:240px;position:relative;padding-right:136px}
-.v-tools-row .search-scope{position:absolute;right:0;bottom:0;width:128px}
+.v-tools-row .filter.grow{min-width:240px}
 .v-extra-filters{margin:10px 0 12px;border:1px solid var(--line,#ddd);border-radius:10px;padding:0 12px;background:var(--panel,#fff)}
 .v-extra-filters>summary{padding:10px 0;font-size:13px;cursor:pointer;min-height:40px;display:list-item}
 .v-extra-filters>summary span{display:inline-flex;font-size:11px;margin-left:6px;color:var(--muted,#777)}
@@ -503,5 +502,4 @@ body{background:#08090b;color:#f6f7f8}
  .my-task-buckets{grid-template-columns:repeat(2,minmax(0,1fr))}.ins-compare-anchor{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.ins-compare-anchor input{max-width:100%;min-width:0}
 }
 @media print{.mobile-row-toggle,.technical-footer{display:none!important}.mobile-record-table td[data-mobile-primary]{display:table-cell}.mobile-record-table thead{display:table-header-group}}
-.v-tools-row .filter .control.search-scope{width:128px}
 @media(max-width:700px){.mobile-record-table .row-link,.mobile-record-table .ins-link{min-height:36px;text-align:left;white-space:normal}}

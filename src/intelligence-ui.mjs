@@ -34,7 +34,7 @@ const cards=items=>'<div class="ins-kpi-row">'+items.map(x=>'<div class="ins-kpi
 export const SEARCH_MIN_LENGTH=2;
 export function renderGlobalSearch(state,data){
  const q=String(state.search||'');
- if(state.searchScope!=='portal'||!q)return '';
+ if(!q)return '';
  const result=unifiedSearch(data,q,{financial:false,limit:35});
  const tags={viagens:'RV',pedidos:'PF',mdfes:'MDF-e',clientes:'Cliente'};
  return '<section class="ins-search" aria-label="Resultados em todo o portal">'+

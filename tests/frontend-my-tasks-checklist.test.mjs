@@ -1,3 +1,4 @@
+import {projectPortalOverview} from '../api/access.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {operationalToday,updateTask,taskSummary} from '../src/workflow.mjs';
@@ -30,7 +31,7 @@ test('Painel pessoal, atribuição à conta e checklist abrem/exportam somente o
    if(options.method==='PATCH'){const body=JSON.parse(options.body);tasks[company][body.key]=updateTask(tasks[company][body.key],body,'joao.pedro');return response({task:tasks[company][body.key]});}
    const key=url.searchParams.get('key');return response(key?{task:tasks[company][key]||null}:{tasks:Object.fromEntries(Object.entries(tasks[company]).map(([key,value])=>[key,taskSummary(value)]))});
   }
-  return response({data});
+  return response(projectPortalOverview({data},'operacional',company,{includeCompanies:true}));
  };
  const click=(selector,dataset)=>events.click({target:{closest:name=>name===selector?{dataset}:null}}),change=(id,value)=>events.change({target:{id,value,dataset:{}}}),tick=()=>new Promise(resolve=>setTimeout(resolve,20));
  await import('../src/app.js?my-tasks-checklist=1');

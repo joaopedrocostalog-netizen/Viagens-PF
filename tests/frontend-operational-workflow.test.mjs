@@ -1,3 +1,4 @@
+import {projectPortalOverview} from '../api/access.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {taskSummary,updateTask} from '../src/workflow.mjs';
@@ -20,7 +21,7 @@ test('Fluxo completo: atalho, empresa interna, tratamento compartilhado e modelo
    if(options.method==='PATCH'){const patch=JSON.parse(options.body),task=updateTask(tasks[company][patch.key],patch,'operador');tasks[company][patch.key]=task;return reply({task});}
    const key=url.searchParams.get('key');return reply(key?{task:tasks[company][key]||null}:{tasks:Object.fromEntries(Object.entries(tasks[company]).map(([key,value])=>[key,taskSummary(value)]))});
   }
-  return reply({data:{viagens:['AC da Costa','CRC','Comex','Ideallog'].map(empresa=>({empresa,rv_id:1,nro_rv:100,data_inicio:'01/10/2026',cliente_nome:empresa,placa_veiculo:'ABC-1234',status_rv:'Em andamento'})),pedidos:['AC da Costa','CRC','Comex','Ideallog'].map(empresa=>({empresa,pf_id:1,nro_pf:'PF-'+empresa,rv_viagem:100,data_emissao:'01/10/2026',cliente_nome:empresa,nro_cte:0})),sources:{pedidos:true}}});
+  return reply(projectPortalOverview({data:{viagens:['AC da Costa','CRC','Comex','Ideallog'].map(empresa=>({empresa,rv_id:1,nro_rv:100,data_inicio:'01/10/2026',cliente_nome:empresa,placa_veiculo:'ABC-1234',status_rv:'Em andamento'})),pedidos:['AC da Costa','CRC','Comex','Ideallog'].map(empresa=>({empresa,pf_id:1,nro_pf:'PF-'+empresa,rv_viagem:100,data_emissao:'01/10/2026',cliente_nome:empresa,nro_cte:0})),sources:{pedidos:true}}},'operacional',company,{includeCompanies:true}));
  };
  const tick=()=>new Promise(resolve=>setTimeout(resolve,20)),click=(selector,dataset)=>events.click({target:{closest:name=>name===selector?{dataset}:null}}),change=(id,value)=>events.change({target:{id,value,dataset:{}}});
  await import('../src/app.js?operational-workflow=1');

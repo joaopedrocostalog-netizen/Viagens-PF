@@ -21,8 +21,8 @@ test('Todos os perfis veem operações sem administração; detalhes e respostas
  if(route.includes('/api/overview'))requestedCompanies.push(new URL(route).searchParams.get('company'));
   return {ok:true,status:200,async json(){
    if(route.includes('/api/login'))return {token:'teste-'+activeRole,user:user(),permissions:permissions()};
-   if(route.includes('/api/overview'))return {mode:'live',updatedAt:new Date().toISOString(),role:activeRole,permissions:permissions(),
-    data:{viagens:[{empresa:'AC da Costa',rv_id:10,nro_rv:123,data_inicio:'01/10/2026',cliente_nome:'CLIENTE OPERACIONAL',valor_total_abastecido:98765},{empresa:'Ideallog',rv_id:10,nro_rv:123,data_inicio:'01/10/2026',cliente_nome:'CLIENTE IDEAL SEPARADO'}],pedidos:[1,2].map(id=>({empresa:'AC da Costa',pf_id:id,nro_pf:'PF-TESTE-'+id,nro_cte:44,data_emissao:'01/10/2026',rv_viagem:123,cliente_nome:'CLIENTE OPERACIONAL',total_frete:87654,nro_fatura:'FAT-PRIVADA',liberado_para_faturamento:true})).concat([{empresa:'Ideallog',pf_id:1,nro_pf:'PF-IDEAL-SEPARADO',nro_cte:44,rv_viagem:123,data_emissao:'01/10/2026',cliente_nome:'CLIENTE IDEAL SEPARADO'}]),ctes:[],mdfes:[],sources:{viagens:true,pedidos:true,ctes:true,mdfes:false}}};
+   if(route.includes('/api/overview')){const payload={mode:'live',updatedAt:new Date().toISOString(),role:activeRole,permissions:permissions(),
+    data:{viagens:[{empresa:'AC da Costa',rv_id:10,nro_rv:123,data_inicio:'01/10/2026',cliente_nome:'CLIENTE OPERACIONAL',valor_total_abastecido:98765},{empresa:'Ideallog',rv_id:10,nro_rv:123,data_inicio:'01/10/2026',cliente_nome:'CLIENTE IDEAL SEPARADO'}],pedidos:[1,2].map(id=>({empresa:'AC da Costa',pf_id:id,nro_pf:'PF-TESTE-'+id,nro_cte:44,data_emissao:'01/10/2026',rv_viagem:123,cliente_nome:'CLIENTE OPERACIONAL',total_frete:87654,nro_fatura:'FAT-PRIVADA',liberado_para_faturamento:true})).concat([{empresa:'Ideallog',pf_id:1,nro_pf:'PF-IDEAL-SEPARADO',nro_cte:44,rv_viagem:123,data_emissao:'01/10/2026',cliente_nome:'CLIENTE IDEAL SEPARADO'}]),ctes:[],mdfes:[],sources:{viagens:true,pedidos:true,ctes:true,mdfes:false}}};const other=new URL(route).searchParams.get('company')==='ideallog'?'costalog':'ideallog';return {...payload,companions:{[other]:{...payload,company:other}}};}
    return {ok:true};
   }};
  };
@@ -97,7 +97,7 @@ test('Todos os perfis veem operações sem administração; detalhes e respostas
  click('[data-nav]',{nav:'ctes'});
  assert(root.innerHTML.includes('PF-TESTE-1'));
  assert(!root.innerHTML.includes('PF-IDEAL-SEPARADO'));
- assert.deepEqual(requestedCompanies,['costalog','ideallog']);
+ assert.deepEqual(requestedCompanies,['costalog'],'Trocar de empresa usa as bases da sessão sem consultar a DSS novamente');
 
 
 });
