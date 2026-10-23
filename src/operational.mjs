@@ -82,6 +82,7 @@ function materializeAlert({type,level,record:r,view,age}){
  }
  return {type,level,recordId:r.id,title,detail,view,refDate:r.data};
 }
+export function* alertReferences(data,options={}){const context=alertContext(data,options);for(const record of data.pedidos||[])for(const ref of recordAlerts(record,'ctes',context))if(ref.type!=='sem_fatura')yield ref;for(const record of data.viagens||[])yield* recordAlerts(record,'viagens',context);}
 export function makeAlerts(data,options={}){
  const context=alertContext(data,options),alerts=[];
  for(const record of data.pedidos||[])for(const ref of recordAlerts(record,'ctes',context))alerts.push(materializeAlert(ref));
@@ -103,14 +104,14 @@ export function createAlertPager(data,options={}){
  const emptyTasks=Object.freeze({});let statsCache=[];
  const trips=new Map((data.allViagens||data.viagens||[]).map(row=>[row.id,row]));
  const groupOf=ref=>ref.view==='viagens'?'rv:'+ref.record.id:trips.has(ref.record.viagemId)?'rv:'+ref.record.viagemId:'pf:'+ref.record.id;
- return {getPage({page=1,priority='todos',kind='todos',financial=false,query='',tasks=emptyTasks,status='todos',owner='',scope='todos',user=null,due='todos',includeRows=true,grouped=false,group=''}={}){
+ return {getPage({page=1,priority='todos',kind='todos',financial=false,query='',tasks=emptyTasks,status='todos',owner='',scope='todos',user=null,due='todos',includeRows=true,grouped=false,group='',unassigned=false,recurrent=false}={}){
   const visible=[...buckets.values()].filter(b=>financial||b.type!=='sem_fatura'),hasTasks=Object.keys(tasks).length>0;
   const task=ref=>taskFor({type:ref.type,view:ref.view,recordId:ref.record.id,level:ref.level},tasks);
   const inScope=t=>scope!=='mine'||taskBelongsToUser(t,user);
   const statusMatches=t=>status==='todos'||status==='ativas'&&t.status!=='resolvida'||t.status===status;
-  const matchesBase=(ref,t)=>(!group||groupOf(ref)===group)&&inScope(t)&&(priority==='todos'||t.priority===priority)&&(kind==='todos'||ref.type===kind)&&statusMatches(t)&&(!owner||matchesSearch({owner:t.owner},owner));
+  const matchesBase=(ref,t)=>(!unassigned||!t.owner)&&(!recurrent||t.recurrenceCount>0)&&(!group||groupOf(ref)===group)&&inScope(t)&&(priority==='todos'||t.priority===priority)&&(kind==='todos'||ref.type===kind)&&statusMatches(t)&&(!owner||matchesSearch({owner:t.owner},owner));
   const matchesQuery=(ref,t)=>!String(query).trim()||matchesSearch({...materializeAlert(ref),...t},query);
-  const deps=[priority,kind,financial,query,tasks,status,owner,scope,user?.username,user?.displayName,user?.name,due,grouped,group];
+  const deps=[priority,kind,financial,query,tasks,status,owner,scope,user?.username,user?.displayName,user?.name,due,grouped,group,unassigned,recurrent];
   let stats=statsCache.find(entry=>deps.every((value,i)=>value===entry.deps[i]));
   if(!stats){
    const groups=new Map();

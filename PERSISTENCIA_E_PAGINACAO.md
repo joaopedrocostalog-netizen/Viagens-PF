@@ -45,3 +45,13 @@ Contas do portal continuam usando `PORTAL_USERS_FILE`: preservar esse arquivo em
 ## Restrições de implantação
 
 A paginação, os indicadores, o progresso, o cancelamento e as etapas de RV podem ser publicados sem banco, conforme a decisão atual. Persistência definitiva em produção e preferências compartilhadas entre dispositivos permanecem adiadas e dependem do armazenamento acima. Publicar o código não cria MariaDB, disco ou backup externo. Não desativar Render/Pages nem alterar a aplicação principal no Plesk nesta etapa.
+
+## Pendências: acompanhamento e rotina da equipe
+
+Em Pendências, **Prazos por tipo** aparece para administrador. Defina dias corridos; vazio deixa sem regra e zero vence na detecção inicial. As regras são por empresa e não substituem prazos manuais. A opção de aplicar aos abertos sem prazo automático é explícita. O motivo é obrigatório ao resolver, individualmente ou em lote.
+
+**Arquivo de tratadas** consulta somente o arquivo do portal, incluindo outros períodos, com páginas de 25 registros e exportação explícita. As resoluções anteriores ficam na ficha mesmo após reabertura. Os avisos abrem filas de vencidas, prazos para hoje, sem responsável e reincidentes; não enviam mensagens externas nem consultam DSS automaticamente.
+
+A sincronização completa observa o ciclo dos alertas. Uma reincidência exige ausência confirmada e retorno posterior com dados recentes/cobertura suficiente; campo desconhecido e mudança de período não comprovam desaparecimento. A identificação começa com as observações registradas pelo portal. Os tratamentos continuam sendo acompanhamento interno e não atualizam a DSS.
+
+Lotes têm prévia, confirmação e revisão de todas as pendências antes de gravar. A seleção fica limitada à página visível; uma versão alterada por outro usuário impede aplicar o lote inteiro. Regras, histórico e arquivo mantêm a limitação de armazenamento temporário do ambiente atual, pois a configuração do banco permanece adiada.

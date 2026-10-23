@@ -13,6 +13,7 @@ test('frontend uses remote pages and metrics, swaps companies without sync and s
  globalThis.fetch=async(input,options={})=>{
   const url=new URL(input),body=options.body?JSON.parse(options.body):null,company=url.searchParams.get('company')||'costalog';calls.push({path:url.pathname,body,company});
   if(url.pathname==='/api/login')return reply({portalVersion:2,token:'token',user:{username:'operador',role:'operacional'},permissions:{operacional:true,financeiro:false,admin:false}});
+  if(url.pathname==='/api/workflow/actions')return reply({total:0,counts:{vencidas:0,hoje:0,sem_responsavel:0,reincidentes:0}});
   if(url.pathname==='/api/logout')return reply({});
   if(url.pathname==='/api/preferences'){
    if(options.method==='PATCH'){assert.equal(body.revision,saved[company].revision);saved[company]={revision:body.revision+1,values:body.values};}

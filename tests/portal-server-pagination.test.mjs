@@ -47,3 +47,8 @@ test('RV stage links occurrences only by unambiguous entity references, never by
  const source={viagens:[{id:'crc~1',rvId:'1',numero:'10',empresa:'CRC',status:'Viajando',placa:'ABC1234'},{id:'comex~1',rvId:'1',numero:'10',empresa:'Comex',status:'Finalizado',placa:'ABC1234'}],pedidos:[],ctes:[],mdfes:[],ocorrencias:[{id:'a',empresa:'CRC',rv_id:1},{id:'b',empresa:'Comex',rv_id:1},{id:'c',empresa:'CRC',placa:'ABC1234'},{id:'d',empresa:'',rv_id:1}]};
  assert.deepEqual(filterRvStage(source,'Viajando').ocorrencias.map(o=>o.id),['a']);
 });
+
+test('server detail renderer opens an authorized RV without exposing another company',async()=>{
+ const result=await portalResponse({action:'detail',input:{state:{...range,view:'viagens',selected:'viagens:crc~1',timelinePage:1}},snapshot,user,company:'costalog',workflowStore});
+ assert(result.html.includes('Detalhes'));assert(result.html.includes('RV-001'));assert(!result.html.includes('CLIENTE-150'));
+});

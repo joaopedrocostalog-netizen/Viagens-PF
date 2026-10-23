@@ -3,7 +3,7 @@ import {parseEditableDate} from '../src/date-controls.mjs';
 import {monthWindows} from './dss-periods.mjs';
 const fail=(message,status)=>Object.assign(Error(message),{status});
 /** Jobs carry no rows in status responses. Snapshots publish atomically after ALL sources finish. */
-export function createPortalSessions({synchronize,maxSnapshots=6,maxJobs=20,ttlMs=2*3600000}={}){
+export function createPortalSessions({synchronize,afterSync=async()=>{},maxSnapshots=6,maxJobs=20,ttlMs=2*3600000}={}){
  const jobs=new Map(),snapshots=new Map();
  const owned=(map,id,user)=>{const v=map.get(id);if(!v||v.username!==user.username)throw fail('Consulta não encontrada ou expirada. Atualize os dados.',404);return v;};
  const publicJob=j=>({id:j.id,status:j.status,from:j.from,to:j.to,steps:j.steps,completed:j.steps.filter(s=>['done','unavailable','reused','disabled','skipped'].includes(s.status)).length,total:j.steps.length,snapshot:j.snapshot||null,error:j.error||''});
@@ -16,7 +16,9 @@ export function createPortalSessions({synchronize,maxSnapshots=6,maxJobs=20,ttlM
    while(jobs.size>=maxJobs){const old=[...jobs.values()].find(j=>j.status!=='running');if(!old)throw fail('Consultas ocupadas. Aguarde.',429);jobs.delete(old.id);}
    const j={id:randomUUID(),username:user.username,from,to,status:'running',steps:[],touched:Date.now(),controller:new AbortController()};jobs.set(j.id,j);
    const progress=step=>{if(j.status!=='running')return;const old=j.steps.find(s=>s.key===step.key);if(old)Object.assign(old,step);else j.steps.push(step);j.touched=Date.now();};
-   Promise.resolve().then(()=>synchronize(from,to,{signal:j.controller.signal,onProgress:progress,refreshMode:input.refresh==='cached'?'':'recent',syncTo:to})).then(payload=>{
+   Promise.resolve().then(()=>synchronize(from,to,{signal:j.controller.signal,onProgress:progress,refreshMode:input.refresh==='cached'?'':'recent',syncTo:to})).then(async payload=>{
+    if(j.status!=='running'||j.controller.signal.aborted)return;
+    if(input.refresh!=='cached')await afterSync(payload,{from,to,signal:j.controller.signal});
     if(j.status!=='running'||j.controller.signal.aborted)return;
     const id=randomUUID();while(snapshots.size>=maxSnapshots)snapshots.delete(snapshots.keys().next().value);
     snapshots.set(id,{id,username:j.username,from,to,payload,touched:Date.now()});j.snapshot=id;j.status='complete';j.touched=Date.now();

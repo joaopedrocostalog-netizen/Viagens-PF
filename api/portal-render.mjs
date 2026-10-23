@@ -1,7 +1,7 @@
 import {normalizeOverview} from '../src/dss-mapping.mjs';
 import {scopeCompanyData,companyIdentity} from '../src/companies.mjs';
 import {projectOverview} from './access.mjs';
-import {operationalDataset,buildOperationalReport,reportTypesFor,OP_VIEWS} from '../src/access-ui.mjs';
+import {permittedView,operationalDataset,buildOperationalReport,reportTypesFor,OP_VIEWS} from '../src/access-ui.mjs';
 import {filterOperationalData,searchOperationalData,filterLinkedRows} from '../src/filtering.mjs';
 import {filterRvStage,renderRelatedRvStages} from '../src/rv-stage-filter.mjs';
 import {rvStatusCounts,renderRvStatusStages} from '../src/rv-status.mjs';
@@ -18,7 +18,7 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;
 const attr=esc,number=n=>new Intl.NumberFormat('pt-BR').format(n),money=()=> '—',icon=()=> '×';
 const dateBR=v=>/^\d{4}-\d{2}-\d{2}/.test(String(v||''))?v.slice(8,10)+'/'+v.slice(5,7)+'/'+v.slice(0,4):esc(v||'—');
 const button=(action,label,extra='')=>'<button type="button" class="btn '+extra+'" data-action="'+action+'">'+label+'</button>';
-const stateFields=['preferenceStorage','view','from','to','legalEntity','customer','vehicle','serviceType','status','rvStage','search','filter','sortKey','sortDir','page','detailPage','timelinePage','routeSelected','driverSelected','reportSelected','reportMulti','hiddenColumns','reportColumnOrder','reportTemplates','templateSelected','reportFormat','presets','metricLayout','showMetricOptions','tableSort','alertPriority','alertKind','alertStatus','alertOwner','alertScope','alertDue','alertGrouping','alertGroup','tripFocus','dayDate','dayProgramsOpen','programPage','filtersOpen','technicalOpen','drilldown','selected','compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo'];
+const stateFields=['alertUnassigned','alertRecurrent','alertAllTracked','alertArchive','preferenceStorage','view','from','to','legalEntity','customer','vehicle','serviceType','status','rvStage','search','filter','sortKey','sortDir','page','detailPage','timelinePage','routeSelected','driverSelected','reportSelected','reportMulti','hiddenColumns','reportColumnOrder','reportTemplates','templateSelected','reportFormat','presets','metricLayout','showMetricOptions','tableSort','alertPriority','alertKind','alertStatus','alertOwner','alertScope','alertDue','alertGrouping','alertGroup','tripFocus','dayDate','dayProgramsOpen','programPage','filtersOpen','technicalOpen','drilldown','selected','compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo'];
 function cleanState(input){
  const state=Object.fromEntries(stateFields.filter(key=>Object.hasOwn(input,key)).map(key=>[key,input[key]]));
  for(const key of ['page','detailPage','timelinePage','programPage'])state[key]=Math.max(1,Math.min(1000000,Math.floor(Number(state[key])||1)));
@@ -141,14 +141,15 @@ function mdfeSituation(m,d){const tripIds=memoView('mdfe-trip-ids',[d.allViagens
   return {html:renderComparison(d,state)};
  }
  const searched=searchOperationalData(d,state.search);
- if(action==='metrics')return {html:state.listFilters+renderCustomDashboard(searched,state)+renderMyTasksSummary(searched,state)+renderSummary(searched,{...state,financeiro:false,showCards:false}),hero:renderHero(state.view,d,state),search:renderGlobalSearch(state,d),technical:renderDataQuality(state,period)};
+ const workflowWarning=snapshot.payload.workflowUnavailable?'<p class="ins-inline-error" role="status">Os dados DSS foram carregados, mas o acompanhamento das pendências não pôde ser atualizado. Atualize os dados novamente para repetir.</p>':'';
+ if(action==='metrics')return {html:workflowWarning+state.listFilters+renderCustomDashboard(searched,state)+renderMyTasksSummary(searched,state)+renderSummary(searched,{...state,financeiro:false,showCards:false}),hero:renderHero(state.view,d,state),search:renderGlobalSearch(state,d),technical:renderDataQuality(state,period)};
  let html='';
  const stages=state.view==='viagens'?'':renderRelatedRvStages(stageBase,state.rvStage||'');
  if(state.view==='viagens')html=renderTripsHeader(d)+renderRvStatusStages(rvStatusCounts(searchRows(stageBase.viagens)),state.status)+renderViagens(d);
  else if(state.view==='ctes')html=stages+renderCtes(d);
  else if(state.view==='mdfes')html=stages+renderMdfes(d);
  else if(state.view==='ocorrencias')html=stages+(d.sources?.ocorrencias===false?'<p class="help" role="status">As ocorrências não estão disponíveis nesta consulta. Uma lista vazia não confirma ausência de ocorrências.</p>':'')+renderGrid('Ocorrências',searchRecords(d.ocorrencias||[],state.search),[{key:'data',label:'Data',format:'date'},{key:'id',label:'ID'},{key:'placa',label:'Placa'},{key:'tipo',label:'Tipo'},{key:'descricao',label:'Descrição'},{key:'relato',label:'Relato'},{key:'status',label:'Situação'},{key:'providencia',label:'Providência'}],state,'ocorrencias');
- else if(state.view==='pendencias')html=stages+renderAlertsHub(d,state);
+ else if(state.view==='pendencias')html=workflowWarning+stages+renderAlertsHub(d,state);
  else if(['rotas','motoristas'].includes(state.view))html=stages+renderDriverRouteDetails(d,state,state.view);
  else if(state.view==='programacao')html=stages+renderDayProgramming(d,state);
  else if(state.view==='relatorios')html=stages+renderReportsHeader(d,{financeiro:false,interval:'mensal'})+renderReportHub(d,state);

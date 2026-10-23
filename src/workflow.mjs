@@ -40,23 +40,30 @@ export function validTaskKey(key,company){
 export function validateTask(input){
  if(!input||typeof input!=='object')throw Error('Tratamento inválido.');
  const {owner='',due='',priority,status,comment='',revision}=input;
+ const resolutionReason=input.resolutionReason===undefined?(status==='resolvida'?comment:''):input.resolutionReason;
+ if(typeof resolutionReason!=='string'||resolutionReason.length>2000)throw Error('Motivo da resolução inválido: até 2.000 caracteres.');
+ if(status==='resolvida'&&!resolutionReason.trim())throw Error('Informe o motivo da resolução.');
  if(input.ownerUsername!==undefined&&(typeof input.ownerUsername!=='string'||input.ownerUsername&&!/^[a-z0-9._-]{3,60}$/.test(input.ownerUsername)))throw Error('Conta responsável inválida.');
  if(typeof owner!=='string'||owner.length>100||typeof comment!=='string'||comment.length>2000)throw Error('Responsável: até 100 caracteres. Comentário: até 2.000 caracteres.');
  if(!Object.hasOwn(TASK_STATUSES,status)||!Object.hasOwn(TASK_PRIORITIES,priority))throw Error('Situação ou prioridade inválida.');
  if(typeof due!=='string'||(due&&(!/^\d{4}-\d{2}-\d{2}$/.test(due)||!Number.isFinite(Date.parse(due+'T12:00:00Z'))||new Date(due+'T12:00:00Z').toISOString().slice(0,10)!==due)))throw Error('Prazo inválido.');
  if(!Number.isSafeInteger(revision)||revision<0)throw Error('Versão inválida. Reabra a pendência.');
- return {owner:owner.trim(),...(input.ownerUsername!==undefined?{ownerUsername:input.ownerUsername}:{}),due,priority,status,comment:comment.trim(),revision};
+ return {resolutionReason:resolutionReason.trim(),owner:owner.trim(),...(input.ownerUsername!==undefined?{ownerUsername:input.ownerUsername}:{}),due,priority,status,comment:comment.trim(),revision};
 }
 export function updateTask(previous,input,actor,now=new Date().toISOString()){
  const value=validateTask(input);
  if((previous?.revision||0)!==value.revision){const error=Error('Outra pessoa atualizou esta pendência. Reabra para ver a versão atual.');error.status=409;throw error;}
  const {comment,revision,...fields}=value;
+ if(fields.status!=='resolvida')fields.resolutionReason='';
  fields.ownerUsername=value.ownerUsername??(normalizeOwner(value.owner)===normalizeOwner(previous?.owner)?previous?.ownerUsername||'':'');
  const changes=Object.keys(fields).filter(key=>fields[key]!== (previous?.[key]??''));
- const entry={...fields,revision:revision+1,updatedAt:now,updatedBy:actor,
+ const entry={...previous,...fields,createdAt:previous?.createdAt||now,handledAt:previous?.handledAt||now,revision:revision+1,updatedAt:now,updatedBy:actor,
   comments:[...(previous?.comments||[]),...(comment?[{text:comment,author:actor,at:now}]:[])],
   history:[...(previous?.history||[]),{author:actor,at:now,changes:Object.fromEntries(changes.map(key=>[key,{from:previous?.[key]??'',to:fields[key]}]))}]};
+ if(entry.status==='resolvida'&&previous?.status!=='resolvida'){entry.resolvedAt=now;entry.resolvedBy=actor;entry.resolutions=[...(previous?.resolutions||[]),{at:now,by:actor,reason:fields.resolutionReason,cycle:(previous?.recurrenceCount||0)+1}];}
+ if(previous?.status==='resolvida'&&entry.status!=='resolvida'){entry.reopenedAt=now;entry.reopenedBy=actor;entry.reopenCount=(previous.reopenCount||0)+1;}
+ if(entry.due!==previous?.due)entry.dueOrigin='manual';
  if(entry.comments.length>500||entry.history.length>2000)throw Error('Histórico atingiu o limite deste tratamento.');
  return entry;
 }
-export function taskSummary(task){const {comments,history,...summary}=task;return summary;}
+export function taskSummary(task){const {comments,history,resolutions,...summary}=task;return summary;}

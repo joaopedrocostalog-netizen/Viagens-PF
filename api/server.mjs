@@ -4,6 +4,7 @@
  * Caminhos e parâmetros são configurados após validar o Swagger.
  */
 import http from 'node:http';
+import {createPendingService} from './pending-service.mjs';
 import {createPrivateState} from './private-state.mjs';
 import {createPreferencesStore} from './preferences-store.mjs';
 import {createPortalSessions} from './portal-sessions.mjs';
@@ -35,7 +36,8 @@ const privateState=createPrivateState({env});
 const preferencesStore=createPreferencesStore(privateState);
 const workflowStore=createWorkflowStore(privateState.enabled?{documents:privateState}:{file:workflowFile});
 const workflowStorage={kind:privateState.enabled?privateState.driver:'file',durable:privateState.durable};
-const portalSessions=createPortalSessions({synchronize});
+const portalSessions=createPortalSessions({synchronize,afterSync:(payload,context)=>pendingService.observed(payload,context)});
+const pendingService=createPendingService({store:workflowStore,sessions:portalSessions});
 const INFLIGHT=new Map(); // Reutilizar consultas idênticas que chegam ao mesmo tempo.
 const rateTable=new Map();
 const rateLimit=Math.max(10,Number(env.PORTAL_REQUESTS_PER_MINUTE||120));
@@ -263,7 +265,7 @@ const staticFiles=new Map([
  ['/styles.css','styles.css'],
  ['/logo-costalog-sem-fundo-1024x876.png','logo-costalog-sem-fundo-1024x876.png'],
  ['/Ideallog.png','Ideallog.png'],
- ...['portal-client.mjs','rv-stage-filter.mjs','date-controls.mjs','rv-status.mjs','portal-links.mjs','programming.mjs','programming-data.mjs','mobile-tables.mjs','rv-checklist.mjs','view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs','filtering.mjs','companies.mjs','app.js','dss-mapping.mjs','operational.mjs','reporting.mjs','advanced-ui.mjs','access-ui.mjs','admin-users.mjs','site-config.mjs','visual-dashboard.mjs','intelligence.mjs','intelligence-ui.mjs'].map(name=>['/src/'+name,'src/'+name])
+ ...['pending-data.mjs','pending-ui.mjs','pending-client.mjs','portal-client.mjs','rv-stage-filter.mjs','date-controls.mjs','rv-status.mjs','portal-links.mjs','programming.mjs','programming-data.mjs','mobile-tables.mjs','rv-checklist.mjs','view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs','filtering.mjs','companies.mjs','app.js','dss-mapping.mjs','operational.mjs','reporting.mjs','advanced-ui.mjs','access-ui.mjs','admin-users.mjs','site-config.mjs','visual-dashboard.mjs','intelligence.mjs','intelligence-ui.mjs'].map(name=>['/src/'+name,'src/'+name])
 ]);
 async function serveLocalFrontend(req,res,url){
  if(req.method!=='GET'&&req.method!=='HEAD')return false;
@@ -427,7 +429,7 @@ const server=http.createServer(async(req,res)=>{
    return reply(res,500,{error:'Não foi possível salvar as contas. Verifique permissões do volume privado no servidor.'},origin);
   }
  }
- if(url.pathname==='/api/workflow'){
+ if(url.pathname==='/api/workflow'||url.pathname==='/api/workflow/actions'){
   const user=identify(req);
   if(!user)return reply(res,401,{error:'Sessão inválida ou expirada.'},origin);
   if(user.mustChangePassword)return reply(res,403,{error:'Altere sua senha provisória.'},origin);
@@ -435,19 +437,21 @@ const server=http.createServer(async(req,res)=>{
   if(!validCompany(company))return reply(res,400,{error:'Empresa inválida.'},origin);
   if(!allowedRate(req))return reply(res,429,{error:'Limite de solicitações atingido.'},origin);
   try{
+   if(url.pathname==='/api/workflow/actions'){if(req.method!=='POST')return reply(res,405,{error:'Método não permitido.'},origin);const input=await bodyJSON(req,60000);return reply(res,200,await pendingService.action(company,input,user),origin);}
    if(req.method==='GET'){
     const key=url.searchParams.get('key')||'';
     const result=await workflowStore.get(company,key);
     return reply(res,200,key?{task:result,storage:workflowStorage}:{tasks:result,storage:workflowStorage},origin);
    }
    if(req.method==='PATCH'){
-    const input=await bodyJSON(req).catch(()=>{const error=Error('Dados do tratamento inválidos.');error.status=400;throw error;});
-    const task=await workflowStore.save(company,input.key,input,user.username);
+    const input=await bodyJSON(req,20000).catch(()=>{const error=Error('Dados do tratamento inválidos.');error.status=400;throw error;});
+    const source=await pendingService.context(company,input,user);
+    const task=await workflowStore.save(company,input.key,input,user.username,source);
     return reply(res,200,{task,storage:workflowStorage},origin);
    }
    return reply(res,405,{error:'Método não permitido.'},origin);
   }catch(error){
-   const status=error.status||(/inválid|Prazo|Responsável|Situação|Histórico|Versão/.test(error.message)?400:500);
+   const status=error.status||(/inválid|Prazo|Responsável|Situação|Histórico|Versão|motivo da resolução/.test(error.message)?400:500);
    return reply(res,status,{error:status===500?'Não foi possível acessar os tratamentos no armazenamento privado.':error.message},origin);
   }
  }

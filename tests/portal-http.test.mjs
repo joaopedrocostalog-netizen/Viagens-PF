@@ -9,7 +9,7 @@ const pause=()=>new Promise(resolve=>setTimeout(resolve,30));
 const listen=server=>new Promise(resolve=>server.listen(0,'127.0.0.1',()=>resolve(server.address().port)));
 test('HTTP portal: pages, metrics, durable account preferences and cancellation without hidden DSS calls',async t=>{
  const dir=await mkdtemp(join(process.cwd(),'test-private-'));t.after(()=>rm(dir,{recursive:true,force:true}));
- const password='test-password-very-private';await writeFile(join(dir,'users.json'),JSON.stringify({users:['operador','outra.conta'].map(username=>({username,role:'operacional',...passwordHash(password)}))}));
+ const password='test-password-very-private';await writeFile(join(dir,'users.json'),JSON.stringify({users:['operador','outra.conta','admin'].map(username=>({username,role:username==='admin'?'administrador':'operacional',...passwordHash(password)}))}));
  let calls=0,delay=false,aborted=0;
  const upstream=http.createServer((req,res)=>{
   calls++;res.on('close',()=>{if(!res.writableEnded)aborted++;});
@@ -41,6 +41,21 @@ test('HTTP portal: pages, metrics, durable account preferences and cancellation 
  const other=await login('outra.conta');assert.deepEqual((await(await request('/api/preferences',{token:other.token})).json()).values,{});
  assert.equal((await request('/api/portal/view',{method:'POST',body:input,token:other.token})).status,404);
  assert.equal((await request('/api/portal/view?company=todas',{method:'POST',body:input})).status,400);
+ const actions=(body,token=account.token,company='costalog')=>request('/api/workflow/actions?company='+company,{method:'POST',body,token});
+ assert.equal((await actions({action:'save-rules',policy:{revision:0,days:{cte_pendente:2}}})).status,403);
+ const archiveBefore=await(await actions({action:'archive',state:{from:'1990-01-01',to:'1990-01-02'}})).json();assert.equal(archiveBefore.total,0);
+ const selected=[{key:'cte_pendente:ctes:crc~1',revision:0},{key:'cte_pendente:ctes:crc~2',revision:0}];
+ assert.equal((await actions({action:'preview-batch',items:selected,changes:{status:'resolvida',comment:'Sem motivo explícito'}})).status,400);
+ const preview=await(await actions({action:'preview-batch',items:selected,changes:{status:'resolvida',resolutionReason:'Documentos conferidos'}})).json();assert.equal(preview.count,2);
+ assert.equal((await actions({action:'apply-batch',token:preview.token},other.token)).status,409);
+ assert.equal((await actions({action:'apply-batch',token:preview.token},account.token,'ideallog')).status,409);
+ assert.equal((await actions({action:'apply-batch',token:preview.token})).status,200);
+ const archived=await(await actions({action:'archive',state:{from:'1990-01-01',to:'1990-01-02',legalEntity:'crc'}})).json();assert.equal(archived.total,2);assert(archived.html.includes('Documentos conferidos'));
+ assert.equal((await(await actions({action:'archive',state:{}},account.token,'ideallog')).json()).total,0);
+ const admin=await login('admin');assert.equal((await actions({action:'save-rules',policy:{revision:0,days:{cte_pendente:2},applyUnscheduled:true}},admin.token)).status,200);
+ const summary=await(await request('/api/workflow?company=costalog')).json();assert(summary.tasks['cte_pendente:ctes:crc~3'].due);assert.equal(summary.tasks['cte_pendente:ctes:crc~1'].status,'resolvida');
+ const notices=await(await actions({action:'notices',state:{legalEntity:'crc'}})).json();assert(notices.counts.sem_responsavel>0);
+ const exported=await(await actions({action:'export-archive',state:{legalEntity:'crc'}})).json();assert.equal(exported.models[0].rows.length,2);assert.equal(calls,2,'workflow actions never call DSS');
  delay=true;const cancel=await(await request('/api/portal/sync',{method:'POST',body:range})).json();
  for(let i=0;i<30&&calls<4;i++)await pause();assert.equal(calls,4);
  assert.equal((await request('/api/portal/sync',{method:'PATCH',body:{id:cancel.id}})).status,200);

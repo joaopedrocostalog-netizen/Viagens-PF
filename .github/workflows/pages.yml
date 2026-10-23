@@ -70,6 +70,7 @@ jobs:
           cp index.html styles.css logo-costalog-sem-fundo-1024x876.png public_site/
           cp Ideallog.png public_site/
           cp src/filtering.mjs src/companies.mjs src/app.js src/dss-mapping.mjs src/operational.mjs src/reporting.mjs src/advanced-ui.mjs src/visual-dashboard.mjs src/access-ui.mjs src/admin-users.mjs src/site-config.mjs src/intelligence.mjs src/intelligence-ui.mjs public_site/src/
+          cp src/pending-data.mjs src/pending-ui.mjs src/pending-client.mjs public_site/src/
           cp src/portal-client.mjs src/rv-stage-filter.mjs public_site/src/
           cp src/date-controls.mjs src/rv-status.mjs public_site/src/
           cp src/portal-links.mjs src/programming.mjs src/programming-data.mjs src/mobile-tables.mjs public_site/src/

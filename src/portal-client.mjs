@@ -1,5 +1,5 @@
 import {renderComparison} from './intelligence-ui.mjs';
-const fields=['preferenceStorage','view','from','to','legalEntity','customer','vehicle','serviceType','status','rvStage','search','filter','sortKey','sortDir','page','detailPage','timelinePage','routeSelected','driverSelected','reportSelected','reportMulti','hiddenColumns','reportColumnOrder','reportTemplates','templateSelected','reportFormat','presets','metricLayout','showMetricOptions','tableSort','alertPriority','alertKind','alertStatus','alertOwner','alertScope','alertDue','alertGrouping','alertGroup','tripFocus','dayDate','dayProgramsOpen','programPage','filtersOpen','technicalOpen','drilldown','selected','compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo'];
+const fields=['alertArchive','alertUnassigned','alertRecurrent','preferenceStorage','view','from','to','legalEntity','customer','vehicle','serviceType','status','rvStage','search','filter','sortKey','sortDir','page','detailPage','timelinePage','routeSelected','driverSelected','reportSelected','reportMulti','hiddenColumns','reportColumnOrder','reportTemplates','templateSelected','reportFormat','presets','metricLayout','showMetricOptions','tableSort','alertPriority','alertKind','alertStatus','alertOwner','alertScope','alertDue','alertGrouping','alertGroup','tripFocus','dayDate','dayProgramsOpen','programPage','filtersOpen','technicalOpen','drilldown','selected','compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo'];
 const prefFields=['metricLayout','hiddenColumns','presets','reportTemplates','tableSort','reportColumnOrder','reportFormat'];
 const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function createPortalClient(state,render){
@@ -18,6 +18,7 @@ export function createPortalClient(state,render){
  function observe(){
   if(!active())return;
   savePreferencesSoon();
+  if(state.alertArchive&&(state.view==='pendencias'||state.view==='relatorios'&&state.reportSelected==='pendencias'))return;
   if((!state.remoteSnapshot||!inRange())&&!(state.view==='comparativos'&&comparison))return;
   if(state.pendingRecord){state.selected=state.pendingRecord;state.pendingRecord='';}
   const k=key();
@@ -75,7 +76,7 @@ export function createPortalClient(state,render){
  async function synchronize(){
   const generation=++syncGeneration,token=state.token,company=state.company,range={from:state.from,to:state.to};
   state.loading=true;state.loadingProgress='Preparando consulta…';state.error='';state.queryNotice='';render();
-  try{const snapshot=await runJob(range,{generation,token,company});if(generation!==syncGeneration||token!==state.token)return;state.remoteSnapshot=snapshot;state.loadedRange=range;state.lastSync=new Date().toISOString();state.page=1;state.selected=null;state.dataset={viagens:[],pedidos:[],ctes:[],mdfes:[],ocorrencias:[],sources:{}};viewKey='';comparison=null;}
+  try{const snapshot=await runJob(range,{generation,token,company});if(generation!==syncGeneration||token!==state.token)return;state.workflowRefresh=(state.workflowRefresh||0)+1;state.remoteSnapshot=snapshot;state.loadedRange=range;state.lastSync=new Date().toISOString();state.page=1;state.selected=null;state.dataset={viagens:[],pedidos:[],ctes:[],mdfes:[],ocorrencias:[],sources:{}};viewKey='';comparison=null;}
   catch(error){if(generation===syncGeneration){state.error=error.name==='AbortError'?'':error.message;state.queryNotice=error.name==='AbortError'?'Consulta cancelada. A última consulta completa foi mantida.':'';}}
   finally{if(generation===syncGeneration){state.loading=false;state.loadingProgress='';state.syncProgress=null;render();}}
  }
