@@ -1,5 +1,5 @@
 import {renderComparison} from './intelligence-ui.mjs';
-const fields=['view','from','to','legalEntity','customer','vehicle','serviceType','status','rvStage','search','filter','sortKey','sortDir','page','detailPage','timelinePage','routeSelected','driverSelected','reportSelected','reportMulti','hiddenColumns','reportColumnOrder','reportTemplates','templateSelected','reportFormat','presets','metricLayout','showMetricOptions','tableSort','alertPriority','alertKind','alertStatus','alertOwner','alertScope','alertDue','alertGrouping','alertGroup','tripFocus','dayDate','dayProgramsOpen','programPage','filtersOpen','technicalOpen','drilldown','selected','compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo'];
+const fields=['preferenceStorage','view','from','to','legalEntity','customer','vehicle','serviceType','status','rvStage','search','filter','sortKey','sortDir','page','detailPage','timelinePage','routeSelected','driverSelected','reportSelected','reportMulti','hiddenColumns','reportColumnOrder','reportTemplates','templateSelected','reportFormat','presets','metricLayout','showMetricOptions','tableSort','alertPriority','alertKind','alertStatus','alertOwner','alertScope','alertDue','alertGrouping','alertGroup','tripFocus','dayDate','dayProgramsOpen','programPage','filtersOpen','technicalOpen','drilldown','selected','compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo'];
 const prefFields=['metricLayout','hiddenColumns','presets','reportTemplates','tableSort','reportColumnOrder','reportFormat'];
 const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function createPortalClient(state,render){
@@ -93,12 +93,20 @@ export function createPortalClient(state,render){
  }
  function cancel(){const id=jobId,token=syncToken,company=syncCompany;++syncGeneration;jobId='';if(id)request('/api/portal/sync',{method:'PATCH',body:{id},token,company}).catch(()=>{});state.loading=false;state.comparisonLoading=false;state.loadingProgress='';state.syncProgress=null;state.queryNotice='Consulta cancelada. A última consulta completa foi mantida.';render();}
  async function loadPreferences(){
-  const generation=++prefGeneration,id=identity();prefReady=false;prefBlocked=false;clearTimeout(prefTimer);state.preferencesError='';
+  const generation=++prefGeneration,id=identity();state.preferenceStorage='';prefReady=false;prefBlocked=false;clearTimeout(prefTimer);state.preferencesError='';
   Object.assign(state,{metricLayout:null,hiddenColumns:{},presets:{},reportTemplates:{},tableSort:{},reportColumnOrder:{},reportFormat:'xlsx'});
-  try{const saved=await request('/api/preferences',{method:'GET'});if(generation!==prefGeneration||id!==identity())return;Object.assign(state,saved.values);prefRevision=saved.revision;prefReady=true;prefJSON=JSON.stringify(preferences());}
+  try{
+   const saved=await request('/api/preferences',{method:'GET'});if(generation!==prefGeneration||id!==identity())return;
+   state.preferenceStorage=saved.storage==='browser'?'browser':'server';
+   const values=state.preferenceStorage==='browser'?JSON.parse(localStorage.getItem(browserPreferencesKey())||'{}'):saved.values;
+   if(!values||typeof values!=='object'||Array.isArray(values))throw Error('Preferências inválidas.');
+   Object.assign(state,Object.fromEntries(prefFields.filter(key=>Object.hasOwn(values,key)).map(key=>[key,values[key]])));
+   prefRevision=saved.revision;prefReady=true;prefJSON=JSON.stringify(preferences());
+  }
   catch(error){if(generation===prefGeneration&&id===identity())state.preferencesError='Preferências da conta indisponíveis: '+error.message;}
   finally{if(generation===prefGeneration&&id===identity())render();}
  }
+ const browserPreferencesKey=()=>['viagens_pf_preferences_v2',encodeURIComponent(state.apiUrl),state.company,encodeURIComponent(state.user?.username||'')].join(':');
  const preferences=()=>Object.fromEntries(prefFields.map(k=>[k,state[k]??(k==='reportFormat'?'xlsx':k==='metricLayout'?null:{})]));
  async function flushPreferences(){
   clearTimeout(prefTimer);
@@ -106,6 +114,10 @@ export function createPortalClient(state,render){
   if(!prefReady||!active())return true;
   if(prefBlocked)return false;
   const values=preferences(),sent=JSON.stringify(values);if(sent===prefJSON)return true;
+  if(state.preferenceStorage==='browser'){
+   try{localStorage.setItem(browserPreferencesKey(),sent);prefJSON=sent;state.preferencesError='';return true;}
+   catch{prefBlocked=true;state.preferencesError='Preferências não salvas: o navegador recusou o armazenamento local.';render();return false;}
+  }
   const generation=prefGeneration,id=identity(),token=state.token,company=state.company;prefWriting=true;
   prefPromise=(async()=>{
    try{const result=await request('/api/preferences',{method:'PATCH',body:{revision:prefRevision,values},token,company,signal:AbortSignal.timeout(15000)});if(generation!==prefGeneration||id!==identity())return true;prefRevision=result.revision;prefJSON=sent;state.preferencesError='';return true;}

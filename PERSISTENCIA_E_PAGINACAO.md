@@ -1,5 +1,9 @@
 # Consulta paginada e estado privado do portal
 
+## Decisão atual: publicar sem banco de dados
+
+O proprietário decidiu adiar a etapa de banco de dados. A publicação não depende de MariaDB ou de novo disco. Sem armazenamento durável configurado, os tratamentos continuam usando o arquivo privado anterior (`PORTAL_WORKFLOW_FILE` ou arquivo ao lado das contas); no Render Free esse arquivo é temporário e pode ser perdido em reinícios/publicações. A ficha de tratamento informa essa limitação. Preferências, modelos, filtros e colunas ficam no navegador, separados por API, usuário e empresa. Não há sincronização dessas preferências entre computadores. Nenhuma configuração ou migração SQL deve ser executada nesta etapa.
+
 A interface de produção negocia `portalVersion:2` no login e usa `/api/portal/*`. Não baixa `/api/overview` para montar tabelas. Demonstração e compatibilidade com servidores anteriores conservam a apresentação local.
 
 ## Consultas
@@ -30,14 +34,14 @@ A mesma sincronização contém as duas empresas. A projeção e normalização 
 
 ### Diretório persistente
 
-Usar esta opção com um único processo da aplicação; para múltiplos processos/instâncias, usar MariaDB com transações. Configurar `PORTAL_DATA_DIR` com um caminho absoluto privado, fora da raiz pública. No Render, o diretório precisa estar dentro do disco montado e `PORTAL_DATA_PERSISTENT=true` só deve ser definido após verificar o volume. `/tmp` e `/var/tmp` não são aceitos como armazenamento durável. Sem MariaDB/diretório persistente, o portal não confirma salvamento definitivo. Não contratar plano/disco automaticamente.
+Usar esta opção com um único processo da aplicação; para múltiplos processos/instâncias, usar MariaDB com transações. Configurar `PORTAL_DATA_DIR` com um caminho absoluto privado, fora da raiz pública. No Render, o diretório precisa estar dentro do disco montado e `PORTAL_DATA_PERSISTENT=true` só deve ser definido após verificar o volume. `/tmp` e `/var/tmp` não são aceitos como armazenamento durável. Sem MariaDB/diretório persistente, o portal mantém o arquivo de tratamentos anterior com indicação de armazenamento temporário e salva preferências no navegador. Não apresenta essas opções como persistência definitiva. Não contratar plano/disco automaticamente.
 
 Contas do portal continuam usando `PORTAL_USERS_FILE`: preservar esse arquivo em volume persistente também, seguindo a migração existente. Esta alteração não migra contas automaticamente nem promete continuidade da sessão em memória entre deploys.
 
 ## Preferências da conta
 
-`GET/PATCH /api/preferences?company=costalog|ideallog` usa exclusivamente o usuário autenticado; não aceita escolher outro usuário. Guarda cartões, filtros salvos, colunas, ordenação, modelos e formato de relatório. Não guarda registros DSS, tokens nem comentários. Revisão otimista impede sobrescrever alterações de outro acesso. Falha de leitura/gravação é visível, sem fallback silencioso para localStorage. Preferências locais antigas não são importadas automaticamente para evitar associar configurações de um navegador compartilhado à conta errada.
+`GET/PATCH /api/preferences?company=costalog|ideallog` usa exclusivamente o usuário autenticado; não aceita escolher outro usuário. Guarda cartões, filtros salvos, colunas, ordenação, modelos e formato de relatório. Não guarda registros DSS, tokens nem comentários. Revisão otimista impede sobrescrever alterações de outro acesso. Com armazenamento durável habilitado, falhas de leitura/gravação são visíveis, sem fallback silencioso. Quando a API declara explicitamente `storage:browser`, a interface usa uma chave local por API/usuário/empresa e informa o alcance nos controles de personalização/modelos. O endpoint não confirma gravação remota nesse modo. Preferências locais antigas não são importadas automaticamente para evitar associar configurações de um navegador compartilhado à conta errada.
 
 ## Restrições de implantação
 
-O código e a configuração proposta estão completos, mas a durabilidade em produção depende do armazenamento acima. Publicar o código não cria MariaDB, disco ou backup externo. Não desativar Render/Pages nem alterar a aplicação principal no Plesk nesta etapa.
+A paginação, os indicadores, o progresso, o cancelamento e as etapas de RV podem ser publicados sem banco, conforme a decisão atual. Persistência definitiva em produção e preferências compartilhadas entre dispositivos permanecem adiadas e dependem do armazenamento acima. Publicar o código não cria MariaDB, disco ou backup externo. Não desativar Render/Pages nem alterar a aplicação principal no Plesk nesta etapa.

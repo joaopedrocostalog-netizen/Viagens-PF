@@ -65,7 +65,7 @@ export function renderCustomDashboard(data,state){
  }).join('');
  return '<section class="ins-module ins-custom-dashboard"><div class="ins-toolbar"><div><h2>MEU PAINEL</h2><p>Indicadores personalizados para '+esc(state.user?.displayName||state.user?.username||'visitante demonstrativo')+'</p></div>'+
  '<button class="btn btn-sm" data-ins-action="customize">'+(state.showMetricOptions?'Fechar configurações':'Personalizar cartões')+'</button></div>'+
- (state.showMetricOptions?'<div class="ins-metric-settings">'+options+'<button class="btn btn-sm" data-ins-action="reset-metrics">Restaurar padrão</button></div>':'')+
+ (state.showMetricOptions?'<div class="ins-metric-settings">'+(state.preferenceStorage==='browser'?'<p class="help">Preferências salvas neste navegador, por usuário e empresa.</p>':'')+options+'<button class="btn btn-sm" data-ins-action="reset-metrics">Restaurar padrão</button></div>':'')+
  '<div class="ins-metric-grid">'+grid+'</div>'+(visible.length?'':empty('Selecione pelo menos um indicador para montar seu painel.'))+
  '</section>';
 }

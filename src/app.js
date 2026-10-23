@@ -151,7 +151,7 @@ const companySnapshots=new Map();
 let sharedIntent=parsePortalLink(window.location);
 let sharedLoginPending=sharedIntent.hasLink;
 const state = {
- serverMode:false,remoteSnapshot:'',remoteError:'',queryNotice:'',preferencesError:'',rvStage:'',
+ preferenceStorage:'',workflowStorage:null,serverMode:false,remoteSnapshot:'',remoteError:'',queryNotice:'',preferencesError:'',rvStage:'',
  company:initialCompany,technicalOpen:false,alertGrouping:'lista',alertGroup:'',dayDate:localToday(),tripFocus:'',alertScope:'todos',alertDue:'todos',legalEntity:'',drilldown:'',detailPage:1,timelinePage:1,
  visibleAlerts:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',taskSelected:null,taskDetail:null,taskLoading:false,taskSaving:false,taskError:'',taskUnavailable:false,alertStatus:'todos',alertOwner:'',syncMetadata:[],
  reportTemplates:{},templateSelected:'',reportFormat:'xlsx',reportColumnOrder:{},
@@ -498,7 +498,7 @@ async function portalLogin(){
   if(!data.token||!['operacional','financeiro','administrador'].includes(data.user?.role))throw Error('Resposta inválida do servidor de autenticação.');
   clearSession();
   state.apiUrl=url;
-  state.serverMode=data.portalVersion===2;state.token=data.token;state.user=data.user;state.role=data.user.role;state.permissions=operationalPermissions(data.permissions);
+  state.workflowStorage=data.workflowStorage||null;state.serverMode=data.portalVersion===2;state.token=data.token;state.user=data.user;state.role=data.user.role;state.permissions=operationalPermissions(data.permissions);
   state.view='painel';state.connect=false;state.error='';state.dataset={viagens:[],pedidos:[],ctes:[],mdfes:[],sources:{}};
   state.mode='live';if(!remoteClient.active())loadMetricPreferences();if(sharedLoginPending){Object.assign(state,sharedIntent.state);sharedLoginPending=false;state.linkMessage='Consulta compartilhada. Atualize os dados para ver os registros autorizados.';}render();
   if(state.user.mustChangePassword)return;
@@ -648,7 +648,7 @@ async function switchCompany(){
  else loadMetricPreferences();render();
 }
 function clearSession(){
- remoteClient.reset();state.serverMode=false;state.remoteSnapshot='';state.remoteError='';state.queryNotice='';state.preferencesError='';state.rvStage='';
+ remoteClient.reset();state.preferenceStorage='';state.workflowStorage=null;state.serverMode=false;state.remoteSnapshot='';state.remoteError='';state.queryNotice='';state.preferencesError='';state.rvStage='';
  resetDateControls();identityEpoch++;comparisonSeq++;syncSeq++;companySnapshots.clear();clearViewCache();
  Object.assign(state,{technicalOpen:false,pendingRecord:'',linkMessage:'',alertGroup:'',tripFocus:'',alertScope:'todos',alertDue:'todos',legalEntity:'',drilldown:'',detailPage:1,timelinePage:1,visibleAlerts:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',taskSelected:null,taskDetail:null,taskLoading:false,taskSaving:false,taskUnavailable:false,alertStatus:'todos',alertOwner:'',syncMetadata:[],reportTemplates:{},templateSelected:'',reportColumnOrder:{},reportFormat:'xlsx'});
  const token=state.token,url=state.apiUrl;

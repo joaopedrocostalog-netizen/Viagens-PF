@@ -33,7 +33,8 @@ const periodStore=env.MARIADB_ENABLED==='true'?createMariaDbPeriodStore({env}):c
 const workflowFile=env.PORTAL_WORKFLOW_FILE||(env.PORTAL_USERS_FILE?join(dirname(env.PORTAL_USERS_FILE),'viagens-pf-workflow.json'):'');
 const privateState=createPrivateState({env});
 const preferencesStore=createPreferencesStore(privateState);
-const workflowStore=createWorkflowStore(privateState.enabled||env.RENDER?{documents:privateState}:{file:workflowFile});
+const workflowStore=createWorkflowStore(privateState.enabled?{documents:privateState}:{file:workflowFile});
+const workflowStorage={kind:privateState.enabled?privateState.driver:'file',durable:privateState.durable};
 const portalSessions=createPortalSessions({synchronize});
 const INFLIGHT=new Map(); // Reutilizar consultas idênticas que chegam ao mesmo tempo.
 const rateTable=new Map();
@@ -374,7 +375,7 @@ const server=http.createServer(async(req,res)=>{
    const body=await bodyJSON(req);
    const session=login(body.username,body.password);
    if(!session)return reply(res,401,{error:'Usuário ou senha inválidos.'},origin);
-   return reply(res,200,{...session,portalVersion:2},origin);
+   return reply(res,200,{...session,portalVersion:2,workflowStorage},origin);
   }catch{return reply(res,400,{error:'Dados de login inválidos.'},origin);}
  }
  if(url.pathname==='/api/logout'){
@@ -437,12 +438,12 @@ const server=http.createServer(async(req,res)=>{
    if(req.method==='GET'){
     const key=url.searchParams.get('key')||'';
     const result=await workflowStore.get(company,key);
-    return reply(res,200,key?{task:result}:{tasks:result},origin);
+    return reply(res,200,key?{task:result,storage:workflowStorage}:{tasks:result,storage:workflowStorage},origin);
    }
    if(req.method==='PATCH'){
     const input=await bodyJSON(req).catch(()=>{const error=Error('Dados do tratamento inválidos.');error.status=400;throw error;});
     const task=await workflowStore.save(company,input.key,input,user.username);
-    return reply(res,200,{task},origin);
+    return reply(res,200,{task,storage:workflowStorage},origin);
    }
    return reply(res,405,{error:'Método não permitido.'},origin);
   }catch(error){
@@ -458,8 +459,8 @@ const server=http.createServer(async(req,res)=>{
   if(!allowedRate(req))return reply(res,429,{error:'Limite de consultas atingido. Aguarde.'},origin);
   try{
    if(url.pathname==='/api/preferences'){
-    if(req.method==='GET')return reply(res,200,await preferencesStore.get(company,user.username),origin);
-    if(req.method==='PATCH')return reply(res,200,await preferencesStore.save(company,user.username,await bodyJSON(req,110000)),origin);
+    if(req.method==='GET')return reply(res,200,privateState.enabled?{...await preferencesStore.get(company,user.username),storage:'server',durable:true}:{revision:0,values:{},storage:'browser',durable:false},origin);
+    if(req.method==='PATCH'){if(!privateState.enabled)return reply(res,409,{error:'As preferências deste ambiente são salvas no navegador, por usuário e empresa.',code:'BROWSER_PREFERENCES'},origin);return reply(res,200,await preferencesStore.save(company,user.username,await bodyJSON(req,110000)),origin);}
    }
    if(url.pathname==='/api/portal/sync'){
     if(req.method==='POST')return reply(res,202,portalSessions.start(await bodyJSON(req),user),origin);

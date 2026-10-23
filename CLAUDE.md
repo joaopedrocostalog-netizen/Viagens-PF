@@ -159,3 +159,11 @@
 - `api/private-state.mjs` oferece documentos duráveis em MariaDB ou diretório persistente. `api/preferences-store.mjs` guarda preferências por conta/empresa com revisão otimista e sem conteúdo DSS. No Render, armazenamento temporário não é apresentado como definitivo; falhas aparecem na interface. Compatibilidade de arquivo local continua disponível para ambientes anteriores fora do Render.
 - `database/viagens_pf_portal_state.sql` é apenas proposta para a tabela privada do portal. **NÃO foi executado no banco compartilhado.** Requer backup, acesso e autorização para implantação. Não modificar a tabela de cache existente nem outros sistemas. `api/migrate-private-state.mjs` importa explicitamente tratamentos antigos com backup e sem sobrescrever destino preenchido.
 - Procedimento e limitações em `PERSISTENCIA_E_PAGINACAO.md`. Código publicado não significa armazenamento de produção provisionado. Contas/sessões mantêm o comportamento atual. Render/Pages devem continuar ativos durante futura migração Plesk.
+
+
+## Publicação sem banco, conforme decisão do proprietário — 23/10/2026
+
+- O proprietário pediu **pular a etapa de banco de dados** e seguir com as demais melhorias. Não solicitar Plesk/MariaDB como pré-requisito de publicação, não executar SQL, não provisionar banco/disco e não alterar os serviços de Faturamento.
+- Sem `PORTAL_STATE_DRIVER`/diretório durável configurado, `/api/preferences` declara `storage:browser`; preferências e modelos ficam em chave local por API/conta/empresa, sem sincronização entre dispositivos e sem chamadas PATCH ao servidor. Falha de um banco explicitamente habilitado não provoca fallback silencioso.
+- Tratamentos continuam usando o arquivo privado já utilizado. A condição Render não deve selecionar um adaptador durável indisponível e bloquear os tratamentos. Login/respostas de tratamento informam `workflowStorage`/`storage.durable`; a ficha alerta quando o armazenamento é temporário. Não prometer sobrevivência a deploys/reinícios no Render Free.
+- A decisão adia persistência definitiva; paginação no servidor, indicadores separados, progresso, cancelamento e etapas de RV nas áreas relacionadas devem ser publicados normalmente. Preservar autenticação, separação das empresas, atualização DSS manual e diagnóstico recolhido no rodapé.
