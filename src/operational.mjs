@@ -103,16 +103,19 @@ export function createAlertPager(data,options={}){
   bucket.count++;buckets.set(ref.type,bucket);
  }
  const emptyTasks=Object.freeze({});let statsCache=[];
- return {getPage({page=1,priority='todos',kind='todos',financial=false,query='',tasks=emptyTasks,status='todos',owner='',scope='todos',user=null,due='todos',includeRows=true}={}){
+ const trips=new Map((data.allViagens||data.viagens||[]).map(row=>[row.id,row]));
+ const groupOf=ref=>ref.view==='viagens'?'rv:'+ref.record.id:trips.has(ref.record.viagemId)?'rv:'+ref.record.viagemId:'pf:'+ref.record.id;
+ return {getPage({page=1,priority='todos',kind='todos',financial=false,query='',tasks=emptyTasks,status='todos',owner='',scope='todos',user=null,due='todos',includeRows=true,grouped=false,group=''}={}){
   const visible=[...buckets.values()].filter(b=>financial||b.type!=='sem_fatura'),hasTasks=Object.keys(tasks).length>0;
   const task=ref=>taskFor({type:ref.type,view:ref.view,recordId:ref.record.id,level:ref.level},tasks);
   const inScope=t=>scope!=='mine'||taskBelongsToUser(t,user);
   const statusMatches=t=>status==='todos'||status==='ativas'&&t.status!=='resolvida'||t.status===status;
-  const matchesBase=(ref,t)=>inScope(t)&&(priority==='todos'||t.priority===priority)&&(kind==='todos'||ref.type===kind)&&statusMatches(t)&&(!owner||matchesSearch({owner:t.owner},owner));
+  const matchesBase=(ref,t)=>(!group||groupOf(ref)===group)&&inScope(t)&&(priority==='todos'||t.priority===priority)&&(kind==='todos'||ref.type===kind)&&statusMatches(t)&&(!owner||matchesSearch({owner:t.owner},owner));
   const matchesQuery=(ref,t)=>!String(query).trim()||matchesSearch({...materializeAlert(ref),...t},query);
-  const deps=[priority,kind,financial,query,tasks,status,owner,scope,user?.username,user?.displayName,user?.name,due];
+  const deps=[priority,kind,financial,query,tasks,status,owner,scope,user?.username,user?.displayName,user?.name,due,grouped,group];
   let stats=statsCache.find(entry=>deps.every((value,i)=>value===entry.deps[i]));
   if(!stats){
+   const groups=new Map();
    const counts={high:0,warning:0,info:0},dueCounts={vencidas:0,hoje:0,proximas:0,sem_prazo:0};let total=0,totalAlerts=0,mineTotal=0;
    for(const ref of refs()){
     if(!financial&&ref.type==='sem_fatura')continue;
@@ -123,16 +126,16 @@ export function createAlertPager(data,options={}){
     if(!matchesBase(ref,t)||!matchesQuery(ref,t))continue;
     const bucket=taskDueBucket(t,context.asOf);
     if(bucket!=='resolvidas')dueCounts[bucket]++;
-    if(due==='todos'||bucket===due)total++;
+    if(due==='todos'||bucket===due){total++;if(grouped){const id=groupOf(ref),entry=groups.get(id)||{id,ref,count:0};entry.count++;groups.set(id,entry);}}
    }
-   stats={deps,total,totalAlerts,mineTotal,counts,dueCounts};
+   stats={deps,total,totalAlerts,mineTotal,counts,dueCounts,groups};
    statsCache=[stats,...statsCache].slice(0,4);
   }
   const {total,totalAlerts,mineTotal,counts,dueCounts}=stats;
-  const pages=Math.max(1,Math.ceil(total/ALERT_PAGE_SIZE));
+  const pages=Math.max(1,Math.ceil((grouped?stats.groups.size:total)/ALERT_PAGE_SIZE));
   const current=Math.min(pages,Math.max(1,Number.parseInt(page,10)||1));
   const offset=(current-1)*ALERT_PAGE_SIZE,rows=[];let skipped=0;
-  if(total&&includeRows)for(const ref of refs()){
+  if(total&&includeRows&&!grouped)for(const ref of refs()){
    if(!financial&&ref.type==='sem_fatura')continue;
    const t=task(ref);
    if(!matchesBase(ref,t)||!matchesQuery(ref,t)||(due!=='todos'&&taskDueBucket(t,context.asOf)!==due))continue;
@@ -140,7 +143,8 @@ export function createAlertPager(data,options={}){
    const alert=materializeAlert(ref);rows.push(hasTasks?{...alert,...t,level:t.priority}:alert);
    if(rows.length===ALERT_PAGE_SIZE)break;
   }
-  return {rows,page:current,pages,pageSize:ALERT_PAGE_SIZE,total,totalAlerts,mineTotal,counts,dueCounts,types:visible.map(b=>b.type).sort()};
+  const groups=grouped&&includeRows?[...stats.groups.values()].slice(offset,offset+ALERT_PAGE_SIZE).map(({id,ref,count})=>{const trip=id.startsWith('rv:')?trips.get(id.slice(3)):null;return {id,count,label:trip?'RV '+trip.numero:'PF '+(ref.record.pedidoNumero||ref.record.numero||ref.record.id)+' · Sem RV localizada',view:trip?'viagens':'ctes',recordId:trip?trip.id:ref.record.id};}):[];
+  return {rows,groups,groupTotal:stats.groups.size,page:current,pages,pageSize:ALERT_PAGE_SIZE,total,totalAlerts,mineTotal,counts,dueCounts,types:visible.map(b=>b.type).sort()};
  }};
 }
 

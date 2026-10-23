@@ -84,7 +84,7 @@ test('Detalhes de rotas e motoristas também exibem 25 registros, sem preparar o
  const driver=renderDriverRouteDetails(source,state,'motoristas');assert.equal((driver.match(/data-profile-detail=/g)||[]).length,25);assert(driver.includes('data-action="detail-prev"'));
 });
 test('Cobertura distingue fonte indisponível de consulta vazia e preserva datas reais do cache',()=>{
- const state={company:'costalog',legalEntity:'crc',from:'2026-10-01',to:'2026-10-22',mode:'live',lastSync:'2026-10-22T12:00:00Z',loadedRange:{from:'2026-10-01',to:'2026-10-22'},syncMetadata:[{sources:[{name:'ocorrencias',status:'unavailable'},{name:'pedidos',status:'ok'}],periods:[{from:'2026-10-01',to:'2026-10-22',syncedAt:'2026-10-20T12:00:00Z'}]}]};
+ const state={user:{username:'admin'},role:'administrador',permissions:{admin:true},technicalOpen:true,company:'costalog',legalEntity:'crc',from:'2026-10-01',to:'2026-10-22',mode:'live',lastSync:'2026-10-22T12:00:00Z',loadedRange:{from:'2026-10-01',to:'2026-10-22'},syncMetadata:[{sources:[{name:'ocorrencias',status:'unavailable'},{name:'pedidos',status:'ok'}],periods:[{from:'2026-10-01',to:'2026-10-22',syncedAt:'2026-10-20T12:00:00Z'}]}]};
  const html=renderDataQuality(state,data);assert(html.includes('Costalog · CRC'));assert(html.includes('Indisponível'));assert(html.includes('Fontes complementares incompletas'));assert(html.includes('20/10/2026'));
  const report=renderReportHub(data,{...state,role:'operacional',page:1,reportSelected:'pedidos',permissions:{financeiro:false}});assert(report.includes('Modelos de relatório'));
 });

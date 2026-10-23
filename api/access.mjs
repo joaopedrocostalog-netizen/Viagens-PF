@@ -6,7 +6,7 @@ export const ROLE_PERMISSIONS=Object.freeze({
   administrador:Object.freeze({operacional:true,financeiro:false,admin:true})
 });
 export function permissionsFor(role){return ROLE_PERMISSIONS[role]||null;}
-export const OPERATIONAL_VIEWS=Object.freeze(['painel','relatorios','viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','mdfes','ocorrencias']);
+export const OPERATIONAL_VIEWS=Object.freeze(['painel','programacao','comparativos','relatorios','viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','mdfes','ocorrencias']);
 export const FINANCIAL_VIEWS=Object.freeze([]);
 export const ADMIN_VIEWS=Object.freeze([]);
 export const OPERATIONAL_REPORTS=Object.freeze(['viagens','pedidos','ctes','entregas','rotas','veiculos','motoristas','mdfes','pendencias','ocorrencias','mensal']);
@@ -52,9 +52,10 @@ export function projectOverview(raw,role,company=null){
   ctes:(payload.ctes||[]).map(x=>project(x,OP_ORDERS)),
   mdfes:(payload.mdfes||[]).map(x=>project(x,['empresa','nro_mdf','numero','numeroMDFe','nroMDFe','nrMDFe','data_emissao','data','rv_id','viagemId','idViagem','rv_viagem','placa_veiculo','placa','status','situacao'])),
   rotas:(payload.rotas||[]).map(x=>project(x,['rota_id','km_previsto_rota','dsc_rota','cidade_origem_rota','cidade_destino_rota'])),
-  programacoes:(payload.programacoes||[]).map(x=>project(x,['programacao_id','nro_programacao','rv_id','nro_rv','pf_id','motorista_id','veiculo_id','data_emissao','nro_cte'])),
+  programacoes:(payload.programacoes||[]).map(x=>project(x,['empresa','programacao_id','nro_programacao','rv_id','nro_rv','pf_id','motorista_id','veiculo_id','data_emissao','nro_cte'])),
   ocorrencias:(payload.ocorrencias||[]).map(x=>project(x,['empresa','rv_id','nro_rv','pf_id','nro_mdf','ocorrencia_id','data_ocorrencia','descricao','veiculo_id','placa_veiculo','ocorrencia_de','relato','causa_raiz','providencia_tomada','responsavel_atendimento','envolvido','data','status'])),
   sources:payload.sources
  };
- return {...raw,permissions,role,...(company?{company}:{}),data:cleaned};
+ const {quality,...publicRaw}=raw||{};
+ return {...publicRaw,...(permissions.admin?{quality}:{}),permissions,role,...(company?{company}:{}),data:cleaned};
 }

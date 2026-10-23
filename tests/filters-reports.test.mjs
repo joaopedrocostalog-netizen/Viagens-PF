@@ -54,7 +54,7 @@ test('Todos os relatórios operacionais mantêm colunas seguras e usam a busca d
  const selected=buildOperationalReport('pedidos',data,{...state,search:'Cliente Alfa'});
  assert.deepEqual(selected.rows.map(r=>r.pedidoNumero),['PF-A']);
  const hub=renderReportHub(data,{...state,search:'Cliente Alfa'});
- const preview=hub.slice(hub.indexOf('Prévia de 25'));
+ const preview=hub.slice(hub.indexOf('<tbody>'));
  assert(preview.includes('PF-A'));assert(!preview.includes('PF-B'));
  assert(!hub.includes('option value="clientes"'));
 });

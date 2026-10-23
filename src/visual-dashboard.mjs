@@ -49,6 +49,7 @@ export function renderHero(view,d,{from,to,mode,financeiro,company='costalog'}){
   mdfes:['MDF-e','Referências documentais vinculadas às viagens'],
   ocorrencias:['OCORRÊNCIAS','Registros identificados para a empresa selecionada'],
   relatorios:['RELATÓRIOS OPERACIONAIS','Consultas e exportações da empresa selecionada'],
+  programacao:['PROGRAMAÇÃO DO DIA','Viagens e programações disponíveis para a data'],
   comparativos:['COMPARATIVOS','Evolução diária, semanal e mensal dos indicadores'],
   faturamento:['FATURAMENTO','Análise financeira dos pedidos de frete'],
   clientes:['CLIENTES & FRETES','Valores e distribuição por cliente'],
@@ -236,7 +237,7 @@ export function renderTripsHeader(d){
 export function renderReportsHeader(d,settings){
  const groups=memoView('reports-header',[d,settings.interval],()=>timelineGroups(d,settings.interval||'mensal')),fin=!!settings.financeiro;
  const counts=[{label:'VIAGENS',value:d.viagens.length,bar:'red'},{label:'PEDIDOS',value:d.pedidos.length,bar:'green'},{label:'CT-e NUMERADOS',value:d.pedidos.filter(p=>p.isCte).length,bar:'blue'}];
- const percentages=counts.map((c,i)=>createCard(c.label,N(c.value),i===0?'Relatórios RV':i===1?'Registros PF':'Pedidos com nro_cte',c.bar,i===0?'▤':'✓'));
+ const percentages=counts.map((c,i)=>createCard(c.label,N(c.value),i===0?'Relatórios RV':i===1?'Registros PF':'Pedidos com CT-e informado',c.bar,i===0?'▤':'✓'));
  return '<div class="v-stats-grid">'+percentages.join('')+
  (fin?createCard('FRETES INFORMADOS',d.pedidos.some(p=>Number.isFinite(p.valor))?B(d.pedidos.reduce((s,p)=>s+(Number.isFinite(p.valor)?p.valor:0),0)):'—','Não equivale a faturamento recebido','violet','R$'):createCard('REFERÊNCIAS MDF-e',N((d.mdfes||[]).length),'Sem confirmação fiscal','violet','▤'))+'</div>'+
  panel('HISTÓRICO DE VIAGENS','Quantidade de registros por período',lineGraph(groups,'viagens'),'v-report-trend');

@@ -3,7 +3,7 @@ import {taskFor,taskBelongsToUser,taskDueBucket,operationalToday} from './workfl
 import {extractRows,searchRecords,sortRecords} from './operational.mjs';
 import {filterLinkedRows} from './filtering.mjs';
 /** Regras visuais: segurança real é aplicada em api/access.mjs no servidor. */
-export const OP_VIEWS=['painel','relatorios','viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','mdfes','ocorrencias'];
+export const OP_VIEWS=['painel','programacao','comparativos','relatorios','viagens','ctes','entregas','pendencias','rotas','veiculos','motoristas','mdfes','ocorrencias'];
 export const FIN_VIEWS=[];
 export const ADMIN_VIEWS=[];
 export const OP_REPORTS=['viagens','pedidos','ctes','entregas','rotas','veiculos','motoristas','mdfes','pendencias','ocorrencias','mensal'];
@@ -47,7 +47,8 @@ function operationalRow(row,keys){return Object.fromEntries(keys.filter(key=>Obj
 export function operationalDataset(data){
  return {...data,viagens:(data.viagens||[]).map(row=>operationalRow(row,TRIP_DETAILS)),
   pedidos:(data.pedidos||[]).map(row=>operationalRow(row,ORDER_DETAILS)),
-  ctes:(data.ctes||[]).map(row=>operationalRow(row,ORDER_DETAILS))};
+  ctes:(data.ctes||[]).map(row=>operationalRow(row,ORDER_DETAILS)),
+  programacoes:(data.programacoes||[]).map(row=>operationalRow(row,['id','empresa','numero','data','viagemId','rvReferencia','motoristaId','veiculoId']))};
 }
 
 /** Mesmo modelo para a prévia e para CSV/Excel/PDF. */
@@ -67,7 +68,9 @@ function makeOperationalReport(type,data,state,preview){
  const columns=allowed.filter(([key])=>!hidden.includes(key)).sort((a,b)=>{const rank=key=>order.includes(key)?order.indexOf(key):order.length+allowed.findIndex(c=>c[0]===key);return rank(a[0])-rank(b[0]);});
  const sourceRows=type==='pendencias'?source.rows.map(row=>({...row,...taskFor(row,state.tasks),level:taskFor(row,state.tasks).priority})):source.rows;
  const model={...source,columns,availableColumns,rows:sourceRows};
- const rows=searchRecords(model.rows.filter(row=>type!=='pendencias'||(row.type!=='sem_fatura'&&(!state.alertPriority||state.alertPriority==='todos'||row.level===state.alertPriority)&&(!state.alertKind||state.alertKind==='todos'||row.type===state.alertKind)&&(!state.alertStatus||state.alertStatus==='todos'||state.alertStatus==='ativas'&&row.status!=='resolvida'||row.status===state.alertStatus)&&(!state.alertScope||state.alertScope!=='mine'||taskBelongsToUser(row,state.user))&&(!state.alertDue||state.alertDue==='todos'||taskDueBucket(row)===state.alertDue)&&(!state.alertOwner||searchRecords([{owner:row.owner}],state.alertOwner).length))),state.search,model.availableColumns.map(([key])=>key));
+ const tripIds=new Set(type==='pendencias'&&state.alertGroup?(data.allViagens||data.viagens||[]).map(trip=>trip.id):[]),orderTrip=new Map(type==='pendencias'&&state.alertGroup?(data.pedidos||[]).map(order=>[order.id,order.viagemId]):[]);
+ const alertGroup=row=>row.view==='viagens'?'rv:'+row.recordId:tripIds.has(orderTrip.get(row.recordId))?'rv:'+orderTrip.get(row.recordId):'pf:'+row.recordId;
+ const rows=searchRecords(model.rows.filter(row=>type!=='pendencias'||(row.type!=='sem_fatura'&&(!state.alertGroup||alertGroup(row)===state.alertGroup)&&(!state.alertPriority||state.alertPriority==='todos'||row.level===state.alertPriority)&&(!state.alertKind||state.alertKind==='todos'||row.type===state.alertKind)&&(!state.alertStatus||state.alertStatus==='todos'||state.alertStatus==='ativas'&&row.status!=='resolvida'||row.status===state.alertStatus)&&(!state.alertScope||state.alertScope!=='mine'||taskBelongsToUser(row,state.user))&&(!state.alertDue||state.alertDue==='todos'||taskDueBucket(row)===state.alertDue)&&(!state.alertOwner||searchRecords([{owner:row.owner}],state.alertOwner).length))),state.search,model.availableColumns.map(([key])=>key));
  const keys=model.columns.map(([key])=>key);
  const sortKey=keys.includes(state.sortKey)?state.sortKey:['data','refDate','month','name'].find(key=>keys.includes(key))||keys[0];
  const sorted=sortRecords(rows,sortKey,type==='pendencias'?'desc':state.sortDir||'desc');
@@ -76,6 +79,6 @@ function makeOperationalReport(type,data,state,preview){
 
 /** A prévia mantém referências; somente a exportação projeta todas as linhas. */
 export function buildOperationalReport(type,data,state,{preview=false}={}){
- const deps=[data,state.role,state.filter,state.search,state.sortKey,state.sortDir,state.alertPriority,state.alertKind,state.alertStatus,state.alertOwner,state.alertScope,state.alertDue,state.user?.username,state.user?.displayName,state.user?.name,type==='pendencias'?operationalToday():'',state.tasks,state.hiddenColumns?.['report-'+type],state.reportColumnOrder?.[type],preview];
+ const deps=[data,state.role,state.filter,state.search,state.sortKey,state.sortDir,state.alertGroup,state.alertPriority,state.alertKind,state.alertStatus,state.alertOwner,state.alertScope,state.alertDue,state.user?.username,state.user?.displayName,state.user?.name,type==='pendencias'?operationalToday():'',state.tasks,state.hiddenColumns?.['report-'+type],state.reportColumnOrder?.[type],preview];
  return memoView('report-'+type+'-'+preview,deps,()=>makeOperationalReport(type,data,state,preview));
 }

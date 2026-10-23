@@ -253,7 +253,7 @@ const staticFiles=new Map([
  ['/styles.css','styles.css'],
  ['/logo-costalog-sem-fundo-1024x876.png','logo-costalog-sem-fundo-1024x876.png'],
  ['/Ideallog.png','Ideallog.png'],
- ...['rv-checklist.mjs','view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs','filtering.mjs','companies.mjs','app.js','dss-mapping.mjs','operational.mjs','reporting.mjs','advanced-ui.mjs','access-ui.mjs','admin-users.mjs','site-config.mjs','visual-dashboard.mjs','intelligence.mjs','intelligence-ui.mjs'].map(name=>['/src/'+name,'src/'+name])
+ ...['portal-links.mjs','programming.mjs','programming-data.mjs','mobile-tables.mjs','rv-checklist.mjs','view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs','filtering.mjs','companies.mjs','app.js','dss-mapping.mjs','operational.mjs','reporting.mjs','advanced-ui.mjs','access-ui.mjs','admin-users.mjs','site-config.mjs','visual-dashboard.mjs','intelligence.mjs','intelligence-ui.mjs'].map(name=>['/src/'+name,'src/'+name])
 ]);
 async function serveLocalFrontend(req,res,url){
  if(req.method!=='GET'&&req.method!=='HEAD')return false;
@@ -470,8 +470,8 @@ const server=http.createServer(async(req,res)=>{
       sets.push(...await Promise.all(windows.map(win=>optionalCatalog(catalog,win.from,win.to))));
       const ids=new Set();
       data.programacoes=sets.flat().filter(row=>{
-       const id=String(row.programacao_id??'');
-       if(!id)return true;
+       const id=String(row.empresa??'')+'~'+String(row.programacao_id??'');
+       if(!row.programacao_id)return true;
        if(ids.has(id))return false;ids.add(id);return true;
       });
      }
@@ -484,7 +484,7 @@ const server=http.createServer(async(req,res)=>{
    }
    if(!driversPath)quality.sources.push({name:'motoristas',status:'disabled'});
    quality.sources.push({name:'viagens',status:'ok'},{name:'pedidos',status:'ok'},{name:'mdfes',status:cfg.mdfes.path?'ok':'reference'});
-   const payload={mode:'live',quality,updatedAt:new Date().toISOString(),cacheHit:false,data:{viagens:data.viagens||[],pedidos:data.pedidos||[],ctes:data.ctes||[],mdfes:data.mdfes||[],rotas:data.rotas||[],programacoes:data.programacoes||[],ocorrencias:data.ocorrencias||[],sources:{viagens:true,pedidos:true,ctes:!!cfg.ctes.path,mdfes:!!cfg.mdfes.path}}};
+   const payload={mode:'live',quality,updatedAt:new Date().toISOString(),cacheHit:false,data:{viagens:data.viagens||[],pedidos:data.pedidos||[],ctes:data.ctes||[],mdfes:data.mdfes||[],rotas:data.rotas||[],programacoes:data.programacoes||[],ocorrencias:data.ocorrencias||[],sources:{viagens:true,pedidos:true,ctes:!!cfg.ctes.path,mdfes:!!cfg.mdfes.path,programacoes:quality.sources.some(s=>s.name==='programacoes'&&s.status==='ok'),ocorrencias:quality.sources.some(s=>s.name==='ocorrencias'&&s.status==='ok')}}};
    cachePut(cacheKey,payload);
    apiStats.success++;apiStats.lastSuccess=payload.updatedAt;
    console.info('[DSS] consulta concluída','período',from,to,'duração(ms)',Date.now()-started,'RVs',payload.data.viagens.length,'PFs',payload.data.pedidos.length);

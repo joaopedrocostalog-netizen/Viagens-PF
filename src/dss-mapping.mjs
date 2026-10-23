@@ -1,3 +1,4 @@
+import {normalizePrograms} from './programming-data.mjs';
 import {companyIdentity} from './companies.mjs';
 /**
  * Mapeamento real DSS para as telas COSTALOG.
@@ -159,7 +160,8 @@ export function normalizeOverview(raw){
   doc.viagemId=matches.length===1?matches[0].id:null;
  }
  const ocorrencias=validArray(payload.ocorrencias).map(o=>({id:s(o.ocorrencia_id),empresa:o.empresa,rv_id:o.rv_id,nro_rv:o.nro_rv,pf_id:o.pf_id,nro_mdf:o.nro_mdf,data:isoDate(o.data_ocorrencia)||isoDate(o.data),descricao:s(o.descricao),placa:s(o.placa_veiculo),veiculoId:id(o.veiculo_id),tipo:s(o.ocorrencia_de),relato:s(o.relato),causa:s(o.causa_raiz),providencia:s(o.providencia_tomada),responsavel:s(o.responsavel_atendimento),envolvido:s(o.envolvido),status:s(o.status)}));
- return {viagens,pedidos,ctes,mdfes,ocorrencias,sources:{
+ const programacoes=normalizePrograms(validArray(payload.programacoes),viagens,pedidos);
+ return {viagens,pedidos,ctes,mdfes,ocorrencias,programacoes,sources:{
   ...payload.sources,
   viagens:true,pedidos:true,ctes:true,mdfes:hasMdfeApi,mdfeReferences:!hasMdfeApi
  }};

@@ -35,7 +35,7 @@ export function filterOperationalData(data,{from='',to='',customer='',vehicle=''
  const documents=new Set([...viagens,...pedidos,...ctes].map(row=>row.nroMdf).filter(Boolean).map(String));
  const related=row=>tripIds.has(row.viagemId)||[row.rv_id,row.nro_rv].some(id=>id!=null&&tripRefs.has(String(id)))||[row.pf_id,row.pedidoNumero].some(id=>id!=null&&orderIds.has(String(id)))||[row.numero,row.nroMdf,row.nro_mdf].some(id=>id!=null&&documents.has(String(id)));
  const relatedFilter=(row,kind)=>(!tripFocus||focusRelated(row))&&(!vehicle||row.placa===vehicle)&&statusMatches(row,kind)&&(!(customer||serviceType)||related(row));
- return {...data,viagens,pedidos,ctes,mdfes:dates(data.mdfes).filter(row=>relatedFilter(row,'mdfes')),ocorrencias:dates(data.ocorrencias).filter(row=>relatedFilter(row,'ocorrencias')),allViagens:data.viagens||[],allPedidos:data.pedidos||[]};
+ return {...data,viagens,pedidos,ctes,mdfes:dates(data.mdfes).filter(row=>relatedFilter(row,'mdfes')),programacoes:dates(data.programacoes).filter(row=>(!tripFocus||row.viagemId===tripFocus)&&(!(customer||vehicle||serviceType)||tripIds.has(row.viagemId))),ocorrencias:dates(data.ocorrencias).filter(row=>relatedFilter(row,'ocorrencias')),allViagens:data.viagens||[],allPedidos:data.pedidos||[]};
 }
 export function searchOperationalData(data,query){
  if(!normalizeSearch(query))return data;
@@ -46,6 +46,7 @@ export function searchOperationalData(data,query){
   pedidos:(data.pedidos||[]).filter(row=>orderMatches.has(row.id)||tripMatches.has(row.viagemId)),
   ctes:(data.ctes||[]).filter(row=>orderMatches.has(row.id)||tripMatches.has(row.viagemId)),
   mdfes:(data.mdfes||[]).filter(row=>matchesSearch(row,query)||tripMatches.has(row.viagemId)),
+  programacoes:(data.programacoes||[]).filter(row=>matchesSearch(row,query)||tripMatches.has(row.viagemId)),
   ocorrencias:(data.ocorrencias||[]).filter(row=>matchesSearch(row,query))};
 }
 export function filterLinkedRows(rows,kind,data,filter='todos'){

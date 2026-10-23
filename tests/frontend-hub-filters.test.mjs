@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 test('Painel, buscas, filtros salvos e relatório CSV usam a empresa e os filtros ativos',async t=>{
  const events={},storage=new Map(),downloads=[],anchors=[],alerts=[];
- const fields={loginUser:{value:'operador'},loginPassword:{value:'senha-teste'},searchInput:{focus(){},setSelectionRange(){}},globalSearchInput:{focus(){},setSelectionRange(){}}};
+ const fields={loginUser:{value:'operador'},loginPassword:{value:'senha-teste'},searchInput:{focus(){},setSelectionRange(){}},unused:{focus(){},setSelectionRange(){}}};
  const root={innerHTML:'',addEventListener:(type,fn)=>events[type]=fn};
  globalThis.document={getElementById:id=>id==='app'?root:fields[id]||null,querySelector(){return null;},addEventListener(){},body:{appendChild(){}},createElement(){const anchor={click(){},remove(){}};anchors.push(anchor);return anchor;}};
  globalThis.window={location:{protocol:'file:',origin:'https://teste.local'}};
@@ -55,7 +55,7 @@ test('Painel, buscas, filtros salvos e relatório CSV usam a empresa e os filtro
  const csv=await downloads[0].text();
  assert(csv.includes('PF-ALFA'));assert(!csv.includes('PF-BETA'));assert(!csv.includes('PF-IDEAL'));assert(!csv.includes('987654'));
  assert(anchors[0].download.startsWith('COSTALOG_pedidos_'));
- await input('globalSearchInput','JOAO');
+ change('searchScope','portal');await input('searchInput','JOAO');
  assert(root.innerHTML.includes('data-search-result="viagens:acdacosta~1"'));
  click('[data-action]',{action:'switch-company'});await tick();
  assert(root.innerHTML.includes('Relatórios IDEALLOG'));assert(!root.innerHTML.includes('PF-ALFA'));
