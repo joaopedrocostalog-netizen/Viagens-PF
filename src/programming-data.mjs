@@ -1,3 +1,4 @@
+import {tripActive,tripCompleted,tripPlanned} from './rv-status.mjs';
 import {companyIdentity} from './companies.mjs';
 import {normalizeSearch} from './filtering.mjs';
 const text=v=>String(v??'').trim();
@@ -22,11 +23,11 @@ export function normalizePrograms(rows,trips,orders){
 export function dayTrips(data,date){
  return (data.viagens||[]).filter(row=>{
   if(row.data===date||row.dataTermino===date)return true;
-  const status=normalizeSearch(row.status),active=/andamento|inici|transito|rodando|em rota/.test(status)&&!/conclu|encerr|finaliz|cancel/.test(status);
+  const active=tripActive(row.status);
   return active&&row.data&&row.data<=date&&(!row.dataTermino||row.dataTermino>=date);
  });
 }
 export function dailyStatus(row){
  const status=normalizeSearch(row.status);
- return /cancel/.test(status)?'Outras situações':/conclu|encerr|finaliz|entreg/.test(status)?'Concluídas':/andamento|inici|transito|rodando|em rota/.test(status)?'Em andamento':/planej|program|previst/.test(status)?'Planejadas':'Situação não informada';
+ return /cancel/.test(status)?'Outras situações':tripCompleted(row.status)?'Concluídas':tripActive(row.status)?'Em andamento':tripPlanned(row.status)?'Planejadas':'Situação não informada';
 }

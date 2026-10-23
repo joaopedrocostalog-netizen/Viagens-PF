@@ -1,3 +1,4 @@
+import {renderDateControl} from './date-controls.mjs';
 import {TASK_STATUSES,TASK_PRIORITIES} from './workflow.mjs';
 const h=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dt=value=>value?new Date(value).toLocaleString('pt-BR'):'—';
@@ -10,7 +11,7 @@ export function renderTaskDrawer(state){
  (state.taskLoading?'<p role="status">Carregando tratamento…</p>':'')+
  (state.taskError?'<p class="ins-inline-error" role="alert">'+h(state.taskError)+'</p>':'')+
  '<form id="taskForm"><label class="filter">Responsável<input id="taskOwner" class="control" maxlength="100" value="'+h(task.owner)+'" autocomplete="off"></label><small id="taskOwnerAccount" class="help">'+h(task.ownerUsername?'Conta: '+task.ownerUsername:'Responsável informado por nome; nenhuma conta vinculada.')+'</small>'+(state.user?.username?'<button class="btn btn-sm" type="button" data-action="assign-task-to-me" '+(state.taskLoading||state.taskSaving||state.taskUnavailable?'disabled':'')+'>Atribuir a mim</button>':'')+
- '<label class="filter">Prazo<input id="taskDue" class="control" type="date" value="'+h(task.due)+'"></label>'+
+ '<div class="filter"><label for="taskDue">Prazo</label>'+renderDateControl('taskDue',task.due,{label:'Prazo',optional:true})+'</div>'+
  '<label class="filter">Prioridade<select id="taskPriority" class="control">'+options(TASK_PRIORITIES,task.priority)+'</select></label>'+
  '<label class="filter">Situação<select id="taskStatus" class="control">'+options(TASK_STATUSES,task.status)+'</select></label>'+
  '<label class="filter">Adicionar comentário<textarea id="taskComment" class="control" rows="3" maxlength="2000" placeholder="Descreva a providência tomada"></textarea></label>'+

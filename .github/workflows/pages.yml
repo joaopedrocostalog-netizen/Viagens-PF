@@ -22,6 +22,8 @@ jobs:
           node --check src/programming.mjs
           node --check src/programming-data.mjs
           node --check src/mobile-tables.mjs
+          node --check src/date-controls.mjs
+          node --check src/rv-status.mjs
           node --check src/filtering.mjs
           node --check src/companies.mjs
           node --check src/view-cache.mjs
@@ -68,6 +70,7 @@ jobs:
           cp index.html styles.css logo-costalog-sem-fundo-1024x876.png public_site/
           cp Ideallog.png public_site/
           cp src/filtering.mjs src/companies.mjs src/app.js src/dss-mapping.mjs src/operational.mjs src/reporting.mjs src/advanced-ui.mjs src/visual-dashboard.mjs src/access-ui.mjs src/admin-users.mjs src/site-config.mjs src/intelligence.mjs src/intelligence-ui.mjs public_site/src/
+          cp src/date-controls.mjs src/rv-status.mjs public_site/src/
           cp src/portal-links.mjs src/programming.mjs src/programming-data.mjs src/mobile-tables.mjs public_site/src/
           cp src/rv-checklist.mjs src/view-cache.mjs src/workflow.mjs src/workflow-ui.mjs src/trip-timeline.mjs src/data-quality.mjs src/report-templates.mjs public_site/src/
           touch public_site/.nojekyll

@@ -1,3 +1,4 @@
+import {RV_STATUSES,rvStatus} from './rv-status.mjs';
 import {memoView} from './view-cache.mjs';
 import {renderAlertsHub} from './intelligence-ui.mjs';
 import {COMPANIES} from './companies.mjs';
@@ -21,7 +22,8 @@ export function operationalFilters(d,s){
  const filter=(id,title,items,val)=>{if(val&&!items.includes(val))items=[...items,val];return '<label class="filter grow filter-compact"><span>'+h(title)+'</span><select id="'+id+'" class="control full"><option value="">Todos</option>'+opts(items,val)+'</select></label>';};
  const view=s.view==='relatorios'?s.reportSelected:s.view;
  const source=view==='mdfes'?d.mdfes:view==='ocorrencias'?d.ocorrencias:['pedidos','ctes','entregas'].includes(view)?d.pedidos:d.viagens;
- const statuses=[...new Set((source||[]).map(row=>row.status).filter(Boolean))].sort();
+ const values=[...new Set((source||[]).map(row=>view==='viagens'?rvStatus(row.status):row.status).filter(Boolean))].sort();
+ const statuses=view==='viagens'?[...RV_STATUSES,...values.filter(value=>!RV_STATUSES.includes(value))]:values;
  if(s.status&&!statuses.includes(s.status))statuses.push(s.status);
  const extra=(['viagens','pedidos','ctes','entregas','mdfes','ocorrencias'].includes(view)?filter('recordStatusFilter','Situação',statuses,s.status||''):'')+
  (['viagens','pedidos','ctes','mdfes'].includes(view)?'<label class="filter">Vínculo<select id="statusFilter" class="control"><option value="todos">Todos</option><option value="vinculado" '+(s.filter==='vinculado'?'selected':'')+'>Vinculados</option><option value="pendente" '+(s.filter==='pendente'?'selected':'')+'>Sem vínculo</option></select></label>':'');

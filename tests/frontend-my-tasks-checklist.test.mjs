@@ -1,10 +1,11 @@
+import {dateText} from '../src/date-controls.mjs';
 import {projectPortalOverview} from '../api/access.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {operationalToday,updateTask,taskSummary} from '../src/workflow.mjs';
 
 test('Painel pessoal, atribuição à conta e checklist abrem/exportam somente os PFs da RV escolhida',async t=>{
- const events={},storage=new Map(),downloads=[],messages=[],fields={loginUser:{value:'joao.pedro'},loginPassword:{value:'senha-teste'},taskOwner:{value:'João Pedro'},taskDue:{value:operationalToday()},taskPriority:{value:'high'},taskStatus:{value:'tratamento'},taskComment:{value:'Conferir documento'}};
+ const events={},storage=new Map(),downloads=[],messages=[],fields={loginUser:{value:'joao.pedro'},loginPassword:{value:'senha-teste'},taskOwner:{value:'João Pedro'},taskDue:{value:dateText(operationalToday())},taskPriority:{value:'high'},taskStatus:{value:'tratamento'},taskComment:{value:'Conferir documento'}};
  const root={innerHTML:'',addEventListener:(type,callback)=>events[type]=callback};
  globalThis.document={getElementById:id=>id==='app'?root:fields[id]||null,querySelector(){return null;},addEventListener(){},body:{appendChild(){}},createElement(){return {click(){},remove(){}};}};
  globalThis.localStorage={getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)};

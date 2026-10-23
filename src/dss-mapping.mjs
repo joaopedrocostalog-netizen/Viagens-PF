@@ -1,3 +1,4 @@
+import {rvStatus} from './rv-status.mjs';
 import {normalizePrograms} from './programming-data.mjs';
 import {companyIdentity} from './companies.mjs';
 /**
@@ -37,7 +38,7 @@ function mapViagem(v,i){
   data:isoDate(v.data_inicio),dataTermino:isoDate(v.data_termino),
   cliente:s(v.cliente_nome)||'Não informado',clienteDocumento:s(v.cliente_cnpjcpf),
   placa:s(v.placa_veiculo),origem:s(v.cidade_inicial),destino:s(v.cidade_final),
-  status:s(v.status_rv)||'Não informado',nroMdf:meaningfulDocNum(v.nro_mdf),
+  status:rvStatus(v.status_rv),nroMdf:meaningfulDocNum(v.nro_mdf),
   kmPrevisto:moneyNumber(v.km_previsto),kmRodados:moneyNumber(v.total_km_rodados),
   abastecimento,custoAbastecimentoKm:Number.isFinite(abastecimento)&&moneyNumber(v.total_km_rodados)>0?abastecimento/moneyNumber(v.total_km_rodados):null,
   desvioKm:Number.isFinite(moneyNumber(v.total_km_rodados))&&Number.isFinite(moneyNumber(v.km_previsto))?moneyNumber(v.total_km_rodados)-moneyNumber(v.km_previsto):null,

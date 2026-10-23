@@ -1,3 +1,5 @@
+import {renderDateControl,editDateControl,resetDateControls,hasDateErrors,openDateCalendar,parseEditableDate} from './date-controls.mjs';
+import {rvStatusCounts,renderRvStatusStages} from './rv-status.mjs';
 import {mobileTables} from './mobile-tables.mjs';
 import {parsePortalLink,portalLink} from './portal-links.mjs';
 import {renderDayProgramming} from './programming.mjs';
@@ -229,6 +231,7 @@ const navItems=[['painel','home','Painel'],['viagens','truck','Viagens / RV'],['
 function button(action,label,extra){return '<button type="button" class="btn '+(extra||'')+'" data-action="'+action+'">'+label+'</button>';}
 let textRenderTimer=null;
 function render(){
+ const focusedDate=document.activeElement?.dataset?.editDate?{id:document.activeElement.id,cursor:document.activeElement.selectionStart}:null;
  if(textRenderTimer){clearTimeout(textRenderTimer);textRenderTimer=null;}
  if(state.pendingRecord&&state.mode==='live'&&state.user&&!state.user.mustChangePassword&&state.loadedRange){const [kind,id]=state.pendingRecord.split(':'),rows=kind==='viagens'?filterOptionsData().viagens:kind==='ctes'?filterOptionsData().pedidos:filterOptionsData().mdfes;if(rows.some(row=>row.id===id)){state.selected=state.pendingRecord;state.pendingRecord='';state.linkMessage='';}else state.linkMessage='O registro do link não foi localizado no período consultado.';}
  const brand=COMPANIES[state.company],other=state.company==='costalog'?'ideallog':'costalog';
@@ -263,11 +266,12 @@ function render(){
  (state.selected?renderDrawer(filterOptionsData()):'')+renderTaskDrawer(state)+(state.connect?renderConnect():'')+
  (state.user?.mustChangePassword?renderForcePasswordChange():'')+
  (state.adminResetUser&&state.permissions.admin?renderAdminPasswordReset(state.adminResetUser):'');
+ if(focusedDate){const field=document.getElementById(focusedDate.id);field?.focus?.();if(typeof focusedDate.cursor==='number')field?.setSelectionRange?.(focusedDate.cursor,focusedDate.cursor);}
  if((state.view==='pendencias'||state.view==='painel'&&state.user?.username&&!state.user.mustChangePassword||state.view==='relatorios'&&state.reportSelected==='pendencias')&&!state.user?.mustChangePassword&&!state.taskIndexLoaded&&!state.taskIndexLoading&&!state.taskIndexError)loadTaskIndex();
 }
 function renderFilters(){
- const validDates=/^\d{4}-\d{2}-\d{2}$/.test(state.from)&&/^\d{4}-\d{2}-\d{2}$/.test(state.to)&&state.from<=state.to;
- return '<div class="filters">'+(state.company==='costalog'?'<div class="filter"><label for="legalEntityFilter">Empresa Costalog</label><select id="legalEntityFilter" class="control"><option value="">Todas: AC · CRC · Comex</option>'+Object.entries(COSTALOG_ENTITIES).map(([key,label])=>'<option value="'+key+'" '+(state.legalEntity===key?'selected':'')+'>'+label+'</option>').join('')+'</select></div>':'')+'<div class="filter"><label for="from">De</label><input class="control" id="from" type="date" max="'+localToday()+'" value="'+attr(state.from)+'"></div><div class="filter"><label for="to">Até</label><input class="control" id="to" type="date" max="'+localToday()+'" value="'+attr(state.to)+'"></div>'+
+ const validDates=/^\d{4}-\d{2}-\d{2}$/.test(state.from)&&/^\d{4}-\d{2}-\d{2}$/.test(state.to)&&state.from<=state.to&&!hasDateErrors(['from','to']);
+ return '<div class="filters">'+(state.company==='costalog'?'<div class="filter"><label for="legalEntityFilter">Empresa Costalog</label><select id="legalEntityFilter" class="control"><option value="">Todas: AC · CRC · Comex</option>'+Object.entries(COSTALOG_ENTITIES).map(([key,label])=>'<option value="'+key+'" '+(state.legalEntity===key?'selected':'')+'>'+label+'</option>').join('')+'</select></div>':'')+'<div class="filter"><label for="from">De</label>'+renderDateControl('from',state.from,{label:'De',max:localToday()})+'</div><div class="filter"><label for="to">Até</label>'+renderDateControl('to',state.to,{label:'Até',max:localToday()})+'</div>'+
  '<div class="filter grow"><label for="searchInput">Pesquisar no portal</label><div class="search-field"><input id="searchInput" class="control full" type="search" autocomplete="off" placeholder="'+attr('RV, pedido, CT-e, MDF-e, placa, cliente ou motorista')+'" value="'+attr(state.search)+'">'+(state.search?button('clear-table-search','Limpar busca','btn-sm'):'')+'</div></div>'+
  (state.mode==='live'&&!PUBLIC_DEMO?'<div class="filter"><label>Consulta DSS</label><button type="button" class="btn btn-red" data-action="refresh" '+(state.loading||!validDates?'disabled':'')+'>'+(state.loading?(state.loadingProgress||'Consultando DSS...'):'Atualizar dados da DSS')+'</button></div>':'')+
  '</div>';
@@ -283,7 +287,7 @@ function renderView(d,s){
  if(state.view==='programacao')return renderDayProgramming(d,state);
  if(state.view==='comparativos')return renderComparison(d,state);
  if(state.view==='graficos')return renderCharts(d,{financeiro:state.permissions.financeiro,interval:state.chartInterval});
- if(state.view==='viagens')return renderTripsHeader(d)+renderViagens(d,s);
+ if(state.view==='viagens'){const source=memoView('rv-stages-source',[filterOptionsData(),state.customer,state.vehicle,state.serviceType,state.search,state.filter,state.drilldown,state.tripFocus],()=>filterLinkedRows(searchRecords(filterOperationalData(filterOptionsData(),{...state,status:''}).viagens,state.search),'viagens',d,state.filter));return renderTripsHeader(d)+renderRvStatusStages(memoView('rv-stages-counts',[source],()=>rvStatusCounts(source)),state.status)+renderViagens(d,s);}
  if(state.view==='ctes')return renderCtes(d);
  if(state.view==='clientes')return renderCustomerProfiles(d,state);
  if(state.view==='mdfes')return renderMdfes(d,s);
@@ -365,7 +369,7 @@ function paging(p){return '<div class="pagination"><span>'+number(p.total)+' reg
 function renderViagens(d,s){
  const rows=memoView('trip-rows',[d,state.search,state.filter],()=>filterLinkedRows(searchRows(d.viagens),'viagens',d,state.filter));
  const cols=[
-  {key:'numero',label:'Nº RV',detail:'viagens'},{key:'data',label:'Início',format:'date'},{key:'dataTermino',label:'Término',format:'date'},
+  {key:'numero',label:'Nº RV',detail:'viagens'},{key:'tipoRv',label:'Tipo de RV'},{key:'data',label:'Início',format:'date'},{key:'dataTermino',label:'Término',format:'date'},
   {key:'cliente',label:'Cliente'},{key:'placa',label:'Placa'},{key:'motoristaId',label:'Motorista ID'},{key:'motoristaNome',label:'Motorista'},
   {key:'container',label:'Container'},{key:'nroMdf',label:'Referência MDF-e'},
   {key:'origem',label:'Origem'},{key:'destino',label:'Destino'},
@@ -427,7 +431,7 @@ function renderDrawer(d){
  const [kind,id]=state.selected.split(':');if(!permittedView(state.role,kind)){state.selected=null;return '';}const item=kind==='viagens'?d.viagens.find(x=>x.id===id):kind==='ctes'?[...d.pedidos,...d.ctes].find(x=>x.id===id):d.mdfes.find(x=>x.id===id);
  if(!item){state.selected=null;return '';}
  const secureKeys=new Set(['custo','receita','abastecimento','custoAbastecimentoKm','adiantamento','proventos','liquido','valor','valorReceber','valorAverbacao','valorIcmsIss','freteSemIcms','valorMercadorias','numeroFatura','liberadoFaturamento','statusPagamentoSaldo','dataPagamentoSaldo','contratoVf']);
- const rows=Object.entries(item).filter(([k])=>!['id','isCte'].includes(k)&&(state.permissions.financeiro||!secureKeys.has(k))).map(([k,v])=>'<div class="detail-line"><span>'+esc(({numero:'Número',data:'Data',cliente:'Cliente',abastecimento:'Abastecimento (R$)',nroMdf:'MDF-e informado',rvReferencia:'RV referenciada',pedidoNumero:'Pedido de frete',cteNumero:'Número CT-e',placa:'Placa',origem:'Origem',destino:'Destino',receita:'Receita',custo:'Custo',status:'Situação',viagemId:'Viagem',valor:'Valor',chave:'Chave CT-e'}[k]||k))+'</span><b>'+(['receita','custo','valor'].includes(k)?money(v):k==='data'?dateBR(v):esc(v===null||v===''?'—':v))+'</b></div>').join('');
+ const rows=Object.entries(item).filter(([k])=>!['id','isCte'].includes(k)&&(state.permissions.financeiro||!secureKeys.has(k))).map(([k,v])=>'<div class="detail-line"><span>'+esc(({tipoRv:'Tipo de RV',numero:'Número',data:'Data',cliente:'Cliente',abastecimento:'Abastecimento (R$)',nroMdf:'MDF-e informado',rvReferencia:'RV referenciada',pedidoNumero:'Pedido de frete',cteNumero:'Número CT-e',placa:'Placa',origem:'Origem',destino:'Destino',receita:'Receita',custo:'Custo',status:'Situação',viagemId:'Viagem',valor:'Valor',chave:'Chave CT-e'}[k]||k))+'</span><b>'+(['receita','custo','valor'].includes(k)?money(v):k==='data'?dateBR(v):esc(v===null||v===''?'—':v))+'</b></div>').join('');
  let related='';
  if(kind==='viagens'){
   const completeData=filterOptionsData();
@@ -451,7 +455,7 @@ function renderDrawer(d){
    '<h3 class="drawer-section">Ocorrências da mesma placa no intervalo</h3>'+
    '<p class="help">Contexto por placa e data — não confirma relação com esta viagem: '+(incidents.length?incidents.map(o=>esc(o.data)+' · '+esc(o.descricao||o.tipo||o.status||'Ocorrência')).join(' | '):'nenhuma encontrada nos dados carregados')+'</p>';
  }
- return '<div class="overlay" data-action="close-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Detalhes do registro"><div class="drawer-top"><h2>Detalhes · '+esc(item.numero)+'</h2>'+button('close',icon('close'),'btn-sm')+'</div>'+button('share-record','Copiar link deste registro','btn-sm')+(kind==='viagens'?related+'<details class="rv-fields"><summary>Dados da RV</summary>'+rows+'</details>':rows)+'</aside></div>';
+ return '<div class="overlay" data-action="close-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Detalhes do registro"><div class="drawer-top"><h2>Detalhes · '+esc(item.numero)+'</h2>'+button('close',icon('close'),'btn-sm')+'</div>'+button('share-record','Copiar link deste registro','btn-sm')+(kind==='viagens'?renderRvStatusStages({[item.status]:1},item.status,{readonly:true})+related+'<details class="rv-fields"><summary>Dados da RV</summary>'+rows+'</details>':rows)+'</aside></div>';
 }
 function renderConnect(){
  return '<div class="overlay" data-action="close-overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-label="Acessar portal COSTALOG">'+
@@ -579,9 +583,10 @@ function saveMetricPreferences(){
 }
 let comparisonSeq=0;
 async function fetchPeriodComparison(){
+ if(hasDateErrors(['compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo']))return;
  if(state.mode!=='live'||!state.apiUrl||!state.token)return;
  const windows={current:{from:state.compareCurrentFrom,to:state.compareCurrentTo},previous:{from:state.comparePreviousFrom,to:state.comparePreviousTo}};
- try{for(const range of Object.values(windows)){if(!/^\d{4}-\d{2}-\d{2}$/.test(range.from)||!/^\d{4}-\d{2}-\d{2}$/.test(range.to)||range.from>range.to)throw Error('Corrija as datas dos períodos A e B.');splitMonths(range.from,range.to);}}
+ try{for(const range of Object.values(windows)){if(parseEditableDate(range.from)!==range.from||parseEditableDate(range.to)!==range.to||!range.from||!range.to||range.from>range.to)throw Error('Corrija as datas dos períodos A e B.');splitMonths(range.from,range.to);}}
  catch(error){state.comparisonError=error.message;render();return;}
  const seq=++comparisonSeq,identity=identityEpoch,company=state.company,token=state.token,api=state.apiUrl;
  const dataset=state.dataset,loaded=state.loadedRange;
@@ -610,6 +615,7 @@ async function fetchPeriodComparison(){
 }
 
 function switchCompany(){
+ resetDateControls();
  sharedLoginPending=false;state.pendingRecord='';state.linkMessage='';
  if(state.user?.mustChangePassword)return;
  if(state.mode==='live'&&state.loadedRange&&!state.loading)companySnapshots.set(state.company,{dataset:state.dataset,range:state.loadedRange,lastSync:state.lastSync,syncMetadata:state.syncMetadata});
@@ -627,7 +633,7 @@ function switchCompany(){
  loadMetricPreferences();render();
 }
 function clearSession(){
- identityEpoch++;comparisonSeq++;syncSeq++;companySnapshots.clear();clearViewCache();
+ resetDateControls();identityEpoch++;comparisonSeq++;syncSeq++;companySnapshots.clear();clearViewCache();
  Object.assign(state,{technicalOpen:false,pendingRecord:'',linkMessage:'',alertGroup:'',tripFocus:'',alertScope:'todos',alertDue:'todos',legalEntity:'',drilldown:'',detailPage:1,timelinePage:1,visibleAlerts:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',taskSelected:null,taskDetail:null,taskLoading:false,taskSaving:false,taskUnavailable:false,alertStatus:'todos',alertOwner:'',syncMetadata:[],reportTemplates:{},templateSelected:'',reportColumnOrder:{},reportFormat:'xlsx'});
  const token=state.token,url=state.apiUrl;
  if(token&&url)fetch(url.replace(/\/$/,'')+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+token},credentials:'omit'}).catch(()=>{});
@@ -684,7 +690,8 @@ function snapshotForCompany(results,company,requestCompany,range,lastSync){
  return {dataset:normalizePayload({data},company),range,lastSync,syncMetadata:parts.map(part=>part.quality||{})};
 }
 async function loadData(){
- if(!/^\d{4}-\d{2}-\d{2}$/.test(state.from)||!/^\d{4}-\d{2}-\d{2}$/.test(state.to)||state.from>state.to){state.error='Informe datas válidas para consultar a DSS.';render();return;}
+ if(hasDateErrors(['from','to']))return;
+ if(parseEditableDate(state.from)!==state.from||parseEditableDate(state.to)!==state.to||!state.from||!state.to||state.from>state.to){state.error='Informe datas válidas para consultar a DSS.';render();return;}
  if(!state.token){state.connect=true;state.loading=false;state.error='Faça login para consultar a DSS.';render();return;}
  const requestFrom=state.from,requestTo=state.to,token=state.token,requestCompany=state.company,seq=++syncSeq;
  const current=()=>seq===syncSeq&&state.token===token;
@@ -808,7 +815,7 @@ function saveReportTemplate(){
 }
 function applySelectedReportTemplate(){
  const name=state.templateSelected;if(!name)return;
- try{Object.assign(state,applyReportTemplate(state.reportTemplates[name],state),{selected:null,routeSelected:'',driverSelected:'',detailPage:1});render();}catch(error){alert(error.message);}
+ try{const restored=applyReportTemplate(state.reportTemplates[name],state);resetDateControls();Object.assign(state,restored,{selected:null,routeSelected:'',driverSelected:'',detailPage:1});render();}catch(error){alert(error.message);}
 }
 function deleteReportTemplate(){
  const name=state.templateSelected;if(!name)return;
@@ -839,6 +846,7 @@ function loadTaskIndex(force=false){
  return taskIndexRequest;
 }
 async function openTask(item){
+ resetDateControls(['taskDue']);
  const epoch=identityEpoch,key=alertKey(item),company=state.company;
  Object.assign(state,{taskOwnerSelf:false,taskSelected:{...item,key},taskDetail:taskFor(item,state.tasks),taskLoading:true,taskSaving:false,taskError:'',taskUnavailable:false});render();
  try{
@@ -850,10 +858,11 @@ async function openTask(item){
  finally{if(epoch===identityEpoch&&state.taskSelected?.key===key){state.taskLoading=false;render();}}
 }
 async function saveTask(){
+ const dueInput=document.getElementById('taskDue'),due=parseEditableDate(dueInput?.value||'');if(due===null){editDateControl(dueInput,{optional:true});dueInput.reportValidity?.();return;}
  if(!state.taskSelected||state.taskSaving||state.taskLoading||state.taskUnavailable)return;
  const epoch=identityEpoch,company=state.company,key=state.taskSelected.key;
  const owner=document.getElementById('taskOwner')?.value||'';
- const input={key,owner,ownerUsername:assignmentForOwner(owner,state.user,state.taskDetail,state.taskOwnerSelf),due:document.getElementById('taskDue')?.value||'',priority:document.getElementById('taskPriority')?.value,status:document.getElementById('taskStatus')?.value,comment:document.getElementById('taskComment')?.value||'',revision:state.taskDetail?.revision||0};
+ const input={key,owner,ownerUsername:assignmentForOwner(owner,state.user,state.taskDetail,state.taskOwnerSelf),due,priority:document.getElementById('taskPriority')?.value,status:document.getElementById('taskStatus')?.value,comment:document.getElementById('taskComment')?.value||'',revision:state.taskDetail?.revision||0};
  state.taskSaving=true;state.taskError='';
  const submit=document.querySelector('#taskForm button[type="submit"]');if(submit){submit.disabled=true;submit.textContent='Salvando…';}
  try{
@@ -877,6 +886,9 @@ async function saveTask(){
  }
 }
 root.addEventListener('click',e=>{
+ const calendar=e.target.closest('[data-open-calendar]');if(calendar){openDateCalendar(calendar.dataset.openCalendar);return;}
+ const rvStage=e.target.closest('[data-rv-status]');if(rvStage){state.status=rvStage.dataset.rvStatus;state.page=1;render();return;}
+
  const mobile=e.target.closest('[data-mobile-row]');if(mobile){const row=mobile.closest('tr'),expanded=mobile.getAttribute('aria-expanded')!=='true';row.classList.toggle('mobile-expanded',expanded);mobile.setAttribute('aria-expanded',String(expanded));mobile.innerHTML=(expanded?'Menos detalhes':'Mais detalhes')+' <span aria-hidden="true">⌄</span>';return;}
  const alertGroup=e.target.closest('[data-alert-group]');if(alertGroup){state.alertGroup=alertGroup.dataset.alertGroup;state.page=1;render();return;}
  const mineDue=e.target.closest('[data-mine-due]');if(mineDue){openMyTasks(mineDue.dataset.mineDue);return;}
@@ -957,7 +969,7 @@ root.addEventListener('click',e=>{
  if(action==='assign-task-to-me'){const owner=document.getElementById('taskOwner');if(owner&&state.user?.username){owner.value=state.user.displayName||state.user.username;state.taskOwnerSelf=true;const account=document.getElementById('taskOwnerAccount');if(account)account.textContent='Conta: '+state.user.username+' · confirme em Salvar tratamento';}return;}
  if(action==='share-query'||action==='share-record'){copyPortalLink(action==='share-record'?state.selected:'');return;}
  if(action==='program-prev'||action==='program-next'){state.programPage=(state.programPage||1)+(action==='program-prev'?-1:1);render();return;}
- if(action==='day-today'){state.dayDate=localToday();state.page=1;render();return;}
+ if(action==='day-today'){resetDateControls(['dayDate']);state.dayDate=localToday();state.page=1;render();return;}
  if(action==='clear-alert-group'){state.alertGroup='';state.page=1;render();return;}
  if(action==='clear-trip-focus'){state.tripFocus='';state.page=1;render();return;}
  if(action==='close-task'){state.taskSelected=null;state.taskDetail=null;render();return;}
@@ -1012,8 +1024,10 @@ root.addEventListener('submit',e=>{
  }
 });
 root.addEventListener('change',e=>{
+ if(e.target.dataset?.datePicker){const id=e.target.dataset.datePicker,input=document.getElementById(id)||{id};input.value=e.target.value;applyDateEdit(input,{calendar:true});return;}
+ if(DATE_FIELDS.has(e.target.id)){applyDateEdit(e.target);return;}
+
  if(e.target.id==='alertGrouping'){state.alertGrouping=e.target.value==='rv'?'rv':'lista';state.alertGroup='';state.page=1;render();return;}
- if(e.target.id==='dayDate'){state.dayDate=e.target.value;state.page=1;state.programPage=1;render();return;}
  if(e.target.id==='legalEntityFilter'){state.legalEntity=e.target.value;state.tripFocus='';Object.assign(state,{page:1,detailPage:1,selected:null,customer:'',vehicle:'',serviceType:'',status:'',search:'',globalQuery:'',routeSelected:'',driverSelected:''});render();return;}
  if(e.target.id==='alertDueFilter'){state.alertDue=e.target.value;state.page=1;render();return;}
  if(e.target.id==='alertStatusFilter'){state.alertStatus=e.target.value;state.page=1;render();return;}
@@ -1026,10 +1040,7 @@ root.addEventListener('change',e=>{
   else render();
   return;
  }
- if(e.target.id==='from'){state.from=e.target.value>localToday()?localToday():e.target.value;if(state.from>state.to)state.to=state.from;state.page=1;render();}
- if(e.target.id==='to'){state.to=e.target.value>localToday()?localToday():e.target.value;if(state.to<state.from)state.from=state.to;state.page=1;render();}
  if(e.target.id==='compareCustom'){state.compareCustom=e.target.checked;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;}
- if(['compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo'].includes(e.target.id)){state[e.target.id]=e.target.value;state.compareCustom=true;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;}
  if(e.target.id==='compareAnchorInput'){
   state.compareAnchor=e.target.value;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;
  }
@@ -1050,8 +1061,9 @@ root.addEventListener('change',e=>{
  if(e.target.id==='autoRefresh'){state.autoRefresh=0;activateRefresh();render();}
  if(e.target.id==='reportSelected'){state.reportSelected=e.target.value;state.page=1;state.sortKey='';render();}
  if(e.target.id==='reportMulti'){state.reportMulti=e.target.value==='all';render();}
- if(e.target.id==='savedPreset'&&e.target.value){const preset=state.presets[e.target.value];if(!preset)return;const allowed=['alertGroup','alertGrouping','tripFocus','alertScope','alertDue','alertStatus','alertOwner','alertKind','alertPriority','legalEntity','drilldown','from','to','customer','vehicle','serviceType','status','filter','search','sortKey','sortDir'];Object.assign(state,{technicalOpen:false,pendingRecord:'',linkMessage:'',alertGroup:'',tripFocus:'',alertScope:'todos',alertDue:'todos',alertStatus:'todos',alertOwner:'',alertKind:'todos',alertPriority:'todos',legalEntity:'',drilldown:'',customer:'',vehicle:'',serviceType:'',status:'',filter:'todos',search:'',sortKey:'',sortDir:'desc'},Object.fromEntries(allowed.filter(key=>Object.hasOwn(preset,key)).map(key=>[key,preset[key]])),{page:1,prevDataset:null,routeSelected:'',driverSelected:''});render();}
+ if(e.target.id==='savedPreset'&&e.target.value){resetDateControls();const preset=state.presets[e.target.value];if(!preset)return;const allowed=['alertGroup','alertGrouping','tripFocus','alertScope','alertDue','alertStatus','alertOwner','alertKind','alertPriority','legalEntity','drilldown','from','to','customer','vehicle','serviceType','status','filter','search','sortKey','sortDir'];Object.assign(state,{technicalOpen:false,pendingRecord:'',linkMessage:'',alertGroup:'',tripFocus:'',alertScope:'todos',alertDue:'todos',alertStatus:'todos',alertOwner:'',alertKind:'todos',alertPriority:'todos',legalEntity:'',drilldown:'',customer:'',vehicle:'',serviceType:'',status:'',filter:'todos',search:'',sortKey:'',sortDir:'desc'},Object.fromEntries(allowed.filter(key=>Object.hasOwn(preset,key)).map(key=>[key,preset[key]])),{page:1,prevDataset:null,routeSelected:'',driverSelected:''});render();}
  if(e.target.id==='quickPeriod'&&e.target.value){
+  resetDateControls(['from','to']);
   const now=new Date(),today=new Date(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()));
   const iso=x=>x.toISOString().slice(0,10);let from,to;
   if(e.target.value==='this-month'){from=new Date(Date.UTC(now.getFullYear(),now.getMonth(),1));to=today;}
@@ -1071,8 +1083,27 @@ root.addEventListener('change',e=>{
   file.text().then(text=>{const records=parseCsv(text);if(!records.length){alert('Nenhum registro válido no CSV. Confira o cabeçalho.');return;}const imported=scopeCompanyData({mdfes:records.map(row=>({...row,empresa:row.empresa||state.company}))},state.company).mdfes;state.dataset={...state.dataset,mdfes:imported,sources:{...state.dataset.sources,mdfes:true}};state.importCount=imported.length;render();alert(imported.length+' MDF-e carregados para '+COMPANIES[state.company].label+'.');}).catch(()=>alert('Não foi possível ler o arquivo.'));
  }
 });
+const DATE_FIELDS=new Set(['from','to','compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo','dayDate','taskDue']);
+function applyDateEdit(input,{typing=false,calendar=false,enter=false}={}){
+ const id=input.id,max=['from','to'].includes(id)?localToday():'',optional=id==='taskDue';
+ const result=editDateControl(input,{max,optional,showError:!typing||String(input.value||'').replace(/\D/g,'').length>=8});
+ const refresh=document.querySelector('[data-action="refresh"]');if(refresh)refresh.disabled=state.loading||hasDateErrors(['from','to']);
+ if(!result.valid){if(enter)input.reportValidity?.();return;}
+ if(optional)return;
+ state[id]=result.iso;state.page=1;
+ if(id==='from'&&state.from>state.to){state.to=state.from;resetDateControls(['to']);}
+ if(id==='to'&&state.to<state.from){state.from=state.to;resetDateControls(['from']);}
+ if(id.startsWith('compare')){state.compareCustom=true;state.comparison=null;state.comparisonError='';state.comparisonLoading=false;comparisonSeq++;}
+ if(id==='dayDate')state.programPage=1;
+ if(calendar||enter){render();return;}
+ const cursor=input.selectionStart;
+ if(textRenderTimer)clearTimeout(textRenderTimer);
+ textRenderTimer=setTimeout(()=>{const focused=document.activeElement===input;render();const field=document.getElementById(id);if(focused&&field){field.focus?.();if(typeof cursor==='number')field.setSelectionRange?.(cursor,cursor);}},350);
+}
 root.addEventListener('toggle',e=>{const key=e.target.id==='dayPrograms'?'dayProgramsOpen':e.target.id==='advancedFilters'?'filtersOpen':e.target.id==='technicalInfo'&&state.permissions.admin?'technicalOpen':'';if(key&&state[key]!==e.target.open){state[key]=e.target.open;render();}},true);
 root.addEventListener('input',e=>{
+ if(DATE_FIELDS.has(e.target.id)){applyDateEdit(e.target,{typing:true});return;}
+
  if(e.target.id==='taskOwner'){state.taskOwnerSelf=false;const account=document.getElementById('taskOwnerAccount'),username=assignmentForOwner(e.target.value,state.user,state.taskDetail);if(account)account.textContent=username?'Conta: '+username:'Responsável informado por nome; nenhuma conta vinculada.';return;}
  if(!['searchInput','alertOwnerFilter'].includes(e.target.id))return;
  const id=e.target.id,cursor=e.target.selectionStart;
@@ -1082,11 +1113,14 @@ root.addEventListener('input',e=>{
  textRenderTimer=setTimeout(()=>{render();const input=document.getElementById(id);if(input){input.focus?.();if(typeof cursor==='number')input.setSelectionRange?.(cursor,cursor);}},160);
 });
 root.addEventListener('keydown',e=>{
+ if(e.key==='Enter'&&DATE_FIELDS.has(e.target.id)){e.preventDefault();applyDateEdit(e.target,{enter:true});return;}
+
  const point=e.target?.closest?.('[data-chart-point]');
  if(point&&(e.key==='Enter'||e.key===' ')){e.preventDefault();activateChartPoint(point);}
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(state.selected||state.connect||state.taskSelected)){state.selected=null;state.connect=false;state.taskSelected=null;render();}});
 function applyIncomingLink(link){
+ resetDateControls();
  identityEpoch++;comparisonSeq++;syncSeq++;clearViewCache();
  Object.assign(state,{dataset:state.token?emptyDataset():demo,selected:null,pendingRecord:'',tripFocus:'',drilldown:'',customer:'',vehicle:'',serviceType:'',search:'',status:'',filter:'todos',alertGroup:'',alertScope:'todos',alertDue:'todos',alertStatus:'todos',alertKind:'todos',alertPriority:'todos',alertOwner:'',comparison:null,comparisonLoading:false,comparisonError:'',loading:false,loadedRange:null,lastSync:null,syncMetadata:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',technicalOpen:false,page:1},link.state);
  if(!PUBLIC_DEMO){state.mode='live';state.dataset=emptyDataset();state.linkMessage=state.token?'Consulta compartilhada. Atualize os dados para ver os registros autorizados.':'Link compartilhado. Entre no portal e atualize os dados para consultar.';}

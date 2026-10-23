@@ -8,7 +8,7 @@ export const FIN_VIEWS=[];
 export const ADMIN_VIEWS=[];
 export const OP_REPORTS=['viagens','pedidos','ctes','entregas','rotas','veiculos','motoristas','mdfes','pendencias','ocorrencias','mensal'];
 export const OP_COLUMNS={
- viagens:['numero','data','dataTermino','cliente','placa','motoristaId','motoristaNome','container','nroMdf','origem','destino','kmPrevisto','kmRodados','desvioKm','status'],
+ viagens:['numero','tipoRv','data','dataTermino','cliente','placa','motoristaId','motoristaNome','container','nroMdf','origem','destino','kmPrevisto','kmRodados','desvioKm','status'],
  entregas:['pedidoNumero','cteNumero','data','cliente','motoristaNome','placa','entregaConcluida','comprovanteEntrega','ocorrencia','status'],
  ocorrencias:['id','data','placa','tipo','descricao','relato','status','providencia'],
  pedidos:['pedidoNumero','cteNumero','data','dataCte','cliente','motoristaNome','placa','container','rvReferencia','nroMdf','entregaConcluida','comprovanteEntrega','ocorrencia','status'],

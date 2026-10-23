@@ -1,3 +1,4 @@
+import {tripActive,tripCompleted} from './rv-status.mjs';
 import {memoView} from './view-cache.mjs';
 import {taskFor,taskBelongsToUser,taskDueBucket,operationalToday} from './workflow.mjs';
 import {matchesSearch} from './filtering.mjs';
@@ -7,13 +8,11 @@ import {matchesSearch} from './filtering.mjs';
 const ok = x => x !== null && x !== undefined && x !== '';
 const value = x => Number.isFinite(x) ? x : null;
 const uniq = arr => [...new Set(arr.filter(ok))];
-const lc = x => String(x ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 const km = x => Number.isFinite(x) ? x : 0;
 const add = (rows,key,amount) => rows.reduce((n,r)=>n+(Number.isFinite(amount(r))?amount(r):0),0);
 const known = (rows,fn) => rows.filter(v=>Number.isFinite(fn(v)));
 const result = (rows,fn) => ({sum:add(rows,null,fn),known:known(rows,fn).length,total:rows.length});
 const dateKey = d => String(d||'').slice(0,7);
-const realStatus = x => lc(x.status||'');
 export function groupRows(rows,keyFn){
  const map=new Map();
  rows.forEach(v=>{const key=String(keyFn(v)||'Não informado').trim()||'Não informado';const arr=map.get(key)||[];arr.push(v);map.set(key,arr);});
@@ -60,8 +59,7 @@ function* recordAlerts(record,view,context){
  const v=record;
  // Indexar vínculos uma vez evita percorrer todos os pedidos para cada RV.
  if(context.hasOrders&&!context.linkedTrips.has(v.id))yield ref('rv_sem_pedido','info');
- const status=realStatus(v),complete=/encerr|conclu|finaliz|entreg/.test(status);
- const active=/inici|transito|andamento|viagem|rota|rodando/.test(status)&&!complete;
+ const active=tripActive(v.status);
  if(v.data&&!v.dataTermino&&active){
   const age=(context.asOfTime-Date.parse(v.data+'T12:00:00Z'))/86400000;
   if(Number.isFinite(age)&&age>context.lateDays)yield ref('rv_sem_termino','warning',age);
@@ -156,8 +154,8 @@ export function buildInsights(data,opts={}){
  const viagens=data.viagens||[],pedidos=data.pedidos||[];
  const docs=pedidos.filter(x=>x.isCte);
  const vTotal=new Map((data.allViagens||viagens).map(v=>[v.id,v]));
- const inProgress=viagens.filter(v=>/andamento|inici|transito|rodando|rota/.test(realStatus(v))&&!/conclu|encerr|finaliz/.test(realStatus(v)));
- const finished=viagens.filter(v=>/encerr|conclu|finaliz|entreg/.test(realStatus(v)));
+ const inProgress=viagens.filter(v=>tripActive(v.status));
+ const finished=viagens.filter(v=>tripCompleted(v.status));
  const withoutTrip=docs.filter(p=>!p.viagemId),withoutCT=pedidos.filter(p=>!p.isCte);
  const missingDelivery=pedidos.filter(p=>p.entregaConcluida===true&&p.comprovanteEntrega===false);
  const readyToInvoice=pedidos.filter(p=>p.liberadoFaturamento===true);
@@ -194,7 +192,7 @@ export function extractRows(type,data){
  const i=['clientes','containers'].includes(type)?buildInsights(data,{includeAlerts:false}):['rotas','veiculos','motoristas'].includes(type)?{[type==='rotas'?'routes':type==='veiculos'?'vehicles':'drivers']:operationalGroups(type,data)}:null;
  switch(type){
  case 'viagens':return {
-  title:'Relatório de viagens (RV)',columns:[['numero','RV'],['data','Início'],['dataTermino','Término'],['cliente','Cliente'],['placa','Placa'],['motoristaId','Motorista ID'],['motoristaNome','Motorista'],['container','Container'],['nroMdf','Ref. MDF-e'],['origem','Origem'],['destino','Destino'],['kmPrevisto','KM previsto'],['kmRodados','KM rodado'],['desvioKm','Desvio de KM'],['custoAbastecimentoKm','Abastecimento por KM (R$)'],['abastecimento','Abastecimento (R$)'],['receita','Pedidos vinculados (R$)'],['status','Situação']],rows:v};
+  title:'Relatório de viagens (RV)',columns:[['numero','RV'],['tipoRv','Tipo de RV'],['data','Início'],['dataTermino','Término'],['cliente','Cliente'],['placa','Placa'],['motoristaId','Motorista ID'],['motoristaNome','Motorista'],['container','Container'],['nroMdf','Ref. MDF-e'],['origem','Origem'],['destino','Destino'],['kmPrevisto','KM previsto'],['kmRodados','KM rodado'],['desvioKm','Desvio de KM'],['custoAbastecimentoKm','Abastecimento por KM (R$)'],['abastecimento','Abastecimento (R$)'],['receita','Pedidos vinculados (R$)'],['status','Situação']],rows:v};
  case 'pedidos':return {title:'Pedidos de frete e CT-e',columns:[['pedidoNumero','Pedido'],['cteNumero','CT-e'],['data','Emissão'],['dataCte','Emissão CT-e'],['cliente','Cliente'],['motoristaNome','Motorista'],['placa','Placa'],['container','Container'],['rvReferencia','Referência RV'],['nroMdf','Referência MDF-e'],['valor','Frete (R$)'],['valorReceber','A receber (R$)'],['liberadoFaturamento','Liberado faturamento'],['numeroFatura','Fatura'],['entregaConcluida','Entrega concluída'],['comprovanteEntrega','Comprovante'],['ocorrencia','Ocorrência'],['status','Situação']],rows:p};
  case 'ctes':return {title:'CT-e identificados',columns:[['pedidoNumero','Pedido'],['cteNumero','CT-e'],['dataCte','Emissão CT-e'],['cliente','Cliente'],['rvReferencia','Referência RV'],['viagemId','RV vinculada ID'],['nroMdf','MDF-e'],['valor','Frete (R$)'],['status','Situação']],rows:[...new Map([...p.filter(x=>x.isCte),...(data.ctes||[])].map(row=>[row.id||row.cteNumero,row])).values()]};
  case 'clientes':return {title:'Resumo por cliente',columns:[['name','Cliente'],['orders','Pedidos'],['ctes','CT-e'],['linkedTrips','Viagens vinculadas'],['freight','Total fretes (R$)'],['ticket','Ticket médio (R$)']],rows:i.customers};

@@ -27,7 +27,7 @@ test('Link passa pelo login e consulta manual; todas as abas têm uma busca e ro
  await import('../src/app.js?layout-links=1');
  assert.equal(calls.length,0);assert(root.innerHTML.includes('Entre no portal'));assert(!root.innerHTML.includes('IDEAL AUTORIZADO'));assert(!root.innerHTML.includes('data-quality-summary'));
  click('[data-action]',{action:'connect'});events.submit({target:{id:'loginForm'},preventDefault(){}});await tick();
- assert.equal(calls.filter(url=>url.pathname==='/api/overview').length,0,'Login não deve iniciar uma consulta DSS');assert(root.innerHTML.includes('id="from" type="date" max='));
+ assert.equal(calls.filter(url=>url.pathname==='/api/overview').length,0,'Login não deve iniciar uma consulta DSS');assert(root.innerHTML.includes('id="from" class="control date-text" type="text"'));assert(root.innerHTML.includes('data-date-picker="from"'));
  click('[data-action]',{action:'refresh'});await tick();
  assert(root.innerHTML.includes('Detalhes · 77'));assert(root.innerHTML.includes('IDEAL AUTORIZADO'));assert(!root.innerHTML.includes('NÃO EXIBIR COSTALOG'));
  click('[data-action]',{action:'share-record'});await tick();assert(copied[0].includes('registro=viagens%3Aideallog%7E7'));assert(!copied[0].includes('SEGREDO'));assert(copied[0].includes('empresa=ideallog'));

@@ -1,3 +1,4 @@
+import {tripActive,tripCompleted} from './rv-status.mjs';
 import {matchesSearch,normalizeSearch} from './filtering.mjs';
 /** Índices operacionais DSS; somente registros normalizados, sem consultas diretas nem valores inventados. */
 const str=v=>String(v??'').trim();
@@ -12,7 +13,7 @@ export function unifiedSearch(data,term,{financial=false,limit=40}={}){
  const q=normalizeSearch(term);
  if(q.length<2)return [];
  const groups=[
-  ['viagens',data.viagens||[],v=>[v.numero,v.rvId,v.id,v.cliente,v.placa,v.container,v.nroMdf,v.origem,v.destino,v.status,v.motoristaId,v.motoristaNome],v=>'RV '+str(v.numero)+' · '+str(v.cliente),v=>[v.placa,v.origem+' → '+v.destino].filter(Boolean).join(' · ')],
+  ['viagens',data.viagens||[],v=>[v.numero,v.rvId,v.id,v.tipoRv,v.cliente,v.placa,v.container,v.nroMdf,v.origem,v.destino,v.status,v.motoristaId,v.motoristaNome],v=>'RV '+str(v.numero)+' · '+str(v.cliente),v=>[v.placa,v.origem+' → '+v.destino].filter(Boolean).join(' · ')],
   ['pedidos',[...new Map([...(data.pedidos||[]),...(data.ctes||[])].map(row=>[row.id,row])).values()],v=>[v.pedidoNumero,v.cteNumero,v.numero,v.id,v.cliente,v.placa,v.container,v.rvReferencia,v.nroMdf,v.motoristaNome],v=>'PF '+str(v.pedidoNumero||v.id)+(v.cteNumero?' · CT-e '+v.cteNumero:''),v=>[v.cliente,v.placa].filter(Boolean).join(' · ')],
   ['mdfes',data.mdfes||[],v=>[v.numero,v.id,v.placa],v=>'Referência MDF-e '+str(v.numero),v=>str(v.placa||'Referência documental (situação fiscal não validada)')]
  ];
@@ -159,9 +160,8 @@ export const DASH_METRICS=Object.freeze([
 export function dashboardMetrics(data,{financial=false}={}){
  const trips=data.viagens||[],orders=data.pedidos||[];
  const count=(fn)=>trips.filter(fn).length;
- const statuses=x=>norm(x.status);
- const completed=count(v=>/encerr|conclu|finaliz|entreg/.test(statuses(v)));
- const ongoing=count(v=>/andamento|inici|transito|rodando|em rota/.test(statuses(v))&&!/encerr|conclu|finaliz|entreg/.test(statuses(v)));
+ const completed=count(v=>tripCompleted(v.status));
+ const ongoing=count(v=>tripActive(v.status));
  const km=metric(trips,'kmRodados'),freight=metric(orders,'valor'),fuel=metric(trips,'abastecimento');
  const map={
  viagens:trips.length,andamento:ongoing,concluidas:completed,pedidos:orders.length,ctes:orders.filter(p=>p.isCte).length,

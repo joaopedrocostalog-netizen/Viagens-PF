@@ -1,3 +1,4 @@
+import {rvStatus,tripActive,tripCompleted} from './rv-status.mjs';
 import {companyIdentity} from './companies.mjs';
 /** Busca comum: ignora acentos e separadores de placas/documentos; aceita vários termos. */
 export const normalizeSearch=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -22,10 +23,10 @@ export function filterOperationalData(data,{from='',to='',customer='',vehicle=''
  const uniqueNumber=focused?(data.viagens||[]).filter(row=>companyIdentity(row)===focusEntity&&row.numero===focused.numero).length===1:false;
  const focusRelated=row=>!!focused&&(row.viagemId===tripFocus||!!focusEntity&&companyIdentity(row)===focusEntity&&(row.rv_id!=null?String(row.rv_id)===String(focused.rvId):uniqueNumber&&row.nro_rv!=null&&String(row.nro_rv)===String(focused.numero)));
  const target=view==='relatorios'?reportSelected:view;
- const statusMatches=(row,kind)=>!status||(['viagens','ctes','pedidos','entregas','mdfes','ocorrencias'].includes(target)&&kind!==(target==='ctes'||target==='entregas'?'pedidos':target))||row.status===status;
+ const statusMatches=(row,kind)=>!status||(['viagens','ctes','pedidos','entregas','mdfes','ocorrencias'].includes(target)&&kind!==(target==='ctes'||target==='entregas'?'pedidos':target))||(kind==='viagens'?rvStatus(row.status)===rvStatus(status):row.status===status);
  const base=row=>(!customer||row.cliente===customer)&&(!vehicle||row.placa===vehicle);
  const drillOrder=row=>drilldown==='sem_cte'?!row.isCte:drilldown==='sem_rv'?row.isCte&&!row.viagemId:drilldown==='entregas'?row.entregaConcluida===true&&row.comprovanteEntrega===false:drilldown==='ctes'?row.isCte:true;
- const drillTrip=row=>{const status=normalizeSearch(row.status),done=/encerr|conclu|finaliz|entreg/.test(status);return drilldown==='andamento'?/andamento|inici|transito|rodando|em rota/.test(status)&&!done:drilldown==='concluidas'?done:drilldown==='km'?Number.isFinite(row.kmRodados):true;};
+ const drillTrip=row=>{return drilldown==='andamento'?tripActive(row.status):drilldown==='concluidas'?tripCompleted(row.status):drilldown==='km'?Number.isFinite(row.kmRodados):true;};
  const pedidos=dates(data.pedidos).filter(row=>(!tripFocus||!!focused&&row.viagemId===tripFocus)&&drillOrder(row)&&base(row)&&statusMatches(row,'pedidos')&&(!serviceType||row.tipoServico===serviceType));
  const ctes=dates(data.ctes).filter(row=>(!tripFocus||!!focused&&row.viagemId===tripFocus)&&drillOrder(row)&&base(row)&&statusMatches(row,'pedidos')&&(!serviceType||row.tipoServico===serviceType));
  const serviceTrips=new Set([...pedidos,...ctes].map(row=>row.viagemId).filter(Boolean));

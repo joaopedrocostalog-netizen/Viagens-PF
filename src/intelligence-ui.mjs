@@ -1,3 +1,4 @@
+import {renderDateControl,hasDateErrors} from './date-controls.mjs';
 import {scopeCompanyData} from './companies.mjs';
 import {filterOperationalData,searchOperationalData} from './filtering.mjs';
 import {memoView} from './view-cache.mjs';
@@ -180,9 +181,9 @@ export function renderComparison(data,state){
  const moneyFmt=metric=>metric.unit==='money';
  const val=(x,isMoney)=>x===null?'—':isMoney?curr(x):n(x);
  return '<section class="ins-module"><div class="ins-toolbar"><div><h2>COMPARATIVO DE PERÍODOS</h2><p>Escolha livremente os períodos A e B para comparar</p></div></div>'+
- '<div class="ins-compare-anchor"><label>Período A: de <input type="date" id="compareCurrentFrom" value="'+esc(windows.current.from)+'"></label><label>Até <input type="date" id="compareCurrentTo" value="'+esc(windows.current.to)+'"></label><label>Período B: de <input type="date" id="comparePreviousFrom" value="'+esc(windows.previous.from)+'"></label><label>Até <input type="date" id="comparePreviousTo" value="'+esc(windows.previous.to)+'"></label></div>'+
+ '<div class="ins-compare-anchor">'+[['compareCurrentFrom','Período A: de',windows.current.from],['compareCurrentTo','Até',windows.current.to],['comparePreviousFrom','Período B: de',windows.previous.from],['comparePreviousTo','Até',windows.previous.to]].map(([id,label,value])=>'<div class="filter"><label for="'+id+'">'+label+'</label>'+renderDateControl(id,value,{label})+'</div>').join('')+'</div>'+
  '<div class="ins-period-label"><div><small>PERÍODO A</small><strong>'+date(windows.current.from)+' a '+date(windows.current.to)+'</strong></div><div><small>PERÍODO B</small><strong>'+date(windows.previous.from)+' a '+date(windows.previous.to)+'</strong></div></div>'+
- (state.mode==='live'&&!ready?'<div class="ins-compare-init"><p>Consulte os períodos A e B para comparar. Os períodos já carregados serão reutilizados.</p><button class="btn btn-red" data-ins-action="load-comparison" '+(state.comparisonLoading?'disabled':'')+'>Consultar os dois períodos</button></div>':'')+
+ (state.mode==='live'&&!ready?'<div class="ins-compare-init"><p>Consulte os períodos A e B para comparar. Os períodos já carregados serão reutilizados.</p><button class="btn btn-red" data-ins-action="load-comparison" '+(state.comparisonLoading||hasDateErrors(['compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo'])?'disabled':'')+'>Consultar os dois períodos</button></div>':'')+
  (state.comparisonLoading?'<p class="ins-hint">Consultando DSS...</p>':'')+
  (state.comparisonError?'<p class="ins-inline-error">'+esc(state.comparisonError)+'</p>':'')+
  (state.listFilters||'')+(ready?'<div class="ins-responsive-table"><table><thead><tr><th>Indicador</th><th>Atual</th><th>Anterior</th><th>Diferença</th><th>Variação (%)</th></tr></thead><tbody>'+

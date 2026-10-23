@@ -1,3 +1,4 @@
+import {RV_STATUSES,rvStatus,tripActive,tripCompleted} from './rv-status.mjs';
 import {operationalToday} from './workflow.mjs';
 import {memoView} from './view-cache.mjs';
 import {COMPANIES} from './companies.mjs';
@@ -13,20 +14,9 @@ const N=v=>numbers.format(v);
 const B=v=>Number.isFinite(v)?currency.format(v):'—';
 const PT=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)?v.slice(8)+'/'+v.slice(5,7)+'/'+v.slice(0,4):'—';
 const COLORS=['#ff3548','#3ed68c','#64a9ff','#bb81ff','#ffad5b','#ffb6ae','#8f98a8'];
-const safeStatus=s=>String(s||'Não informado').trim()||'Não informado';
-const lower=s=>safeStatus(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-const ended=s=>/conclu|encerr|finaliz|entreg/.test(lower(s));
-const active=s=>/inici|transit|andamento|em viagem|rodando|em rota/.test(lower(s))&&!ended(s);
-function classify(v){
- const s=lower(v.status);
- if(ended(s))return 'Concluídas';
- if(active(s))return 'Em viagem';
- if(/cancel/.test(s))return 'Canceladas';
- if(/aguard|penden|programad|previst|abert/.test(s))return 'Programadas / pendentes';
- return 'Outras situações';
-}
-const DOT={ 'Em viagem':'green','Concluídas':'blue','Programadas / pendentes':'amber','Canceladas':'red','Outras situações':'violet'};
-const CATS=['Em viagem','Concluídas','Programadas / pendentes','Canceladas','Outras situações'];
+const ended=tripCompleted,active=tripActive;
+const classify=v=>rvStatus(v.status);
+const DOT={'Incluído':'violet','Escalado':'amber','Viajando':'green','Finalizado':'blue','Encerrado':'green'};
 function createCard(title,value,sub,tone='red',symbol='↗',progress=null){
  const bar=progress===null?'':'<div class="v-meter"><span class="v-meter-fill '+tone+'" style="width:'+Math.max(0,Math.min(100,progress)).toFixed(1)+'%"></span></div>';
  return '<article class="v-stat"><div class="v-stat-caption"><span>'+H(title)+'</span><b class="v-stat-icon '+tone+'">'+H(symbol)+'</b></div><div class="v-stat-value '+tone+'">'+H(value)+'</div><div class="v-stat-sub">'+H(sub||'')+'</div>'+bar+'</article>';
@@ -64,7 +54,7 @@ export function renderSummary(d,settings){
  const fin=!!settings.financeiro;
  const insights=fin?buildInsights(d,{year:Number(settings.from?.slice(0,4)||new Date().getFullYear()),includeAlerts:false}):null;
  const statuses=memoView('summary-status',[d],()=>groupRows(viagens,classify)),counts=Object.fromEntries(statuses.map(x=>[x.name,x.count]));
- const underway=counts['Em viagem']||0,completed=counts['Concluídas']||0;
+ const underway=statuses.filter(group=>active(group.name)).reduce((sum,group)=>sum+group.count,0),completed=statuses.filter(group=>ended(group.name)).reduce((sum,group)=>sum+group.count,0);
  const docs=pedidos.filter(p=>p.isCte),unlinked=docs.filter(p=>!p.viagemId);
  const evidence=pedidos.filter(p=>p.entregaConcluida===true&&p.comprovanteEntrega===false);
  const cards=[
@@ -83,9 +73,9 @@ export function renderSummary(d,settings){
  const buckets=[...new Set(viagens.map(v=>v.tipoRv||'Não informado'))].sort((a,b)=>a.localeCompare(b,'pt-BR')).slice(0,5);
  const types=buckets.length?buckets:['Não informado'];
  const matrix=memoView('summary-matrix',[d],()=>'<div class="v-matrix-scroll"><table class="v-matrix"><thead><tr><th>SITUAÇÃO / TIPO DE RV</th>'+types.map(t=>'<th>'+H(t)+'</th>').join('')+'<th>TOTAL</th></tr></thead><tbody>'+
- CATS.map(cat=>{
+ [...RV_STATUSES,...Object.keys(counts).filter(key=>!RV_STATUSES.includes(key)).sort()].map(cat=>{
  const row=types.map(type=>viagens.filter(v=>(v.tipoRv||'Não informado')===type&&classify(v)===cat).length);
- return '<tr><td><i class="v-dot '+DOT[cat]+'"></i>'+H(cat.toUpperCase())+'</td>'+
+ return '<tr><td><i class="v-dot '+(DOT[cat]||'violet')+'"></i>'+H(cat.toUpperCase())+'</td>'+
  row.map(n=>'<td><span class="v-matrix-cell'+(n?' filled':'')+'">'+N(n)+'</span></td>').join('')+
  '<td class="v-matrix-total">'+N(counts[cat]||0)+'</td></tr>';
  }).join('')+'</tbody></table></div>');
@@ -226,12 +216,12 @@ export function renderCharts(d,settings){
  '</div>';
 }
 export function renderTripsHeader(d){
- const rows=d.viagens||[],categorized=memoView('trips-header',[d],()=>groupRows(rows,classify)),counts=Object.fromEntries(categorized.map(c=>[c.name,c.count]));
+ const rows=d.viagens||[],categorized=memoView('trips-header',[d],()=>({active:rows.filter(v=>tripActive(v.status)).length,completed:rows.filter(v=>tripCompleted(v.status)).length}));
  return '<div class="v-stats-grid">'+
  createCard('TOTAL DE VIAGENS',N(rows.length),'No período selecionado','red','▤')+
- createCard('EM VIAGEM',N(counts['Em viagem']||0),'Conforme status da RV','green','↗')+
- createCard('CONCLUÍDAS',N(counts['Concluídas']||0),'Conforme status da RV','blue','✓')+
- createCard('OUTRAS SITUAÇÕES',N(rows.length-(counts['Em viagem']||0)-(counts['Concluídas']||0)),'Pendentes, canceladas e demais','amber','!')+
+ createCard('EM VIAGEM',N(categorized.active),'Conforme status da RV','green','↗')+
+ createCard('CONCLUÍDAS',N(categorized.completed),'Conforme status da RV','blue','✓')+
+ createCard('OUTRAS SITUAÇÕES',N(rows.length-(categorized.active)-(categorized.completed)),'Pendentes, canceladas e demais','amber','!')+
  '</div>';
 }
 export function renderReportsHeader(d,settings){

@@ -253,7 +253,7 @@ const staticFiles=new Map([
  ['/styles.css','styles.css'],
  ['/logo-costalog-sem-fundo-1024x876.png','logo-costalog-sem-fundo-1024x876.png'],
  ['/Ideallog.png','Ideallog.png'],
- ...['portal-links.mjs','programming.mjs','programming-data.mjs','mobile-tables.mjs','rv-checklist.mjs','view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs','filtering.mjs','companies.mjs','app.js','dss-mapping.mjs','operational.mjs','reporting.mjs','advanced-ui.mjs','access-ui.mjs','admin-users.mjs','site-config.mjs','visual-dashboard.mjs','intelligence.mjs','intelligence-ui.mjs'].map(name=>['/src/'+name,'src/'+name])
+ ...['date-controls.mjs','rv-status.mjs','portal-links.mjs','programming.mjs','programming-data.mjs','mobile-tables.mjs','rv-checklist.mjs','view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs','filtering.mjs','companies.mjs','app.js','dss-mapping.mjs','operational.mjs','reporting.mjs','advanced-ui.mjs','access-ui.mjs','admin-users.mjs','site-config.mjs','visual-dashboard.mjs','intelligence.mjs','intelligence-ui.mjs'].map(name=>['/src/'+name,'src/'+name])
 ]);
 async function serveLocalFrontend(req,res,url){
  if(req.method!=='GET'&&req.method!=='HEAD')return false;

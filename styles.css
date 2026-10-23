@@ -503,3 +503,21 @@ body{background:#08090b;color:#f6f7f8}
 }
 @media print{.mobile-row-toggle,.technical-footer{display:none!important}.mobile-record-table td[data-mobile-primary]{display:table-cell}.mobile-record-table thead{display:table-header-group}}
 @media(max-width:700px){.mobile-record-table .row-link,.mobile-record-table .ins-link{min-height:36px;text-align:left;white-space:normal}}
+
+/* Dates can be typed as a whole value without segmented native year editing. */
+.date-control{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 38px;align-items:start;gap:0;min-width:0}
+.date-control .date-text{width:100%;min-width:110px!important;border-radius:9px 0 0 9px;font-variant-numeric:tabular-nums;font-size:13px;letter-spacing:.2px}
+.date-calendar-button{height:42px;min-height:42px;display:grid;place-items:center;border:1px solid var(--line);border-left:0;border-radius:0 9px 9px 0;background:#202124;color:var(--text);padding:0;cursor:pointer}
+.date-calendar-button:hover{background:#34343a}.date-text[aria-invalid="true"]{border-color:#ef6c78!important}
+.date-picker-native{position:absolute;bottom:0;right:0;width:1px;height:1px;opacity:0;pointer-events:none}
+.date-picker-fallback{position:static;opacity:1;width:100%;height:40px;pointer-events:auto;grid-column:1/-1;color-scheme:dark}
+.date-error{grid-column:1/-1;max-width:230px;color:#ff8895;font-size:11px;line-height:1.4;padding-top:4px}.date-error[hidden]{display:none}
+.v-tools-row .filter:has(.date-control){min-width:170px}.v-tools-row .filter.grow{min-width:230px}
+.ins-compare-anchor .filter{min-width:160px;flex:1}.ins-compare-anchor .date-text{padding:10px;font-size:13px}
+.rv-status-stages{display:flex;align-items:stretch;gap:0;overflow-x:auto;margin:12px 0 16px;padding:1px 1px 4px;scrollbar-width:thin}
+.rv-status-step{position:relative;border:1px solid var(--line);background:var(--panel2);color:var(--muted);padding:10px 20px 10px 15px;font-size:12px;white-space:nowrap;min-height:42px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.rv-status-step+.rv-status-step{border-left:0}.rv-status-step:not(:last-child)::after{content:"";width:11px;height:11px;position:absolute;right:-6px;top:14px;border-top:1px solid var(--line);border-right:1px solid var(--line);transform:rotate(45deg);background:inherit;z-index:1}
+.rv-status-step.active{color:#fff;background:#76202b;border-color:#dc3549}.rv-status-step.active::after{border-color:#dc3549}.rv-status-step:hover{color:var(--text)}
+.rv-status-step span{font-size:10px;padding:2px 5px;border-radius:5px;background:#ffffff12;font-variant-numeric:tabular-nums}.drawer .rv-status-step{padding:10px 14px;font-size:11px}
+@media(max-width:700px){.date-control{grid-template-columns:minmax(0,1fr) 36px}.date-control .date-text{min-width:0!important;padding:10px 7px!important;font-size:13px!important}.v-tools-row .filter:has(.date-control){min-width:0}.ins-compare-anchor .filter{min-width:0}.rv-status-step{min-height:44px}.rv-status-step:not(:last-child)::after{top:15px}}
+@media print{.date-calendar-button,.date-picker-native,.rv-status-stages button{display:none!important}}
