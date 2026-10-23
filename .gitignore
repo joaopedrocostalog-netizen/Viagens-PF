@@ -12,3 +12,6 @@ portal-users.json
 portal-users*.json
 private/
 secrets/
+
+# Diretórios privados temporários criados pelos testes
+test-private-*/

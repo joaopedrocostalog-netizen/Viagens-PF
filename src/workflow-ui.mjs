@@ -8,6 +8,7 @@ export function renderTaskDrawer(state){
  const options=(values,selected)=>Object.entries(values).map(([key,label])=>'<option value="'+key+'" '+(key===selected?'selected':'')+'>'+h(label)+'</option>').join('');
  return '<div class="overlay"><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="taskTitle"><div class="drawer-top"><h2 id="taskTitle">Tratar pendência</h2><button class="btn btn-sm" data-action="close-task">Fechar</button></div>'+
  '<h3>'+h(item.title)+'</h3><p class="help">'+h(item.detail)+'</p><p class="help">Este acompanhamento pertence ao portal. A situação oficial da DSS permanece disponível no registro.</p>'+
+ (state.workflowStorage?.durable===false?'<p class="help" role="status">Os tratamentos ficam em armazenamento temporário neste ambiente e podem ser perdidos em reinícios ou publicações.</p>':'')+
  (state.taskLoading?'<p role="status">Carregando tratamento…</p>':'')+
  (state.taskError?'<p class="ins-inline-error" role="alert">'+h(state.taskError)+'</p>':'')+
  '<form id="taskForm"><label class="filter">Responsável<input id="taskOwner" class="control" maxlength="100" value="'+h(task.owner)+'" autocomplete="off"></label><small id="taskOwnerAccount" class="help">'+h(task.ownerUsername?'Conta: '+task.ownerUsername:'Responsável informado por nome; nenhuma conta vinculada.')+'</small>'+(state.user?.username?'<button class="btn btn-sm" type="button" data-action="assign-task-to-me" '+(state.taskLoading||state.taskSaving||state.taskUnavailable?'disabled':'')+'>Atribuir a mim</button>':'')+
