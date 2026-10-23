@@ -4,6 +4,10 @@
  * Caminhos e parâmetros são configurados após validar o Swagger.
  */
 import http from 'node:http';
+import {createPrivateState} from './private-state.mjs';
+import {createPreferencesStore} from './preferences-store.mjs';
+import {createPortalSessions} from './portal-sessions.mjs';
+import {portalResponse} from './portal-render.mjs';
 import {validCompany} from '../src/companies.mjs';
 import {createWorkflowStore} from './workflow-store.mjs';
 import {readFile} from 'node:fs/promises';
@@ -27,7 +31,10 @@ const cacheMaxAge=Math.min(3600000,Math.max(0,Number(env.API_CACHE_SECONDS??60)*
 const CACHE=new Map(),CACHE_LIMIT=3; // Render Free: evitar manter dezenas de respostas DSS enormes em memória.
 const periodStore=env.MARIADB_ENABLED==='true'?createMariaDbPeriodStore({env}):createPeriodStore({dir:env.DSS_PERIOD_CACHE_DIR||'',ttlMs:Math.max(60000,Number(env.DSS_PERIOD_CACHE_HOURS||24)*3600000)});
 const workflowFile=env.PORTAL_WORKFLOW_FILE||(env.PORTAL_USERS_FILE?join(dirname(env.PORTAL_USERS_FILE),'viagens-pf-workflow.json'):'');
-const workflowStore=createWorkflowStore({file:workflowFile});
+const privateState=createPrivateState({env});
+const preferencesStore=createPreferencesStore(privateState);
+const workflowStore=createWorkflowStore(privateState.enabled||env.RENDER?{documents:privateState}:{file:workflowFile});
+const portalSessions=createPortalSessions({synchronize});
 const INFLIGHT=new Map(); // Reutilizar consultas idênticas que chegam ao mesmo tempo.
 const rateTable=new Map();
 const rateLimit=Math.max(10,Number(env.PORTAL_REQUESTS_PER_MINUTE||120));
@@ -62,7 +69,7 @@ const driversPath=env.DSS_MOTORISTAS_PATH??'/listarMotoristas';
 const optionalCatalogs=[{name:'ocorrencias',path:env.DSS_OCORRENCIAS_PATH??'/listarOcorrencias',fields:['empresa','rv_id','nro_rv','pf_id','nro_mdf','ocorrencia_id','data_ocorrencia','descricao','veiculo_id','placa_veiculo','ocorrencia_de','relato','causa_raiz','providencia_tomada','responsavel_atendimento','envolvido','data','status']},{name:'rotas',path:env.DSS_ROTAS_PATH??'/listarRotas',fields:['empresa','rota_id','km_previsto_rota','dsc_rota','cidade_origem_rota','cidade_destino_rota']},
  {name:'programacoes',path:env.DSS_PROGRAMACOES_PATH??'/listarProgramacoes',fields:['empresa','programacao_id','nro_programacao','rv_id','nro_rv','pf_id','motorista_id','veiculo_id','data_emissao','nro_cte','total_frete_pedido_frete']}];
 const optionalCache=new Map();
-async function optionalCatalog(c,from,to){
+async function optionalCatalog(c,from,to,signal){
  if(!c.path)return [];
  const key=c.name+'|'+(c.name==='rotas'?'catalogo':from+'|'+to),saved=optionalCache.get(key);
  if(saved&&saved.expires>Date.now())return saved.rows;
@@ -72,7 +79,7 @@ async function optionalCatalog(c,from,to){
   const format=d=>d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4);
   url.searchParams.set('data_inicio',format(from));url.searchParams.set('data_fim',format(to));
  }
- const response=await fetch(url,{headers:{Accept:'application/json',...dssAuthHeaders()},signal:AbortSignal.timeout(Math.min(timeout,6000)),redirect:'error'});
+ const response=await fetch(url,{headers:{Accept:'application/json',...dssAuthHeaders()},signal:signal?AbortSignal.any([signal,AbortSignal.timeout(Math.min(timeout,6000))]):AbortSignal.timeout(Math.min(timeout,6000)),redirect:'error'});
  if(!response.ok)throw Error(c.name+' HTTP '+response.status);
  const json=await response.json();
  if(typeof json?.status==='number'&&json.status!==200)throw Error(c.name+' status DSS '+json.status);
@@ -86,12 +93,12 @@ async function optionalCatalog(c,from,to){
 }
 
 let driverCatalog={expires:0,items:[],status:'disabled'};
-async function driverNames(){
+async function driverNames(signal){
  if(!driversPath)return driverCatalog.items;
  if(Date.now()<driverCatalog.expires)return driverCatalog.items;
  const endpoint=new URL(driversPath.startsWith('/')?driversPath.slice(1):driversPath,base.endsWith('/')?base:base+'/');
  if(endpoint.origin!==new URL(base).origin)throw Error('Origem de motoristas inválida');
- const req=await fetch(endpoint,{headers:{Accept:'application/json',...dssAuthHeaders()},signal:AbortSignal.timeout(Math.min(timeout,12000)),redirect:'error'});
+ const req=await fetch(endpoint,{headers:{Accept:'application/json',...dssAuthHeaders()},signal:signal?AbortSignal.any([signal,AbortSignal.timeout(Math.min(timeout,12000))]):AbortSignal.timeout(Math.min(timeout,12000)),redirect:'error'});
  if(!req.ok)throw Error('listarMotoristas HTTP '+req.status);
  const raw=await req.json();
  if(typeof raw?.status==='number'&&raw.status!==200)throw Error('listarMotoristas status DSS '+raw.status);
@@ -168,10 +175,10 @@ function identify(req){
  if(allowLegacy&&legacyAuthorized(req))return {username:'legado-admin',displayName:'Administrador',role:'administrador',permissions:permissionsFor('administrador')};
  return null;
 }
-async function bodyJSON(req){
+async function bodyJSON(req,maxBytes=8192){
  const parts=[];let size=0;
  for await(const chunk of req){
-  size+=chunk.length;if(size>8192)throw Error('Corpo da requisição excede 8 KB.');
+  size+=chunk.length;if(size>maxBytes)throw Error('Corpo da requisição excede o limite permitido.');
   parts.push(chunk);
  }
  return JSON.parse(Buffer.concat(parts).toString('utf8'));
@@ -189,7 +196,7 @@ function listFrom(v){
  for(const k of Object.keys(v)){if(['data','dados','result','results','items','lista','registros','retorno','content'].includes(k.toLowerCase())){const r=listFrom(v[k]);if(r)return r;}}
  return null;
 }
-async function queryDss(name,from,to){
+async function queryDss(name,from,to,signal){
  const c=cfg[name];if(!c.path)return null;
  if(!['GET','POST'].includes(c.method))throw Error('Método inválido em '+name);
  if(!base)throw Error('DSS_BASE_URL não informado');
@@ -204,7 +211,7 @@ async function queryDss(name,from,to){
  let r;
  const startedAt=Date.now();
  try{
-  r=await fetch(url,{method:c.method,headers,body,signal:AbortSignal.timeout(timeout),redirect:'error'});
+  r=await fetch(url,{method:c.method,headers,body,signal:signal?AbortSignal.any([signal,AbortSignal.timeout(timeout)]):AbortSignal.timeout(timeout),redirect:'error'});
  }catch(err){
   const reason=err?.name==='TimeoutError'||err?.name==='AbortError'?'tempo limite':'falha de conexão';
   console.error('[DSS] serviço',name,reason,'após',Date.now()-startedAt,'ms','tipo',err?.name||'Error');
@@ -232,15 +239,17 @@ async function queryDss(name,from,to){
  return list;
 }
 // Repetir apenas falhas transitórias de transporte ou resposta inválida; não repetir 401/403.
-async function queryDssResilient(name,from,to){
- try{return await queryDss(name,from,to);}
+async function queryDssResilient(name,from,to,signal){
+ try{return await queryDss(name,from,to,signal);}
  catch(error){
+  signal?.throwIfAborted();
   const message=String(error?.message||'');
   const retry=/não é JSON|conteúdo inválido|tempo limite|falha de conexão|HTTP 50[0234]/i.test(message);
   if(!retry)throw error;
   console.warn('[DSS] repetindo serviço',name,'período',from,to,'causa',message.slice(0,130));
-  await new Promise(resolve=>setTimeout(resolve,800));
-  return queryDss(name,from,to);
+  await new Promise((resolve,reject)=>{const timer=setTimeout(done,800);function done(){signal?.removeEventListener('abort',abort);resolve();}function abort(){clearTimeout(timer);reject(signal.reason);}signal?.addEventListener('abort',abort,{once:true});});
+  signal?.throwIfAborted();
+  return queryDss(name,from,to,signal);
  }
 }
 /** Frontend local no MESMO servidor e origem da API.
@@ -253,7 +262,7 @@ const staticFiles=new Map([
  ['/styles.css','styles.css'],
  ['/logo-costalog-sem-fundo-1024x876.png','logo-costalog-sem-fundo-1024x876.png'],
  ['/Ideallog.png','Ideallog.png'],
- ...['date-controls.mjs','rv-status.mjs','portal-links.mjs','programming.mjs','programming-data.mjs','mobile-tables.mjs','rv-checklist.mjs','view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs','filtering.mjs','companies.mjs','app.js','dss-mapping.mjs','operational.mjs','reporting.mjs','advanced-ui.mjs','access-ui.mjs','admin-users.mjs','site-config.mjs','visual-dashboard.mjs','intelligence.mjs','intelligence-ui.mjs'].map(name=>['/src/'+name,'src/'+name])
+ ...['portal-client.mjs','rv-stage-filter.mjs','date-controls.mjs','rv-status.mjs','portal-links.mjs','programming.mjs','programming-data.mjs','mobile-tables.mjs','rv-checklist.mjs','view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs','filtering.mjs','companies.mjs','app.js','dss-mapping.mjs','operational.mjs','reporting.mjs','advanced-ui.mjs','access-ui.mjs','admin-users.mjs','site-config.mjs','visual-dashboard.mjs','intelligence.mjs','intelligence-ui.mjs'].map(name=>['/src/'+name,'src/'+name])
 ]);
 async function serveLocalFrontend(req,res,url){
  if(req.method!=='GET'&&req.method!=='HEAD')return false;
@@ -269,6 +278,83 @@ async function serveLocalFrontend(req,res,url){
   else reply(res,500,{error:'Falha ao carregar a interface local.'});
  }
  return true;
+}
+async function synchronize(from,to,{refreshMode='recent',syncTo=to,signal,onProgress=()=>{}}={}){
+ const started=Date.now();
+   const windows=monthWindows(from,to);
+   if(windows.length>12)throw Error('Período muito longo: selecione até 12 meses.');
+   const combined=Object.fromEntries(Object.keys(cfg).map(k=>[k,[]]));
+   const quality={periods:[],sources:[]};
+   for(const window of windows)for(const name of Object.keys(cfg).filter(name=>cfg[name].path))onProgress({key:window.from+':'+name,label:({viagens:'Viagens / RV',pedidos:'Pedidos de frete',ctes:'CT-e',mdfes:'MDF-e'})[name],period:window.from.slice(0,7),status:'pending'});
+   for(const name of [...optionalCatalogs.map(c=>c.name),'motoristas'])onProgress({key:name,label:({rotas:'Rotas',ocorrencias:'Ocorrências',programacoes:'Programações',motoristas:'Motoristas'})[name],status:'pending'});
+   // Lotes de até 2 meses: impede que dez meses sejam processados em serie
+   // sem disparar dezenas de chamadas simultaneas ao DSS.
+   for(let offset=0;offset<windows.length;offset+=2){
+    const batch=windows.slice(offset,offset+2);
+    const results=await Promise.all(batch.map(async window=>{
+     // Modo incremental: períodos encerrados anteriores aos dois meses mais recentes usam cache,
+     // quando disponível. Meses recentes sempre buscam a DSS.
+     signal?.throwIfAborted();
+     const anchor=/^\d{4}-\d{2}-\d{2}$/.test(syncTo)&&syncTo>=to?syncTo:to;
+     const recentBoundary=new Date(Date.UTC(Number(anchor.slice(0,4)),Number(anchor.slice(5,7))-2,1)).toISOString().slice(0,10);
+     const refreshWindow=refreshMode==='1'||(refreshMode==='recent'&&window.to>=recentBoundary);
+     let result=refreshWindow?null:await periodStore.read(window.from,window.to);const reused=!!result;
+     if(result){
+      console.info('[DSS] mês reutilizado do cache privado',window.from,window.to);
+     }else{
+      const pairs=await Promise.all(Object.keys(cfg).filter(name=>cfg[name].path).map(async name=>{const key=window.from+':'+name;onProgress({key,label:({viagens:'Viagens / RV',pedidos:'Pedidos de frete',ctes:'CT-e',mdfes:'MDF-e'})[name],period:window.from.slice(0,7),status:'running'});const rows=await queryDssResilient(name,window.from,window.to,signal);onProgress({key,status:'done'});return [name,rows];}));
+      result={...Object.fromEntries(pairs),_syncedAt:new Date().toISOString()};
+      // Só guardar o mês se todos os serviços principais terminaram com sucesso.
+      await periodStore.write(window.from,window.to,result);
+      console.info('[DSS] mês consultado',window.from,window.to);
+     }
+     if(reused)for(const name of Object.keys(cfg).filter(name=>cfg[name].path))onProgress({key:window.from+':'+name,label:({viagens:'Viagens / RV',pedidos:'Pedidos de frete',ctes:'CT-e',mdfes:'MDF-e'})[name],period:window.from.slice(0,7),status:'reused'});
+     quality.periods.push({from:window.from,to:window.to,syncedAt:result._syncedAt||null,reused});
+     return Object.entries(result).filter(([name])=>Object.hasOwn(combined,name));
+    }));
+    for(const result of results)for(const [name,rows] of result)combined[name].push(rows||[]);
+   }
+   const data=Object.fromEntries(Object.entries(combined).map(([name,groups])=>[name,mergeDssRows(groups,name)]));
+   for(const catalog of optionalCatalogs){
+    signal?.throwIfAborted();onProgress({key:catalog.name,label:({rotas:'Rotas',ocorrencias:'Ocorrências',programacoes:'Programações'})[catalog.name],status:'running'});
+    if(!catalog.path){quality.sources.push({name:catalog.name,status:'disabled'});onProgress({key:catalog.name,status:'disabled'});continue;}
+    try{
+     if(catalog.name==='rotas')data.rotas=await optionalCatalog(catalog,from,to,signal);
+     else if(catalog.name==='ocorrencias'){
+      // Consulta adicional limitada a um mês para evitar atrasar o painel principal.
+      if(monthWindows(from,to).length>1){quality.sources.push({name:catalog.name,status:'skipped'});onProgress({key:catalog.name,status:'skipped'});continue;}
+      data.ocorrencias=await optionalCatalog(catalog,from,to,signal);
+     }
+     else{
+      // Programacoes sao enriquecimento opcional e muito custoso em periodos longos.
+      if(monthWindows(from,to).length>1){quality.sources.push({name:catalog.name,status:'skipped'});onProgress({key:catalog.name,status:'skipped'});continue;}
+      const windows=monthWindows(from,to);
+      const sets=[];
+      sets.push(...await Promise.all(windows.map(win=>optionalCatalog(catalog,win.from,win.to,signal))));
+      const ids=new Set();
+      data.programacoes=sets.flat().filter(row=>{
+       const id=String(row.empresa??'')+'~'+String(row.programacao_id??'');
+       if(!row.programacao_id)return true;
+       if(ids.has(id))return false;ids.add(id);return true;
+      });
+     }
+     quality.sources.push({name:catalog.name,status:'ok'});onProgress({key:catalog.name,status:'done'});
+    }catch(err){signal?.throwIfAborted();onProgress({key:catalog.name,status:'unavailable'});quality.sources.push({name:catalog.name,status:'unavailable'});console.warn('[DSS] catálogo opcional',catalog.name,'indisponível:',String(err.message).slice(0,110));}
+   }
+   signal?.throwIfAborted();onProgress({key:'motoristas',label:'Motoristas',status:'running'});
+   if(driversPath){
+    try{const names=await driverNames(signal);attachDriverNames(data,names);quality.sources.push({name:'motoristas',status:'ok'});}
+    catch(err){quality.sources.push({name:'motoristas',status:'unavailable'});driverCatalog.expires=Date.now()+60_000;console.warn('[DSS] listarMotoristas indisponível:',err.name||'Error',String(err.message).slice(0,120));attachDriverNames(data,driverCatalog.items);}
+   }
+   signal?.throwIfAborted();onProgress({key:'motoristas',status:quality.sources.find(s=>s.name==='motoristas')?.status==='ok'?'done':driversPath?'unavailable':'disabled'});
+   if(!driversPath)quality.sources.push({name:'motoristas',status:'disabled'});
+   quality.sources.push({name:'viagens',status:'ok'},{name:'pedidos',status:'ok'},{name:'mdfes',status:cfg.mdfes.path?'ok':'reference'});
+   const payload={mode:'live',quality,updatedAt:new Date().toISOString(),cacheHit:false,data:{viagens:data.viagens||[],pedidos:data.pedidos||[],ctes:data.ctes||[],mdfes:data.mdfes||[],rotas:data.rotas||[],programacoes:data.programacoes||[],ocorrencias:data.ocorrencias||[],sources:{viagens:true,pedidos:true,ctes:!!cfg.ctes.path,mdfes:!!cfg.mdfes.path,programacoes:quality.sources.some(s=>s.name==='programacoes'&&s.status==='ok'),ocorrencias:quality.sources.some(s=>s.name==='ocorrencias'&&s.status==='ok')}}};
+   signal?.throwIfAborted();
+   cachePut(from+'|'+to,payload);
+   apiStats.success++;apiStats.lastSuccess=payload.updatedAt;
+   console.info('[DSS] consulta concluída','período',from,to,'duração(ms)',Date.now()-started,'RVs',payload.data.viagens.length,'PFs',payload.data.pedidos.length);
+   return payload;
 }
 const server=http.createServer(async(req,res)=>{
  const origin=req.headers.origin||'';
@@ -288,11 +374,12 @@ const server=http.createServer(async(req,res)=>{
    const body=await bodyJSON(req);
    const session=login(body.username,body.password);
    if(!session)return reply(res,401,{error:'Usuário ou senha inválidos.'},origin);
-   return reply(res,200,session,origin);
+   return reply(res,200,{...session,portalVersion:2},origin);
   }catch{return reply(res,400,{error:'Dados de login inválidos.'},origin);}
  }
  if(url.pathname==='/api/logout'){
   if(req.method!=='POST')return reply(res,405,{error:'Método não permitido'},origin);
+  const exiting=identify(req);if(exiting)portalSessions.release(exiting);
   if(useAccounts)logout(bearer(req));
   return reply(res,200,{ok:true},origin);
  }
@@ -363,6 +450,30 @@ const server=http.createServer(async(req,res)=>{
    return reply(res,status,{error:status===500?'Não foi possível acessar os tratamentos no armazenamento privado.':error.message},origin);
   }
  }
+ if(url.pathname.startsWith('/api/portal/')||url.pathname==='/api/preferences'){
+  const user=identify(req);
+  if(!user)return reply(res,401,{error:'Sessão inválida ou expirada.'},origin);
+  if(user.mustChangePassword||!user.permissions.operacional)return reply(res,403,{error:'Acesso operacional necessário e senha provisória deve ser alterada.'},origin);
+  if(!validCompany(company))return reply(res,400,{error:'Empresa inválida.'},origin);
+  if(!allowedRate(req))return reply(res,429,{error:'Limite de consultas atingido. Aguarde.'},origin);
+  try{
+   if(url.pathname==='/api/preferences'){
+    if(req.method==='GET')return reply(res,200,await preferencesStore.get(company,user.username),origin);
+    if(req.method==='PATCH')return reply(res,200,await preferencesStore.save(company,user.username,await bodyJSON(req,110000)),origin);
+   }
+   if(url.pathname==='/api/portal/sync'){
+    if(req.method==='POST')return reply(res,202,portalSessions.start(await bodyJSON(req),user),origin);
+    if(req.method==='GET')return reply(res,200,portalSessions.status(url.searchParams.get('id'),user),origin);
+    if(req.method==='PATCH')return reply(res,200,portalSessions.cancel((await bodyJSON(req)).id,user),origin);
+   }
+   if(req.method==='POST'&&['/api/portal/view','/api/portal/metrics','/api/portal/detail','/api/portal/export','/api/portal/compare','/api/portal/import'].includes(url.pathname)){
+    const input=await bodyJSON(req,110000),snapshot=portalSessions.get(input.snapshot,user);
+    const result=await portalResponse({action:url.pathname.split('/').at(-1),input,snapshot,user,company,workflowStore,portalSessions});
+    return reply(res,200,result,origin,req.headers['accept-encoding']||'');
+   }
+   return reply(res,405,{error:'Método não permitido.'},origin);
+  }catch(error){console.warn('[PORTAL] falha',error.code||error.name);return reply(res,error.status||503,{error:error.status&&error.status<500?error.message:'Serviço indisponível. Verifique o armazenamento privado ou tente novamente.'},origin);}
+ }
  if(req.method!=='GET')return reply(res,405,{error:'Método não permitido'},origin);
  if(url.pathname==='/api/health')return reply(res,200,{status:'ok',configured:!!(base&&cfg.viagens.path&&cfg.pedidos.path&&dssCredentialsReady()&&(useAccounts||(allowLegacy&&env.PORTAL_ACCESS_TOKEN))),accounts:useAccounts},origin);
  const user=identify(req);
@@ -374,7 +485,7 @@ const server=http.createServer(async(req,res)=>{
   if(!user)return reply(res,401,{error:'Não autorizado'},origin);
   if(user.mustChangePassword)return reply(res,403,{error:'Altere a senha provisória.'},origin);
   if(!user.permissions.admin)return reply(res,403,{error:'Somente administradores podem consultar diagnósticos.'},origin);
-  return reply(res,200,{status:'ok',configured:!!(base&&dssCredentialsReady()),lastSuccess:apiStats.lastSuccess,lastFailure:apiStats.lastFailure,counters:{...apiStats},cacheEntries:CACHE.size,cacheSeconds:cacheMaxAge/1000,periodStoreEnabled:periodStore.enabled,periodStoreType:env.MARIADB_ENABLED==='true'?'mariadb':env.DSS_PERIOD_CACHE_DIR?'file':'disabled'},origin);
+  return reply(res,200,{status:'ok',configured:!!(base&&dssCredentialsReady()),lastSuccess:apiStats.lastSuccess,lastFailure:apiStats.lastFailure,counters:{...apiStats},cacheEntries:CACHE.size,cacheSeconds:cacheMaxAge/1000,periodStoreEnabled:periodStore.enabled,privateState:{driver:privateState.driver,durable:privateState.durable},periodStoreType:env.MARIADB_ENABLED==='true'?'mariadb':env.DSS_PERIOD_CACHE_DIR?'file':'disabled'},origin);
  }
  if(url.pathname==='/api/records'){
   if(!user)return reply(res,401,{error:'Sessão inválida ou expirada'},origin);
@@ -423,73 +534,7 @@ const server=http.createServer(async(req,res)=>{
  let pending=INFLIGHT.get(cacheKey);
  if(!pending){
   pending=(async()=>{
-   const windows=monthWindows(from,to);
-   if(windows.length>12)throw Error('Período muito longo: selecione até 12 meses.');
-   const combined=Object.fromEntries(Object.keys(cfg).map(k=>[k,[]]));
-   const quality={periods:[],sources:[]};
-   // Lotes de ate 3 meses: impede que dez meses sejam processados em serie
-   // sem disparar dezenas de chamadas simultaneas ao DSS.
-   for(let offset=0;offset<windows.length;offset+=3){
-    const batch=windows.slice(offset,offset+3);
-    const results=await Promise.all(batch.map(async window=>{
-     // Modo incremental: períodos encerrados anteriores aos dois meses mais recentes usam cache,
-     // quando disponível. Meses recentes sempre buscam a DSS.
-     const syncTo=url.searchParams.get('sync_to')||to;
-     const anchor=/^\d{4}-\d{2}-\d{2}$/.test(syncTo)&&syncTo>=to?syncTo:to;
-     const recentBoundary=new Date(Date.UTC(Number(anchor.slice(0,4)),Number(anchor.slice(5,7))-2,1)).toISOString().slice(0,10);
-     const refreshWindow=refreshMode==='1'||(refreshMode==='recent'&&window.to>=recentBoundary);
-     let result=refreshWindow?null:await periodStore.read(window.from,window.to);const reused=!!result;
-     if(result){
-      console.info('[DSS] mês reutilizado do cache privado',window.from,window.to);
-     }else{
-      const pairs=await Promise.all(Object.keys(cfg).filter(name=>cfg[name].path).map(async name=>[name,await queryDssResilient(name,window.from,window.to)]));
-      result={...Object.fromEntries(pairs),_syncedAt:new Date().toISOString()};
-      // Só guardar o mês se todos os serviços principais terminaram com sucesso.
-      await periodStore.write(window.from,window.to,result);
-      console.info('[DSS] mês consultado',window.from,window.to);
-     }
-     quality.periods.push({from:window.from,to:window.to,syncedAt:result._syncedAt||null,reused});
-     return Object.entries(result).filter(([name])=>Object.hasOwn(combined,name));
-    }));
-    for(const result of results)for(const [name,rows] of result)combined[name].push(rows||[]);
-   }
-   const data=Object.fromEntries(Object.entries(combined).map(([name,groups])=>[name,mergeDssRows(groups,name)]));
-   for(const catalog of optionalCatalogs){
-    if(!catalog.path){quality.sources.push({name:catalog.name,status:'disabled'});continue;}
-    try{
-     if(catalog.name==='rotas')data.rotas=await optionalCatalog(catalog,from,to);
-     else if(catalog.name==='ocorrencias'){
-      // Consulta adicional limitada a um mês para evitar atrasar o painel principal.
-      if(monthWindows(from,to).length>1){quality.sources.push({name:catalog.name,status:'skipped'});continue;}
-      data.ocorrencias=await optionalCatalog(catalog,from,to);
-     }
-     else{
-      // Programacoes sao enriquecimento opcional e muito custoso em periodos longos.
-      if(monthWindows(from,to).length>1){quality.sources.push({name:catalog.name,status:'skipped'});continue;}
-      const windows=monthWindows(from,to);
-      const sets=[];
-      sets.push(...await Promise.all(windows.map(win=>optionalCatalog(catalog,win.from,win.to))));
-      const ids=new Set();
-      data.programacoes=sets.flat().filter(row=>{
-       const id=String(row.empresa??'')+'~'+String(row.programacao_id??'');
-       if(!row.programacao_id)return true;
-       if(ids.has(id))return false;ids.add(id);return true;
-      });
-     }
-     quality.sources.push({name:catalog.name,status:'ok'});
-    }catch(err){quality.sources.push({name:catalog.name,status:'unavailable'});console.warn('[DSS] catálogo opcional',catalog.name,'indisponível:',String(err.message).slice(0,110));}
-   }
-   if(driversPath){
-    try{const names=await driverNames();attachDriverNames(data,names);quality.sources.push({name:'motoristas',status:'ok'});}
-    catch(err){quality.sources.push({name:'motoristas',status:'unavailable'});driverCatalog.expires=Date.now()+60_000;console.warn('[DSS] listarMotoristas indisponível:',err.name||'Error',String(err.message).slice(0,120));attachDriverNames(data,driverCatalog.items);}
-   }
-   if(!driversPath)quality.sources.push({name:'motoristas',status:'disabled'});
-   quality.sources.push({name:'viagens',status:'ok'},{name:'pedidos',status:'ok'},{name:'mdfes',status:cfg.mdfes.path?'ok':'reference'});
-   const payload={mode:'live',quality,updatedAt:new Date().toISOString(),cacheHit:false,data:{viagens:data.viagens||[],pedidos:data.pedidos||[],ctes:data.ctes||[],mdfes:data.mdfes||[],rotas:data.rotas||[],programacoes:data.programacoes||[],ocorrencias:data.ocorrencias||[],sources:{viagens:true,pedidos:true,ctes:!!cfg.ctes.path,mdfes:!!cfg.mdfes.path,programacoes:quality.sources.some(s=>s.name==='programacoes'&&s.status==='ok'),ocorrencias:quality.sources.some(s=>s.name==='ocorrencias'&&s.status==='ok')}}};
-   cachePut(cacheKey,payload);
-   apiStats.success++;apiStats.lastSuccess=payload.updatedAt;
-   console.info('[DSS] consulta concluída','período',from,to,'duração(ms)',Date.now()-started,'RVs',payload.data.viagens.length,'PFs',payload.data.pedidos.length);
-   return payload;
+   return synchronize(from,to,{refreshMode,syncTo:url.searchParams.get('sync_to')||to});
   })();
   INFLIGHT.set(cacheKey,pending);
   pending.finally(()=>{if(INFLIGHT.get(cacheKey)===pending)INFLIGHT.delete(cacheKey);}).catch(()=>{});

@@ -32,8 +32,8 @@ const notes={
  pendencias:'Os alertas são calculados sobre os registros consultados. O tratamento é registrado no portal e não altera a situação oficial na DSS.',
  rotas:'KM médio considera somente RVs com quilometragem informada. Não há localização GPS nem produtividade presumida.',
  motoristas:'Agrupamento por ID ou nome fornecido. KM médio considera somente RVs com KM informado.',
- painel:'Indicadores usam os registros da empresa, período e filtros ativos. Preferências do painel ficam neste navegador, separadas por usuário.',
- relatorios:'Modelos guardam somente preferências por usuário e empresa neste navegador. CSV/Excel/PDF respeitam os filtros; a prévia exibe 25 registros por página.',
+ painel:'Indicadores usam os registros da empresa, período e filtros ativos. Preferências do painel são separadas por usuário e empresa.',
+ relatorios:'Modelos guardam somente preferências por usuário e empresa. CSV/Excel/PDF respeitam os filtros; a prévia exibe 25 registros por página.',
  comparativos:'Variação percentual não é calculada quando o período anterior é zero. Quilometragem ausente não equivale a zero.'
 };
 export function renderDataQuality(state,data){

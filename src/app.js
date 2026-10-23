@@ -1,3 +1,5 @@
+import {createPortalClient} from './portal-client.mjs';
+import {filterRvStage,renderRelatedRvStages} from './rv-stage-filter.mjs';
 import {renderDateControl,editDateControl,resetDateControls,hasDateErrors,openDateCalendar,parseEditableDate} from './date-controls.mjs';
 import {rvStatusCounts,renderRvStatusStages} from './rv-status.mjs';
 import {mobileTables} from './mobile-tables.mjs';
@@ -149,6 +151,7 @@ const companySnapshots=new Map();
 let sharedIntent=parsePortalLink(window.location);
 let sharedLoginPending=sharedIntent.hasLink;
 const state = {
+ serverMode:false,remoteSnapshot:'',remoteError:'',queryNotice:'',preferencesError:'',rvStage:'',
  company:initialCompany,technicalOpen:false,alertGrouping:'lista',alertGroup:'',dayDate:localToday(),tripFocus:'',alertScope:'todos',alertDue:'todos',legalEntity:'',drilldown:'',detailPage:1,timelinePage:1,
  visibleAlerts:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',taskSelected:null,taskDetail:null,taskLoading:false,taskSaving:false,taskError:'',taskUnavailable:false,alertStatus:'todos',alertOwner:'',syncMetadata:[],
  reportTemplates:{},templateSelected:'',reportFormat:'xlsx',reportColumnOrder:{},
@@ -161,6 +164,7 @@ const state = {
  hiddenColumns:readPrefs('costalog_visible_columns',{}),presets:readPrefs('costalog_filter_presets_'+initialCompany,{}),
  demoOnly:PUBLIC_DEMO,reportSelected:'viagens',reportMulti:false,autoRefresh:0,lastSync:null,prevDataset:null,lateDays:2,apiDiagnostics:null,adminUsers:[],adminUsersLoading:false,adminUsersError:'',adminResetUser:'',role:'operacional',user:null,permissions:{operacional:true,financeiro:false,admin:false}
 };
+const remoteClient=createPortalClient(state,render);
 const icons={
  home:'<path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-7h6v7"/>',
  truck:'<path d="M3 6h12v11H3zM15 10h4l3 4v3h-7"/><circle cx="7.5" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
@@ -231,12 +235,14 @@ const navItems=[['painel','home','Painel'],['viagens','truck','Viagens / RV'],['
 function button(action,label,extra){return '<button type="button" class="btn '+(extra||'')+'" data-action="'+action+'">'+label+'</button>';}
 let textRenderTimer=null;
 function render(){
+ remoteClient.observe();
  const focusedDate=document.activeElement?.dataset?.editDate?{id:document.activeElement.id,cursor:document.activeElement.selectionStart}:null;
  if(textRenderTimer){clearTimeout(textRenderTimer);textRenderTimer=null;}
- if(state.pendingRecord&&state.mode==='live'&&state.user&&!state.user.mustChangePassword&&state.loadedRange){const [kind,id]=state.pendingRecord.split(':'),rows=kind==='viagens'?filterOptionsData().viagens:kind==='ctes'?filterOptionsData().pedidos:filterOptionsData().mdfes;if(rows.some(row=>row.id===id)){state.selected=state.pendingRecord;state.pendingRecord='';state.linkMessage='';}else state.linkMessage='O registro do link não foi localizado no período consultado.';}
+ if(!remoteClient.active()&&state.pendingRecord&&state.mode==='live'&&state.user&&!state.user.mustChangePassword&&state.loadedRange){const [kind,id]=state.pendingRecord.split(':'),rows=kind==='viagens'?filterOptionsData().viagens:kind==='ctes'?filterOptionsData().pedidos:filterOptionsData().mdfes;if(rows.some(row=>row.id===id)){state.selected=state.pendingRecord;state.pendingRecord='';state.linkMessage='';}else state.linkMessage='O registro do link não foi localizado no período consultado.';}
  const brand=COMPANIES[state.company],other=state.company==='costalog'?'ideallog':'costalog';
  if(document.title!==undefined)document.title=brand.name+' · Viagens e pedidos de frete';
  state.view=safeView(state.role,state.view);
+ const remote=remoteClient.active(),remoteResponse=remote?remoteClient.response():null;
  const base=scoped(),d=state.view==='painel'?searchOperationalData(base,state.search):base,stats=null;
  const allowed=navItems.filter(x=>x[0]!=='integracoes'&&permittedView(state.role,x[0]));
  const PRIMARY=['painel','viagens','ctes','relatorios'];
@@ -251,23 +257,23 @@ function render(){
  const tools=['viagens','ctes','mdfes'].includes(state.view)?
   '<div class="v-heading-tools">'+button('csv',icon('download')+' CSV','btn-sm')+button('print','PDF / Imprimir','btn-sm btn-red')+'</div>':'';
  const dateFilters=state.view==='administracao'?'':renderFilters();
- const globalSearch=state.view==='administracao'?'':renderGlobalSearch(state,base);
+ const globalSearch=state.view==='administracao'?'':remote?(remoteResponse?.search||''):renderGlobalSearch(state,base);
  root.innerHTML='<div class="layout v-app"><main class="main v-main">'+
  '<header class="topbar v-topbar"><div class="v-topbrand"><img class="v-brand-logo '+(state.company==='ideallog'?'v-ideal-logo':'')+'" src="./'+brand.logo+'" alt="Logotipo '+brand.name+'"><div><b>'+brand.name+'</b><small>'+brand.description+'</small></div><i></i><strong>GESTÃO DE VIAGENS & FRETES</strong></div>'+
  '<div class="topbar-right v-accountbar">'+button('switch-company','Trocar para '+COMPANIES[other].label,'btn-sm btn-company-switch')+'<span class="v-environment '+(state.mode==='live'?'connected':'')+'">'+(state.mode==='live'?'● DSS':'● DEMO')+'</span>'+
  (state.user?'<span class="v-username">'+esc(state.user.displayName||state.user.username)+' · '+esc(state.role)+'</span>'+button('logout','Sair','btn-sm btn-ghost'):button('connect','Entrar','btn-sm btn-ghost'))+'</div></header>'+
  '<div class="v-menu-row"><nav class="v-main-nav" aria-label="Seções principais">'+primary+'</nav><div class="v-right-hint">'+(state.mode==='live'?'DADOS DO DSS':'DADOS DE TESTE')+'</div></div>'+
  (sub?'<nav class="v-sub-nav" aria-label="Outras áreas">'+sub+'</nav>':'')+
- '<div class="content v-content">'+renderHero(state.view,d,{from:state.from,to:state.to,mode:state.mode,financeiro:state.permissions.financeiro,company:state.company})+
+ '<div class="content v-content">'+(remote?(remoteResponse?.hero||renderHero(state.view,d,{from:state.from,to:state.to,mode:state.mode,company:state.company}).replace(/<small>[^<]* RVs[^<]*<\/small>/,'<small>Consulta no servidor</small>')):renderHero(state.view,d,{from:state.from,to:state.to,mode:state.mode,financeiro:state.permissions.financeiro,company:state.company}))+
  '<div class="v-tools-row">'+dateFilters+tools+button('share-query','Copiar link','btn-sm')+'</div>'+globalSearch+(state.linkMessage?'<p class="help" role="status">'+esc(state.linkMessage)+'</p>':'')+updateNotice+message+
- (state.loading?'<div class="info-strip">Consultando registros DSS...</div>':'')+
- renderDrilldownNotice()+mobileTables(renderView(d,stats))+renderDataQuality(state,base)+
+ (remote?'<div id="syncProgress">'+remoteClient.progress()+'</div>':state.loading?'<div class="info-strip">Consultando registros DSS...</div>':'')+(state.queryNotice?'<p class="help" role="status">'+esc(state.queryNotice)+'</p>':'')+(state.preferencesError?'<p class="ins-inline-error" role="status">'+esc(state.preferencesError)+' <button class="btn btn-sm" data-action="reload-preferences">Recarregar preferências</button></p>':'')+
+ renderDrilldownNotice()+mobileTables(remote?remoteClient.contents():renderView(d,stats))+(remote?(remoteResponse?.technical||''):renderDataQuality(state,base))+
  '<footer class="v-footer">'+brand.name+' • Portal de inteligência operacional • '+(PUBLIC_DEMO?'Contas de demonstração somente neste navegador.':'Acesso baseado em permissões, dados DSS protegidos no servidor.')+'</footer></div></main></div>'+
- (state.selected?renderDrawer(filterOptionsData()):'')+renderTaskDrawer(state)+(state.connect?renderConnect():'')+
+ (state.selected?(remote?remoteClient.drawer():renderDrawer(filterOptionsData())):'')+renderTaskDrawer(state)+(state.connect?renderConnect():'')+
  (state.user?.mustChangePassword?renderForcePasswordChange():'')+
  (state.adminResetUser&&state.permissions.admin?renderAdminPasswordReset(state.adminResetUser):'');
  if(focusedDate){const field=document.getElementById(focusedDate.id);field?.focus?.();if(typeof focusedDate.cursor==='number')field?.setSelectionRange?.(focusedDate.cursor,focusedDate.cursor);}
- if((state.view==='pendencias'||state.view==='painel'&&state.user?.username&&!state.user.mustChangePassword||state.view==='relatorios'&&state.reportSelected==='pendencias')&&!state.user?.mustChangePassword&&!state.taskIndexLoaded&&!state.taskIndexLoading&&!state.taskIndexError)loadTaskIndex();
+ if(!remote&&(state.view==='pendencias'||state.view==='painel'&&state.user?.username&&!state.user.mustChangePassword||state.view==='relatorios'&&state.reportSelected==='pendencias')&&!state.user?.mustChangePassword&&!state.taskIndexLoaded&&!state.taskIndexLoading&&!state.taskIndexError)loadTaskIndex();
 }
 function renderFilters(){
  const validDates=/^\d{4}-\d{2}-\d{2}$/.test(state.from)&&/^\d{4}-\d{2}-\d{2}$/.test(state.to)&&state.from<=state.to&&!hasDateErrors(['from','to']);
@@ -283,6 +289,10 @@ function renderOcorrencias(d){
  return (d.sources?.ocorrencias===false?'<p class="help" role="status">As ocorrências não estão disponíveis nesta consulta. Uma lista vazia não confirma ausência de ocorrências.</p>':'')+renderGrid('Ocorrências internas DSS',rows,cols,state,'ocorrencias','Registros identificados para a empresa selecionada, com 25 itens por página.');
 }
 function renderView(d,s){
+ if(!['viagens','painel','comparativos'].includes(state.view)){const staged=filterRvStage(d,state.rvStage);return renderRelatedRvStages(d,state.rvStage)+renderLocalView(staged,s);}
+ return renderLocalView(d,s);
+}
+function renderLocalView(d,s){
  if(state.view==='painel')return (state.listFilters||'')+renderCustomDashboard(d,state)+renderMyTasksSummary(d,state)+renderSummary(d,{financeiro:state.permissions.financeiro,mode:state.mode,from:state.from,to:state.to,showCards:false});
  if(state.view==='programacao')return renderDayProgramming(d,state);
  if(state.view==='comparativos')return renderComparison(d,state);
@@ -488,10 +498,11 @@ async function portalLogin(){
   if(!data.token||!['operacional','financeiro','administrador'].includes(data.user?.role))throw Error('Resposta inválida do servidor de autenticação.');
   clearSession();
   state.apiUrl=url;
-  state.token=data.token;state.user=data.user;state.role=data.user.role;state.permissions=operationalPermissions(data.permissions);
+  state.serverMode=data.portalVersion===2;state.token=data.token;state.user=data.user;state.role=data.user.role;state.permissions=operationalPermissions(data.permissions);
   state.view='painel';state.connect=false;state.error='';state.dataset={viagens:[],pedidos:[],ctes:[],mdfes:[],sources:{}};
-  state.mode='live';loadMetricPreferences();if(sharedLoginPending){Object.assign(state,sharedIntent.state);sharedLoginPending=false;state.linkMessage='Consulta compartilhada. Atualize os dados para ver os registros autorizados.';}render();
+  state.mode='live';if(!remoteClient.active())loadMetricPreferences();if(sharedLoginPending){Object.assign(state,sharedIntent.state);sharedLoginPending=false;state.linkMessage='Consulta compartilhada. Atualize os dados para ver os registros autorizados.';}render();
   if(state.user.mustChangePassword)return;
+  if(remoteClient.active())remoteClient.loadPreferences();
   // Dados DSS são carregados apenas ao clicar em Atualizar.
 
  }catch(err){const offline=err instanceof TypeError||/failed to fetch|networkerror|load failed/i.test(err.message||'');alert(offline?'Não foi possível conectar à API. Se está no mesmo computador, inicie o backend no PowerShell com node api/server.mjs e abra http://localhost:3001/ (não o endereço GitHub Pages). Verifique http://localhost:3001/api/health.': 'Login não autorizado: '+err.message);}
@@ -579,10 +590,11 @@ function loadMetricPreferences(){
  state.metricLayout=normalizedLayout(saved,{financial:!!state.permissions.financeiro});
 }
 function saveMetricPreferences(){
- localStorage.setItem(metricPrefsKey(),JSON.stringify(normalizedLayout(state.metricLayout,{financial:!!state.permissions.financeiro})));
+ (!remoteClient.active()&&localStorage.setItem(metricPrefsKey(),JSON.stringify(normalizedLayout(state.metricLayout,{financial:!!state.permissions.financeiro}))));
 }
 let comparisonSeq=0;
 async function fetchPeriodComparison(){
+ if(remoteClient.active()){if(hasDateErrors(['compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo']))return;return remoteClient.compare();}
  if(hasDateErrors(['compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo']))return;
  if(state.mode!=='live'||!state.apiUrl||!state.token)return;
  const windows={current:{from:state.compareCurrentFrom,to:state.compareCurrentTo},previous:{from:state.comparePreviousFrom,to:state.comparePreviousTo}};
@@ -614,7 +626,9 @@ async function fetchPeriodComparison(){
  finally{if(seq===comparisonSeq&&identity===identityEpoch){state.comparisonLoading=false;render();}}
 }
 
-function switchCompany(){
+async function switchCompany(){
+ if(remoteClient.active()&&!await remoteClient.flushPreferences())return;
+ const remoteSnapshot=state.remoteSnapshot,remoteRange=state.loadedRange,remoteLastSync=state.lastSync;
  resetDateControls();
  sharedLoginPending=false;state.pendingRecord='';state.linkMessage='';
  if(state.user?.mustChangePassword)return;
@@ -630,15 +644,17 @@ function switchCompany(){
  state.dataset=state.mode==='demo'?demo:reusable?saved.dataset:emptyDataset();
  Object.assign(state,{technicalOpen:false,pendingRecord:'',linkMessage:'',alertGroup:'',tripFocus:'',alertScope:'todos',alertDue:'todos',legalEntity:'',drilldown:'',detailPage:1,timelinePage:1,visibleAlerts:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',taskSelected:null,taskDetail:null,taskLoading:false,taskSaving:false,taskUnavailable:false,alertStatus:'todos',alertOwner:'',syncMetadata:reusable?saved.syncMetadata||[]:[],selected:null,page:1,customer:'',vehicle:'',serviceType:'',status:'',search:'',globalQuery:'',filter:'todos',sortKey:'',clientSelected:'',routeSelected:'',driverSelected:'',alertPriority:'todos',alertKind:'todos',comparison:null,comparisonLoading:false,comparisonError:'',prevDataset:null,error:'',loading:false,loadingProgress:'',loadedRange:reusable?saved.range:null,lastSync:reusable?saved.lastSync:null,presets:readPrefs('costalog_filter_presets_'+company,{})});
  state.loading=syncing;state.loadingProgress=loadingProgress;
- loadMetricPreferences();render();
+ if(remoteClient.active()){Object.assign(state,{remoteSnapshot,loadedRange:remoteRange,lastSync:remoteLastSync,rvStage:'',dataset:emptyDataset()});remoteClient.invalidate();remoteClient.loadPreferences();}
+ else loadMetricPreferences();render();
 }
 function clearSession(){
+ remoteClient.reset();state.serverMode=false;state.remoteSnapshot='';state.remoteError='';state.queryNotice='';state.preferencesError='';state.rvStage='';
  resetDateControls();identityEpoch++;comparisonSeq++;syncSeq++;companySnapshots.clear();clearViewCache();
  Object.assign(state,{technicalOpen:false,pendingRecord:'',linkMessage:'',alertGroup:'',tripFocus:'',alertScope:'todos',alertDue:'todos',legalEntity:'',drilldown:'',detailPage:1,timelinePage:1,visibleAlerts:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',taskSelected:null,taskDetail:null,taskLoading:false,taskSaving:false,taskUnavailable:false,alertStatus:'todos',alertOwner:'',syncMetadata:[],reportTemplates:{},templateSelected:'',reportColumnOrder:{},reportFormat:'xlsx'});
  const token=state.token,url=state.apiUrl;
  if(token&&url)fetch(url.replace(/\/$/,'')+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+token},credentials:'omit'}).catch(()=>{});
  state.token='';state.user=null;state.role='operacional';state.permissions={operacional:true,financeiro:false,admin:false};
- state.mode='demo';state.dataset=demo;state.loadedRange=null;state.view='painel';state.customer='';state.vehicle='';state.serviceType='';state.status='';state.search='';state.filter='todos';state.page=1;state.comparison=null;state.comparisonError='';state.metricLayout=null;state.clientSelected='';state.globalQuery='';state.adminUsers=[];state.adminUsersError='';state.adminResetUser='';state.adminUsersLoading=false;state.prevDataset=null;state.loading=false;state.selected=null;state.lastSync=null;state.apiDiagnostics=null;
+ state.mode='demo';state.dataset=demo;state.loadedRange=null;state.view='painel';state.customer='';state.vehicle='';state.serviceType='';state.status='';state.rvStage='';state.search='';state.filter='todos';state.page=1;state.comparison=null;state.comparisonError='';state.metricLayout=null;state.clientSelected='';state.globalQuery='';state.adminUsers=[];state.adminUsersError='';state.adminResetUser='';state.adminUsersLoading=false;state.prevDataset=null;state.loading=false;state.selected=null;state.lastSync=null;state.apiDiagnostics=null;
 }
 function csvCell(s){const v=str(s);return '"'+v.replace(/"/g,'""')+'"';}
 function exportCsv(which){
@@ -690,6 +706,7 @@ function snapshotForCompany(results,company,requestCompany,range,lastSync){
  return {dataset:normalizePayload({data},company),range,lastSync,syncMetadata:parts.map(part=>part.quality||{})};
 }
 async function loadData(){
+ if(remoteClient.active()){if(hasDateErrors(['from','to'])||!state.from||!state.to||state.from>state.to)return;return remoteClient.synchronize();}
  if(hasDateErrors(['from','to']))return;
  if(parseEditableDate(state.from)!==state.from||parseEditableDate(state.to)!==state.to||!state.from||!state.to||state.from>state.to){state.error='Informe datas válidas para consultar a DSS.';render();return;}
  if(!state.token){state.connect=true;state.loading=false;state.error='Faça login para consultar a DSS.';render();return;}
@@ -729,10 +746,14 @@ async function loadData(){
 }
 
 function exportAdvanced(type,format){
+ if(remoteClient.active()){const full=state.view==='relatorios'&&state.reportMulti&&format==='xlsx';return remoteClient.export(type,full).then(models=>deliverExport(models,type,format,full)).catch(error=>alert('Erro ao gerar relatório: '+error.message));}
  const d=scoped(),full=state.view==='relatorios'&&state.reportMulti&&format==='xlsx';
  if((type==='pendencias'||full)&&state.mode==='live'&&!state.taskIndexLoaded){const epoch=identityEpoch,query=state.search;loadTaskIndex(true).then(()=>{if(epoch!==identityEpoch||scoped()!==d||state.search!==query)return;if(!state.taskIndexLoaded)throw Error(state.taskIndexError||'Tratamentos ainda não carregados.');exportAdvanced(type,format);}).catch(error=>alert('Erro ao gerar relatório: '+error.message));return;}
  const allowed=reportTypesFor(state.role);if(!allowed.includes(type))throw Error('Acesso negado ao relatório.');
  const models=(full?allowed:[type]).map(t=>buildOperationalReport(t,d,state));
+ deliverExport(models,type,format,full);
+}
+function deliverExport(models,type,format,full){
  const suffix=(state.mode==='live'?'DSS':'DEMO')+'_'+state.from+'_'+state.to+(state.legalEntity?'_'+state.legalEntity:'');
  if(format==='xlsx')downloadXlsx(models,{mode:state.mode,from:state.from,to:state.to,company:state.company},state.company.toUpperCase()+'_'+(full?'COMPLETO':type)+'_'+suffix+'.xlsx');
  if(format==='pdf')printReport(models,{mode:state.mode,from:state.from,to:state.to,company:state.company});
@@ -789,13 +810,13 @@ function openMyTasks(due='todos'){
 }
 function openChecklistRecords(reference){
  const [view,id]=String(reference||'').split(':');
- if(!['ctes','entregas'].includes(view)||!filterOptionsData().viagens.some(row=>row.id===id))return;
+ if(!['ctes','entregas'].includes(view)||(!remoteClient.active()&&!filterOptionsData().viagens.some(row=>row.id===id)))return;
  Object.assign(state,{view,alertGroup:'',tripFocus:id,drilldown:'',selected:null,page:1,search:'',globalQuery:'',customer:'',vehicle:'',serviceType:'',status:'',filter:'todos',sortKey:''});render();
 }
 const drilldownLabels={viagens:'Todas as viagens',andamento:'Viagens em andamento',concluidas:'Viagens concluídas',pedidos:'Todos os pedidos',ctes:'Pedidos com CT-e',sem_cte:'Pedidos sem CT-e',sem_rv:'CT-e sem RV localizada',entregas:'Entregas concluídas sem comprovante',km:'RVs com KM informado'};
 function renderDrilldownNotice(){
  const focused=state.tripFocus?(filterOptionsData().viagens||[]).find(row=>row.id===state.tripFocus):null;
- if(state.tripFocus)return '<div class="info-strip drilldown-notice"><strong>RV '+esc(focused?.numero||'não localizada no período')+'</strong> · Apenas documentos vinculados nesta consulta. '+button('clear-trip-focus','Remover filtro da RV','btn-sm')+(focused?'<button class="btn btn-sm" data-detail="viagens:'+attr(focused.id)+'">Voltar à RV</button>':'')+'</div>';
+ if(state.tripFocus)return '<div class="info-strip drilldown-notice"><strong>RV '+esc(focused?.numero||(remoteClient.active()?state.tripFocus.split('~').at(-1):'não localizada no período'))+'</strong> · Apenas documentos vinculados nesta consulta. '+button('clear-trip-focus','Remover filtro da RV','btn-sm')+(focused?'<button class="btn btn-sm" data-detail="viagens:'+attr(focused.id)+'">Voltar à RV</button>':'')+'</div>';
  return state.drilldown?'<div class="info-strip drilldown-notice"><strong>Filtro do painel:</strong> '+esc(drilldownLabels[state.drilldown]||state.drilldown)+' '+button('clear-drilldown','Remover filtro','btn-sm')+'</div>':'';
 }
 function openMetric(id){
@@ -810,7 +831,7 @@ function saveReportTemplate(){
   if(!name?.trim())return;
   const label=name.trim().slice(0,60);
   if(Object.hasOwn(state.reportTemplates,label)&&!confirm('Substituir o modelo “'+label+'”?'))return;
-  state.reportTemplates={...state.reportTemplates,[label]:model};localStorage.setItem(reportTemplatesKey(),JSON.stringify(state.reportTemplates));state.templateSelected=label;render();
+  state.reportTemplates={...state.reportTemplates,[label]:model};(!remoteClient.active()&&localStorage.setItem(reportTemplatesKey(),JSON.stringify(state.reportTemplates)));state.templateSelected=label;render();
  }catch(error){alert('Não foi possível salvar o modelo: '+error.message);}
 }
 function applySelectedReportTemplate(){
@@ -820,7 +841,7 @@ function applySelectedReportTemplate(){
 function deleteReportTemplate(){
  const name=state.templateSelected;if(!name)return;
  if(!confirm('Excluir o modelo “'+name+'”?'))return;
- state.reportTemplates={...state.reportTemplates};delete state.reportTemplates[name];localStorage.setItem(reportTemplatesKey(),JSON.stringify(state.reportTemplates));state.templateSelected='';render();
+ state.reportTemplates={...state.reportTemplates};delete state.reportTemplates[name];(!remoteClient.active()&&localStorage.setItem(reportTemplatesKey(),JSON.stringify(state.reportTemplates)));state.templateSelected='';render();
 }
 async function workflowFetch(company,options={},key=''){
  const query=new URLSearchParams({company});if(key)query.set('key',key);
@@ -832,6 +853,7 @@ async function workflowFetch(company,options={},key=''){
 function demoWorkflowKey(company){return 'viagens_pf_demo_workflow_v1:'+company;}
 let taskIndexRequest=null;
 function loadTaskIndex(force=false){
+ if(remoteClient.active()){remoteClient.invalidate();render();return Promise.resolve();}
  if(state.taskIndexLoading)return taskIndexRequest||Promise.resolve();
  if(state.taskIndexLoaded&&!force)return Promise.resolve();
  const epoch=identityEpoch,company=state.company;state.taskIndexLoading=true;
@@ -872,6 +894,7 @@ async function saveTask(){
   }else task=(await workflowFetch(company,{method:'PATCH',body:JSON.stringify(input)})).task;
   if(epoch!==identityEpoch)return;
   state.tasks={...state.tasks,[key]:taskSummary(task)};
+  if(remoteClient.active())remoteClient.invalidate();
   if(state.taskSelected?.key===key){state.taskDetail=task;state.taskSelected=null;state.taskDetail=null;}
  }catch(error){
   if(epoch===identityEpoch){state.taskError=error.message;if(error.status===409||error.status===401)state.taskUnavailable=true;}
@@ -886,6 +909,7 @@ async function saveTask(){
  }
 }
 root.addEventListener('click',e=>{
+ const stage=e.target.closest('[data-related-rv-stage]');if(stage){state.rvStage=stage.dataset.relatedRvStage;state.page=1;state.selected=null;render();return;}
  const calendar=e.target.closest('[data-open-calendar]');if(calendar){openDateCalendar(calendar.dataset.openCalendar);return;}
  const rvStage=e.target.closest('[data-rv-status]');if(rvStage){state.status=rvStage.dataset.rvStatus;state.page=1;render();return;}
 
@@ -897,7 +921,7 @@ root.addEventListener('click',e=>{
  const checklist=e.target.closest('[data-checklist-open]');if(checklist){openChecklistRecords(checklist.dataset.checklistOpen);return;}
  const metric=e.target.closest('[data-metric-open]');if(metric){openMetric(metric.dataset.metricOpen);return;}
  const manage=e.target.closest('[data-alert-manage]');if(manage){const item=state.visibleAlerts?.find(item=>alertKey(item)===manage.dataset.alertManage);if(item)openTask(item);return;}
- const columnMove=e.target.closest('[data-report-column-move]');if(columnMove){const [key,direction]=columnMove.dataset.reportColumnMove.split(':'),model=buildOperationalReport(state.reportSelected,scoped(),state,{preview:true}),keys=model.columns.map(([key])=>key),i=keys.indexOf(key),j=i+Number(direction);if(i>=0&&j>=0&&j<keys.length){[keys[i],keys[j]]=[keys[j],keys[i]];state.reportColumnOrder={...state.reportColumnOrder,[state.reportSelected]:keys};render();}return;}
+ const columnMove=e.target.closest('[data-report-column-move]');if(columnMove){const [key,direction]=columnMove.dataset.reportColumnMove.split(':'),model=remoteClient.active()?{columns:state.remoteColumns||[]}:buildOperationalReport(state.reportSelected,scoped(),state,{preview:true}),keys=model.columns.map(([key])=>key),i=keys.indexOf(key),j=i+Number(direction);if(i>=0&&j>=0&&j<keys.length){[keys[i],keys[j]]=[keys[j],keys[i]];state.reportColumnOrder={...state.reportColumnOrder,[state.reportSelected]:keys};render();}return;}
  const point=e.target.closest('[data-chart-point]');
  if(point){activateChartPoint(point);return;}
  const searchHit=e.target.closest('[data-search-result]');
@@ -940,7 +964,7 @@ root.addEventListener('click',e=>{
   if(action==='load-comparison'){fetchPeriodComparison();return;}
   render();return;
  }
- const nav=e.target.closest('[data-nav]');if(nav){if(state.user?.mustChangePassword)return;if(!permittedView(state.role,nav.dataset.nav))return;state.view=nav.dataset.nav;state.technicalOpen=false;state.alertGroup='';state.tripFocus='';state.alertScope='todos';state.alertDue='todos';state.drilldown='';state.alertPriority='todos';state.alertKind='todos';state.alertStatus='todos';state.alertOwner='';state.clientSelected='';state.routeSelected='';state.driverSelected='';state.globalQuery='';state.search='';state.filter='todos';state.status='';state.sortKey='';state.page=1;state.menu=false;state.selected=null;render();if(state.view==='administracao'&&state.permissions.admin)loadAdminUsers();return;}
+ const nav=e.target.closest('[data-nav]');if(nav){if(state.user?.mustChangePassword)return;if(!permittedView(state.role,nav.dataset.nav))return;state.view=nav.dataset.nav;state.rvStage='';state.technicalOpen=false;state.alertGroup='';state.tripFocus='';state.alertScope='todos';state.alertDue='todos';state.drilldown='';state.alertPriority='todos';state.alertKind='todos';state.alertStatus='todos';state.alertOwner='';state.clientSelected='';state.routeSelected='';state.driverSelected='';state.globalQuery='';state.search='';state.filter='todos';state.status='';state.sortKey='';state.page=1;state.menu=false;state.selected=null;render();if(state.view==='administracao'&&state.permissions.admin)loadAdminUsers();return;}
  const sorter=e.target.closest('[data-sort-metric]');
  if(sorter){
   const [kind,key]=(sorter.dataset.sortMetric||'').split(':');
@@ -966,6 +990,10 @@ root.addEventListener('click',e=>{
  }
  const act=e.target.closest('[data-action]');if(!act)return;
  const action=act.dataset.action;
+ if(action==='cancel-query'){remoteClient.cancel();return;}
+ if(action==='cancel-page'){remoteClient.cancelPage();return;}
+ if(action==='retry-page'){remoteClient.invalidate();render();return;}
+ if(action==='reload-preferences'){remoteClient.loadPreferences();return;}
  if(action==='assign-task-to-me'){const owner=document.getElementById('taskOwner');if(owner&&state.user?.username){owner.value=state.user.displayName||state.user.username;state.taskOwnerSelf=true;const account=document.getElementById('taskOwnerAccount');if(account)account.textContent='Conta: '+state.user.username+' · confirme em Salvar tratamento';}return;}
  if(action==='share-query'||action==='share-record'){copyPortalLink(action==='share-record'?state.selected:'');return;}
  if(action==='program-prev'||action==='program-next'){state.programPage=(state.programPage||1)+(action==='program-prev'?-1:1);render();return;}
@@ -999,9 +1027,9 @@ root.addEventListener('click',e=>{
  }
  if(['xlsx-export','csv-advanced','pdf-report'].includes(action)){try{exportAdvanced(state.reportSelected||'viagens',action==='xlsx-export'?'xlsx':action==='csv-advanced'?'csv':'pdf');}catch(err){alert('Erro ao gerar relatório: '+err.message);}}
  if(action==='clear-table-search'){state.search='';state.page=1;render();}
- if(action==='clear-filters'){Object.assign(state,{technicalOpen:false,pendingRecord:'',linkMessage:'',alertGroup:'',tripFocus:'',alertScope:'todos',alertDue:'todos',alertStatus:'todos',alertOwner:'',alertKind:'todos',alertPriority:'todos',legalEntity:'',drilldown:'',customer:'',vehicle:'',serviceType:'',status:'',filter:'todos',search:'',globalQuery:'',sortKey:'',sortDir:'desc',page:1,routeSelected:'',driverSelected:''});render();}
- if(action==='save-filter'){const name=prompt('Nome para este conjunto de filtros:');if(name&&name.trim()){state.presets={...state.presets};state.presets[name.trim().slice(0,45)]={alertGroup:state.alertGroup,alertGrouping:state.alertGrouping,tripFocus:state.tripFocus,alertScope:state.alertScope,alertDue:state.alertDue,alertStatus:state.alertStatus,alertOwner:state.alertOwner,alertKind:state.alertKind,alertPriority:state.alertPriority,legalEntity:state.legalEntity,drilldown:state.drilldown,from:state.from,to:state.to,customer:state.customer,vehicle:state.vehicle,serviceType:state.serviceType,status:state.status,filter:state.filter,search:state.search,sortKey:state.sortKey,sortDir:state.sortDir};localStorage.setItem('costalog_filter_presets_'+state.company,JSON.stringify(state.presets));render();}}
- if(action==='delete-filter'){const sel=document.getElementById('savedPreset'),name=sel?.value;if(!name){alert('Selecione primeiro um filtro salvo.');return;}if(confirm('Excluir o filtro salvo '+name+'?')){state.presets={...state.presets};delete state.presets[name];localStorage.setItem('costalog_filter_presets_'+state.company,JSON.stringify(state.presets));render();}}
+ if(action==='clear-filters'){Object.assign(state,{rvStage:'',technicalOpen:false,pendingRecord:'',linkMessage:'',alertGroup:'',tripFocus:'',alertScope:'todos',alertDue:'todos',alertStatus:'todos',alertOwner:'',alertKind:'todos',alertPriority:'todos',legalEntity:'',drilldown:'',customer:'',vehicle:'',serviceType:'',status:'',filter:'todos',search:'',globalQuery:'',sortKey:'',sortDir:'desc',page:1,routeSelected:'',driverSelected:''});render();}
+ if(action==='save-filter'){const name=prompt('Nome para este conjunto de filtros:');if(name&&name.trim()){state.presets={...state.presets};state.presets[name.trim().slice(0,45)]={rvStage:state.rvStage,alertGroup:state.alertGroup,alertGrouping:state.alertGrouping,tripFocus:state.tripFocus,alertScope:state.alertScope,alertDue:state.alertDue,alertStatus:state.alertStatus,alertOwner:state.alertOwner,alertKind:state.alertKind,alertPriority:state.alertPriority,legalEntity:state.legalEntity,drilldown:state.drilldown,from:state.from,to:state.to,customer:state.customer,vehicle:state.vehicle,serviceType:state.serviceType,status:state.status,filter:state.filter,search:state.search,sortKey:state.sortKey,sortDir:state.sortDir};(!remoteClient.active()&&localStorage.setItem('costalog_filter_presets_'+state.company,JSON.stringify(state.presets)));render();}}
+ if(action==='delete-filter'){const sel=document.getElementById('savedPreset'),name=sel?.value;if(!name){alert('Selecione primeiro um filtro salvo.');return;}if(confirm('Excluir o filtro salvo '+name+'?')){state.presets={...state.presets};delete state.presets[name];(!remoteClient.active()&&localStorage.setItem('costalog_filter_presets_'+state.company,JSON.stringify(state.presets)));render();}}
  if(action==='clear-settings'){if(confirm('Limpar filtros salvos e preferências de colunas?')){localStorage.removeItem('costalog_filter_presets_'+state.company);localStorage.removeItem('costalog_visible_columns');state.presets={};state.hiddenColumns={};state.autoRefresh=0;activateRefresh();render();}}
  if(action==='connect'){state.connect=true;state.selected=null;render();}
  if(action==='go-viagens'){state.view='viagens';state.page=1;render();}
@@ -1010,7 +1038,7 @@ root.addEventListener('click',e=>{
  if(action==='prev'){state.page--;render();}
  if(action==='next'){state.page++;render();}
  if(action==='demo'){clearSession();state.connect=false;render();}
- if(action==='logout'){clearSession();render();}
+ if(action==='logout'){if(remoteClient.active()){remoteClient.flushPreferences().finally(()=>{clearSession();render();});return;}clearSession();render();}
  if(action==='test-connect'){portalLogin();}
 });
 root.addEventListener('submit',e=>{
@@ -1031,7 +1059,7 @@ root.addEventListener('change',e=>{
  if(e.target.id==='legalEntityFilter'){state.legalEntity=e.target.value;state.tripFocus='';Object.assign(state,{page:1,detailPage:1,selected:null,customer:'',vehicle:'',serviceType:'',status:'',search:'',globalQuery:'',routeSelected:'',driverSelected:''});render();return;}
  if(e.target.id==='alertDueFilter'){state.alertDue=e.target.value;state.page=1;render();return;}
  if(e.target.id==='alertStatusFilter'){state.alertStatus=e.target.value;state.page=1;render();return;}
- if(e.target.id==='reportFormat'){state.reportFormat=e.target.value;return;}
+ if(e.target.id==='reportFormat'){state.reportFormat=e.target.value;render();return;}
  if(e.target.id==='reportTemplateSelect'){state.templateSelected=e.target.value;if(e.target.value)applySelectedReportTemplate();else render();return;}
  if(e.target.dataset?.adminRole && state.permissions.admin){
   const username=e.target.dataset.adminRole,role=e.target.value;
@@ -1061,7 +1089,7 @@ root.addEventListener('change',e=>{
  if(e.target.id==='autoRefresh'){state.autoRefresh=0;activateRefresh();render();}
  if(e.target.id==='reportSelected'){state.reportSelected=e.target.value;state.page=1;state.sortKey='';render();}
  if(e.target.id==='reportMulti'){state.reportMulti=e.target.value==='all';render();}
- if(e.target.id==='savedPreset'&&e.target.value){resetDateControls();const preset=state.presets[e.target.value];if(!preset)return;const allowed=['alertGroup','alertGrouping','tripFocus','alertScope','alertDue','alertStatus','alertOwner','alertKind','alertPriority','legalEntity','drilldown','from','to','customer','vehicle','serviceType','status','filter','search','sortKey','sortDir'];Object.assign(state,{technicalOpen:false,pendingRecord:'',linkMessage:'',alertGroup:'',tripFocus:'',alertScope:'todos',alertDue:'todos',alertStatus:'todos',alertOwner:'',alertKind:'todos',alertPriority:'todos',legalEntity:'',drilldown:'',customer:'',vehicle:'',serviceType:'',status:'',filter:'todos',search:'',sortKey:'',sortDir:'desc'},Object.fromEntries(allowed.filter(key=>Object.hasOwn(preset,key)).map(key=>[key,preset[key]])),{page:1,prevDataset:null,routeSelected:'',driverSelected:''});render();}
+ if(e.target.id==='savedPreset'&&e.target.value){resetDateControls();const preset=state.presets[e.target.value];if(!preset)return;const allowed=['rvStage','alertGroup','alertGrouping','tripFocus','alertScope','alertDue','alertStatus','alertOwner','alertKind','alertPriority','legalEntity','drilldown','from','to','customer','vehicle','serviceType','status','filter','search','sortKey','sortDir'];Object.assign(state,{technicalOpen:false,pendingRecord:'',linkMessage:'',alertGroup:'',tripFocus:'',alertScope:'todos',alertDue:'todos',alertStatus:'todos',alertOwner:'',alertKind:'todos',alertPriority:'todos',legalEntity:'',drilldown:'',customer:'',vehicle:'',serviceType:'',status:'',filter:'todos',search:'',sortKey:'',sortDir:'desc'},Object.fromEntries(allowed.filter(key=>Object.hasOwn(preset,key)).map(key=>[key,preset[key]])),{page:1,prevDataset:null,routeSelected:'',driverSelected:''});render();}
  if(e.target.id==='quickPeriod'&&e.target.value){
   resetDateControls(['from','to']);
   const now=new Date(),today=new Date(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()));
@@ -1076,10 +1104,11 @@ root.addEventListener('change',e=>{
  if(e.target.dataset.columnToggle){
   const [view,key]=e.target.dataset.columnToggle.split(':'),old=state.hiddenColumns[view]||[];
   state.hiddenColumns[view]=e.target.checked?old.filter(x=>x!==key):[...new Set([...old,key])];
-  localStorage.setItem('costalog_visible_columns',JSON.stringify(state.hiddenColumns));render();
+  (!remoteClient.active()&&localStorage.setItem('costalog_visible_columns',JSON.stringify(state.hiddenColumns)));render();
  }
  if(e.target.id==='csvMDFE'){
   const file=e.target.files&&e.target.files[0];if(!file)return;
+  if(remoteClient.active()){file.text().then(text=>remoteClient.importMdfes(parseCsv(text))).then(count=>alert(count+' MDF-e importados para a consulta atual.')).catch(error=>alert(error.message));return;}
   file.text().then(text=>{const records=parseCsv(text);if(!records.length){alert('Nenhum registro válido no CSV. Confira o cabeçalho.');return;}const imported=scopeCompanyData({mdfes:records.map(row=>({...row,empresa:row.empresa||state.company}))},state.company).mdfes;state.dataset={...state.dataset,mdfes:imported,sources:{...state.dataset.sources,mdfes:true}};state.importCount=imported.length;render();alert(imported.length+' MDF-e carregados para '+COMPANIES[state.company].label+'.');}).catch(()=>alert('Não foi possível ler o arquivo.'));
  }
 });
@@ -1120,6 +1149,7 @@ root.addEventListener('keydown',e=>{
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(state.selected||state.connect||state.taskSelected)){state.selected=null;state.connect=false;state.taskSelected=null;render();}});
 function applyIncomingLink(link){
+ remoteClient.reset();state.remoteSnapshot='';state.rvStage='';
  resetDateControls();
  identityEpoch++;comparisonSeq++;syncSeq++;clearViewCache();
  Object.assign(state,{dataset:state.token?emptyDataset():demo,selected:null,pendingRecord:'',tripFocus:'',drilldown:'',customer:'',vehicle:'',serviceType:'',search:'',status:'',filter:'todos',alertGroup:'',alertScope:'todos',alertDue:'todos',alertStatus:'todos',alertKind:'todos',alertPriority:'todos',alertOwner:'',comparison:null,comparisonLoading:false,comparisonError:'',loading:false,loadedRange:null,lastSync:null,syncMetadata:[],tasks:{},taskIndexLoaded:false,taskIndexLoading:false,taskIndexError:'',technicalOpen:false,page:1},link.state);
