@@ -1,3 +1,4 @@
+import {KM_FROM_API,availableColumns} from './data-availability.mjs';
 import {serviceTypeLabel} from './filtering.mjs';
 import {RV_STATUSES,rvStatus} from './rv-status.mjs';
 import {memoView} from './view-cache.mjs';
@@ -69,6 +70,7 @@ function columnsPicker(columns,s,view){
  return '<details class="columns-picker"><summary class="btn btn-sm">Colunas da tabela</summary><div class="columns-list">'+columns.map(c=>'<label><input type="checkbox" data-column-toggle="'+h(view)+':'+h(c.key)+'" '+(!(s.hiddenColumns?.[view]||[]).includes(c.key)?'checked':'')+' '+(visible.length===1&&visible[0].key===c.key?'disabled':'')+'/> '+h(c.label)+'</label>').join('')+'</div></details>';
 }
 function rowTable(title,rows,columns,s,view,sub=''){
+ columns=availableColumns(columns);
  return '<div class="table-tools"><h2>'+h(title)+'</h2>'+columnsPicker(columns,s,view)+'</div>'+(s.listFilters||'')+section(title,'',tableAdvanced(rows,columns,s,view));
 }
 export function renderGrid(title,rows,cols,state,view,sub=''){return rowTable(title,rows,cols,state,view,sub);}
@@ -101,11 +103,11 @@ export function renderAdvanced(view,d,s){
   return '<div class="kpis">'+tt('PEDIDOS',num(rows.length))+tt('ENTREGAS CONCLUÍDAS',num(counts.done))+tt('SEM COMPROVANTE',num(counts.missing))+'</div>'+
    rowTable('Acompanhamento de entregas',rows,cols,s,'entregas','Indicadores operacionais, sem dados de faturamento.');
  }
- if(view==='rotas')return '<div class="kpis">'+tt('ROTAS DISTINTAS',num(i.routes.length))+tt('KM TOTAL IDENTIFICADO',num(i.totals.actual.sum),'Não informado não equivale a zero')+tt('KM PREVISTO',num(i.totals.planned.sum))+tt('DESVIO GLOBAL',Number.isFinite(i.totals.kmDifference)?num(i.totals.kmDifference):'—')+'</div>'+rowTable('Rotas mais utilizadas',searchRecords(i.routes,s.search),s.permissions?.financeiro?routesCols:routesCols.filter(x=>!['fuel','freight'].includes(x.key)),s,'rotas','Origem → destino, agrupamento por registro RV');
+ if(view==='rotas')return '<div class="kpis">'+tt('ROTAS DISTINTAS',num(i.routes.length))+(KM_FROM_API?tt('KM TOTAL IDENTIFICADO',num(i.totals.actual.sum),'Não informado não equivale a zero')+tt('KM PREVISTO',num(i.totals.planned.sum))+tt('DESVIO GLOBAL',Number.isFinite(i.totals.kmDifference)?num(i.totals.kmDifference):'—'):'')+'</div>'+rowTable('Rotas mais utilizadas',searchRecords(i.routes,s.search),s.permissions?.financeiro?routesCols:routesCols.filter(x=>!['fuel','freight'].includes(x.key)),s,'rotas','Origem → destino, agrupamento por registro RV');
  if(view==='veiculos'){
   const vehicles=operationalGroups('veiculos',d),rows=memoView('vehicles-search',[vehicles,s.search],()=>searchRecords(vehicles,s.search));
   const totalKm=memoView('vehicles-km',[d],()=>({sum:d.viagens.reduce((n,v)=>n+(Number.isFinite(v.kmRodados)?v.kmRodados:0),0),known:d.viagens.some(v=>Number.isFinite(v.kmRodados))}));
-  return '<div class="kpis">'+tt('VEÍCULOS IDENTIFICADOS',num(vehicles.filter(v=>v.name!=='Veículo ID ?').length))+tt('VIAGENS',num(d.viagens.length))+tt('QUILOMETRAGEM',totalKm.known?num(totalKm.sum):'—')+'</div>'+rowTable('Indicadores por veículo',rows,vehiclesCols.filter(x=>!['fuel','freight'].includes(x.key)),s,'veiculos','Placa da viagem RV; apenas KM informados.');
+  return '<div class="kpis">'+tt('VEÍCULOS IDENTIFICADOS',num(vehicles.filter(v=>v.name!=='Veículo ID ?').length))+tt('VIAGENS',num(d.viagens.length))+(KM_FROM_API?tt('QUILOMETRAGEM',totalKm.known?num(totalKm.sum):'—'):'')+'</div>'+rowTable('Indicadores por veículo',rows,vehiclesCols.filter(x=>!['fuel','freight'].includes(x.key)),s,'veiculos',KM_FROM_API?'Placa da viagem RV; apenas KM informados.':'Placa da viagem RV.');
  }
  if(view==='motoristas')return '<div class="kpis">'+tt('GRUPOS DE MOTORISTAS',num(i.drivers.length),'Dados por ID/nome no PF')+tt('PEDIDOS DE FRETE',num(i.totals.orders))+tt('CT-e IDENTIFICADOS',num(i.totals.ctes))+'</div>'+rowTable('Pedidos por motorista',searchRecords(i.drivers,s.search),s.permissions?.financeiro?driversCols:driversCols.filter(x=>x.key!=='freight'),s,'motoristas','listarPedidosFrete • motoristas sem ID serão exibidos conforme nome cadastrado');
  if(view==='containers')return '<div class="kpis">'+tt('CONTAINERS IDENTIFICADOS',num(i.containers.length),'RVs + pedidos; número distinto')+'</div>'+rowTable('Histórico resumido de containers',searchRecords(i.containers,s.search),containerCols,s,'containers','Somente registros operacionais retornados pelo DSS, não rastreamento');

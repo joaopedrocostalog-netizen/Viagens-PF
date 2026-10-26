@@ -1,3 +1,4 @@
+import {KM_FROM_API} from './data-availability.mjs';
 import {COMPANIES,COSTALOG_ENTITIES} from './companies.mjs';
 import {memoView} from './view-cache.mjs';
 const h=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -23,7 +24,7 @@ function renderQualityBody(state,data){
  '<div class="quality-sources">'+[...sources].map(([name,values])=>'<div><strong>'+h(labels[name]||name)+'</strong><span>'+h([...values].map(v=>statuses[v]||'Não informada').join(' / '))+'</span></div>').join('')+'</div>'+
  (state.mode==='live'&&!sources.size?'<p class="help">O servidor não informou a disponibilidade das fontes complementares. Uma lista vazia não confirma ausência de registros.</p>':'')+
  (periods.length?'<ul class="quality-periods">'+periods.map(p=>'<li>'+h(day(p.from))+' a '+h(day(p.to))+' · Atualizado na DSS: '+h(dt(p.syncedAt))+'</li>').join('')+'</ul>':'')+
- '<p class="help">Nos dados exibidos: '+details.missingDrivers+' RVs sem nome do motorista; '+details.missingKm+' RVs sem KM informado; '+details.missingLink+' pedidos sem RV localizada no período.</p></div></section>';
+ '<p class="help">Nos dados exibidos: '+details.missingDrivers+' RVs sem nome do motorista; '+(KM_FROM_API?details.missingKm+' RVs sem KM informado; ':'')+details.missingLink+' pedidos sem RV localizada no período.</p></div></section>';
 }
 
 const notes={

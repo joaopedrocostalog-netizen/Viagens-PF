@@ -317,9 +317,6 @@ body{background:#08090b;color:#f6f7f8}
 .ins-metric-card:nth-child(4n+3){border-left-color:#68aaff}
 .ins-metric-card:nth-child(4n+4){border-left-color:#c18bff}
 .ins-metric-top{display:flex;align-items:start;justify-content:space-between;gap:8px}
-.ins-reorder{display:flex;gap:4px}
-.ins-reorder button{border:1px solid #44464b;background:#27282c;border-radius:6px;color:#eee;cursor:pointer;padding:4px 7px;font-size:11px}
-.ins-reorder button:disabled{opacity:.28;cursor:default}
 .ins-metric-settings{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;border:1px solid #3b3c41;background:#1f2023;padding:14px;margin-bottom:15px;border-radius:10px}
 .ins-metric-option{font-size:11px;display:flex;align-items:center;gap:9px;cursor:pointer;color:#dddfe5}
 .ins-metric-option input{accent-color:#ff3548}
@@ -530,3 +527,13 @@ body{background:#08090b;color:#f6f7f8}
 @keyframes page-loading-pulse{50%{opacity:.25}}
 .stale-view{opacity:.5;pointer-events:none;transition:opacity .15s}
 @media (prefers-reduced-motion:reduce){.page-loading-dot{animation:none}.stale-view{transition:none}}
+/* Personalizar cartões: arrastar e soltar */
+.ins-metric-card.is-arrangeable{cursor:grab;outline:1px dashed #4a4c52;outline-offset:3px;user-select:none;transition:transform .12s,opacity .12s,box-shadow .12s}
+.ins-metric-card.is-arrangeable:hover{box-shadow:0 0 0 1px #6a6c73}
+.ins-metric-card.is-arrangeable:focus-visible{outline:2px solid var(--red)}
+.ins-metric-card.is-dragging{opacity:.4;cursor:grabbing}
+.ins-metric-card.drop-before{box-shadow:-4px 0 0 0 var(--red)}
+.ins-metric-card.drop-after{box-shadow:4px 0 0 0 var(--red)}
+.ins-drag-handle{color:#8b8d95;font-size:15px;line-height:1;cursor:grab}
+.ins-drag-hint{grid-column:1/-1;margin:4px 0 0}
+@media (prefers-reduced-motion:reduce){.ins-metric-card.is-arrangeable{transition:none}}

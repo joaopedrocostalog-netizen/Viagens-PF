@@ -79,7 +79,7 @@ test('backend DSS converte filtros para dd/mm/aaaa, lê registros e mantém aute
  assert.equal((await request('/api/overview?from=2026-10-15&to=2026-10-16&company=todas')).status,400);
  assert.equal((await request('/Ideallog.png')).status,200);
  assert.equal((await request('/src/companies.mjs')).status,200);
- for(const name of ['date-controls.mjs','rv-status.mjs','portal-links.mjs','programming.mjs','programming-data.mjs','mobile-tables.mjs','rv-checklist.mjs','view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs'])assert.equal((await request('/src/'+name)).status,200,name);
+ for(const name of ['date-controls.mjs','rv-status.mjs','data-availability.mjs','portal-links.mjs','programming.mjs','programming-data.mjs','mobile-tables.mjs','rv-checklist.mjs','view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs'])assert.equal((await request('/src/'+name)).status,200,name);
  assert.equal((await fetch('http://127.0.0.1:'+port+'/api/workflow?company=costalog')).status,401);
  const patch=input=>fetch('http://127.0.0.1:'+port+'/api/workflow?company=costalog',{method:'PATCH',headers:{Authorization:'Bearer local-test-token','Content-Type':'application/json'},body:JSON.stringify(input)});
  const taskInput={key:'cte_sem_rv:ctes:acdacosta~8',owner:'João',ownerUsername:'joao.pedro',due:'2026-10-25',priority:'high',status:'tratamento',comment:'Conferir referência',revision:0};

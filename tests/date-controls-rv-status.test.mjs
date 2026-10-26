@@ -29,7 +29,7 @@ test('Edição incompleta sobrevive a renderizações e não aplica data; calend
 test('Etapas são as cinco do DSS e não equiparam Finalizado a Encerrado nem adivinham códigos',()=>{
  assert.deepEqual(RV_STATUSES,['Incluído','Escalado','Viajando','Finalizado','Encerrado']);
  assert.equal(rvStatus('incluido'),'Incluído');assert.equal(rvStatus('Encerrada'),'Encerrado');assert.equal(rvStatus('FINALIZADA'),'Finalizado');
- assert.equal(rvStatus('Concluída'),'Concluída');assert.equal(rvStatus('5'),'5');assert.equal(rvStatus('constructor'),'constructor');assert.equal(rvStatus(''),'Não informado');
+ assert.equal(rvStatus('Concluída'),'Concluída');assert.equal(rvStatus('5'),'5');assert.equal(rvStatus('constructor'),'constructor');assert.equal(rvStatus('cancelado'),'Cancelado');assert.equal(rvStatus('CANCELADA'),'Cancelado');assert.equal(rvStatus(''),'Não informado');
  const trips=RV_STATUSES.map((status,i)=>({id:String(i),numero:String(i),data:'2026-10-01',status,tipoRv:'RODO'}));
  const data={viagens:trips,pedidos:[],mdfes:[],sources:{pedidos:true}};
  assert.equal(filterOperationalData(data,{view:'viagens',status:'Finalizado'}).viagens[0].status,'Finalizado');

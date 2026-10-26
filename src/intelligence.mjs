@@ -1,3 +1,4 @@
+import {KM_FROM_API} from './data-availability.mjs';
 import {tripActive,tripCompleted} from './rv-status.mjs';
 import {matchesSearch,normalizeSearch} from './filtering.mjs';
 /** Índices operacionais DSS; somente registros normalizados, sem consultas diretas nem valores inventados. */
@@ -130,7 +131,7 @@ export function periodMetrics(data,{financial=false}={}){
  const a=[{key:'viagens',label:'Viagens',value:v.length,unit:'count'},{key:'pedidos',label:'Pedidos de frete',value:p.length,unit:'count'},
  {key:'ctes',label:'CT-e numerados',value:p.filter(x=>x.isCte).length,unit:'count'}];
  const kms=metric(v,'kmRodados');
- a.push({key:'km',label:'KM informados',value:kms.value,coverage:kms.coverage,total:kms.total,unit:'km'});
+ if(KM_FROM_API)a.push({key:'km',label:'KM informados',value:kms.value,coverage:kms.coverage,total:kms.total,unit:'km'});
  if(financial){
   const value=metric(p,'valor');a.push({key:'fretes',label:'Fretes informados',value:value.value,coverage:value.coverage,total:value.total,unit:'money'});
  }
@@ -152,7 +153,7 @@ export const DASH_METRICS=Object.freeze([
  {id:'sem_cte',label:'Pedidos sem CT-e',financial:false},
  {id:'sem_rv',label:'CT-e sem RV encontrada',financial:false},
  {id:'entregas',label:'Entregas sem comprovante',financial:false},
- {id:'km',label:'KM realizados',financial:false},
+ ...(KM_FROM_API?[{id:'km',label:'KM realizados',financial:false}]:[]),
  {id:'fretes',label:'Total de fretes informados',financial:true},
  {id:'abastecimento',label:'Abastecimento informado',financial:true},
  {id:'fatura',label:'Liberados sem número da fatura',financial:true}
@@ -173,7 +174,7 @@ export function dashboardMetrics(data,{financial=false}={}){
  return DASH_METRICS.filter(m=>financial||!m.financial).map(m=>({...m,value:map[m.id],
   coverage:({km,fretes:freight,abastecimento:fuel})[m.id]?.coverage??null}));
 }
-export const DEFAULT_METRICS=['viagens','andamento','concluidas','pedidos','ctes','sem_cte','sem_rv','entregas','km'];
+export const DEFAULT_METRICS=['viagens','andamento','concluidas','pedidos','ctes','sem_cte','sem_rv','entregas',...(KM_FROM_API?['km']:[])];
 export function normalizedLayout(saved,{financial=false}={}){
  const allowed=new Set(DASH_METRICS.filter(m=>financial||!m.financial).map(m=>m.id));
  if(Array.isArray(saved))return [...new Set(saved.filter(x=>allowed.has(x)))];
@@ -183,6 +184,13 @@ export function reorderMetric(layout,id,direction,{financial=false}={}){
  const arr=normalizedLayout(layout,{financial}),i=arr.indexOf(id),j=i+direction;
  if(i<0||j<0||j>=arr.length)return arr;
  [arr[i],arr[j]]=[arr[j],arr[i]];return arr;
+}
+/** Arrastar e soltar: coloca `id` antes (ou depois) de `targetId`. */
+export function moveMetric(layout,id,targetId,{after=false,financial=false}={}){
+ const arr=normalizedLayout(layout,{financial});
+ if(id===targetId||!arr.includes(id)||!arr.includes(targetId))return arr;
+ const rest=arr.filter(x=>x!==id),at=rest.indexOf(targetId)+(after?1:0);
+ rest.splice(at,0,id);return rest;
 }
 export function alertsForRole(alerts,financial){
  return (alerts||[]).filter(a=>financial||a.type!=='sem_fatura');

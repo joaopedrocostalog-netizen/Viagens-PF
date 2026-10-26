@@ -1,3 +1,4 @@
+import {KM_FROM_API} from './data-availability.mjs';
 import {tripActive,tripCompleted} from './rv-status.mjs';
 import {memoView} from './view-cache.mjs';
 import {taskFor,taskBelongsToUser,taskDueBucket,operationalToday} from './workflow.mjs';
@@ -64,7 +65,7 @@ function* recordAlerts(record,view,context){
   const age=(context.asOfTime-Date.parse(v.data+'T12:00:00Z'))/86400000;
   if(Number.isFinite(age)&&age>context.lateDays)yield ref('rv_sem_termino','warning',age);
  }
- if(Number.isFinite(v.kmRodados)&&Number.isFinite(v.kmPrevisto)&&v.kmPrevisto>0&&v.kmRodados>v.kmPrevisto*1.15)yield ref('km_acima','info');
+ if(KM_FROM_API&&Number.isFinite(v.kmRodados)&&Number.isFinite(v.kmPrevisto)&&v.kmPrevisto>0&&v.kmRodados>v.kmPrevisto*1.15)yield ref('km_acima','info');
 }
 function materializeAlert({type,level,record:r,view,age}){
  let title,detail;

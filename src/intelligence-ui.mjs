@@ -1,3 +1,4 @@
+import {KM_FROM_API,availableColumns} from './data-availability.mjs';
 import {renderPendingToolbar,renderPendingSelection,renderPendingLifecycle} from './pending-ui.mjs';
 import {renderDateControl,hasDateErrors} from './date-controls.mjs';
 import {scopeCompanyData} from './companies.mjs';
@@ -59,14 +60,13 @@ export function renderCustomDashboard(data,state){
   const m=byId.get(id);if(!m)return '';
   const val=m.value===null?'—':m.id==='fretes'||m.id==='abastecimento'?curr(m.value):n(m.value)+(m.id==='km'?' km':'');
   const extra=m.coverage!==null?'Dados conhecidos: '+m.coverage+'/'+data.viagens.length+' RVs':metricDescription[id]||'Indicador calculado com os registros disponíveis';
-  return '<article class="ins-metric-card"><div class="ins-metric-top"><small>'+esc(m.label)+'</small><div class="ins-reorder">'+
-  '<button data-metric-move="'+id+':-1" aria-label="Mover '+esc(m.label)+' para a esquerda" '+(i===0?'disabled':'')+'>←</button>'+
-  '<button data-metric-move="'+id+':1" aria-label="Mover '+esc(m.label)+' para a direita" '+(i===visible.length-1?'disabled':'')+'>→</button></div></div>'+
+  const arrange=state.showMetricOptions?' is-arrangeable" draggable="true" tabindex="0" data-metric-card="'+id+'" aria-roledescription="cartão arrastável" aria-label="'+esc(m.label)+', posição '+(i+1)+' de '+visible.length+'. Arraste ou use as setas do teclado para mover."':'"';
+  return '<article class="ins-metric-card'+arrange+'><div class="ins-metric-top"><small>'+esc(m.label)+'</small>'+(state.showMetricOptions?'<span class="ins-drag-handle" aria-hidden="true">⠿</span>':'')+'</div>'+
   '<strong>'+esc(val)+'</strong><span>'+esc(extra)+'</span>'+(!m.financial?'<button class="btn btn-sm ins-metric-open" data-metric-open="'+id+'">Ver registros ↗</button>':'')+'</article>';
  }).join('');
  return '<section class="ins-module ins-custom-dashboard"><div class="ins-toolbar"><div><h2>MEU PAINEL</h2><p>Indicadores personalizados para '+esc(state.user?.displayName||state.user?.username||'visitante demonstrativo')+'</p></div>'+
  '<button class="btn btn-sm" data-ins-action="customize">'+(state.showMetricOptions?'Fechar configurações':'Personalizar cartões')+'</button></div>'+
- (state.showMetricOptions?'<div class="ins-metric-settings">'+(state.preferenceStorage==='browser'?'<p class="help">Preferências salvas neste navegador, por usuário e empresa.</p>':'')+options+'<button class="btn btn-sm" data-ins-action="reset-metrics">Restaurar padrão</button></div>':'')+
+ (state.showMetricOptions?'<div class="ins-metric-settings">'+(state.preferenceStorage==='browser'?'<p class="help">Preferências salvas neste navegador, por usuário e empresa.</p>':'')+options+'<button class="btn btn-sm" data-ins-action="reset-metrics">Restaurar padrão</button><p class="help ins-drag-hint">Arraste os cartões abaixo com o mouse para mudar a ordem.</p></div>':'')+
  '<div class="ins-metric-grid">'+grid+'</div>'+(visible.length?'':empty('Selecione pelo menos um indicador para montar seu painel.'))+
  '</section>';
 }
@@ -117,11 +117,12 @@ export function renderDriverRouteDetails(data,state,view){
   });
   const paged=metricPage(references,state,'detailPage');
   const items=view==='rotas'?[{label:'RVs',value:n(selected.count)},{label:'KM identificados',value:n(selected.km),note:selected.kmKnown+'/'+selected.count+' RVs com KM'},{label:'Placas distintas',value:n(selected.vehicles)},{label:'Motoristas',value:n(selected.drivers)}]:[{label:'RVs',value:n(selected.trips)},{label:'Pedidos PF',value:n(selected.orders)},{label:'CT-e numerados',value:n(selected.ctes)},{label:'KM conhecidos',value:n(selected.km)}];
+  if(!KM_FROM_API)items.splice(0,items.length,...items.filter(item=>!/^KM /.test(item.label)));
   return '<section class="ins-module"><div class="ins-toolbar"><h2>'+esc(selected.name)+'</h2><button class="btn" data-ins-action="'+(view==='rotas'?'clear-route':'clear-driver')+'">← Voltar</button></div>'+cards(items)+
    (state.listFilters||'')+'<div class="ins-responsive-table"><table><thead><tr><th>Registro</th><th>Data</th><th>Cliente</th><th>Placa</th></tr></thead><tbody>'+paged.rows.map(({record:r,kind})=>'<tr><td><button class="ins-link" data-profile-detail="'+kind+':'+esc(r.id)+'">'+(kind==='viagens'?'RV ':'PF ')+esc(kind==='viagens'?r.numero:r.pedidoNumero||r.numero)+'</button></td><td>'+date(r.data)+'</td><td>'+esc(r.cliente)+'</td><td>'+esc(r.placa||'—')+'</td></tr>').join('')+'</tbody></table></div>'+paged.html+'</section>';
  }
  const paged=metricPage(sorted,state);
- const columns=view==='rotas'?[['name','Origem → Destino'],['count','RVs'],['km','KM informados'],['kmPerTrip','KM médio*'],['vehicles','Veículos'],['drivers','Motoristas']]:[['name','Motorista'],['trips','RVs'],['orders','Pedidos'],['ctes','CT-e'],['km','KM conhecidos'],['kmPerTrip','KM médio*'],['routes','Rotas distintas']];
+ const columns=availableColumns(view==='rotas'?[['name','Origem → Destino'],['count','RVs'],['km','KM informados'],['kmPerTrip','KM médio*'],['vehicles','Veículos'],['drivers','Motoristas']]:[['name','Motorista'],['trips','RVs'],['orders','Pedidos'],['ctes','CT-e'],['km','KM conhecidos'],['kmPerTrip','KM médio*'],['routes','Rotas distintas']]);
  return '<section class="ins-module"><div class="ins-toolbar"><div><h2>'+(view==='rotas'?'ROTAS & VOLUME OPERACIONAL':'MOTORISTAS & ATIVIDADE')+'</h2><p>Volume observado nas RVs e pedidos PF do DSS</p></div>'+badge(n(filtered.length)+(view==='rotas'?' rotas':' motoristas'))+'</div>'+
  (state.listFilters||'')+(filtered.length?'<div class="ins-responsive-table"><table><thead><tr>'+columns.map(([key,label])=>sortTableHeader(label,key,state,view)).join('')+'</tr></thead><tbody>'+paged.rows.map(row=>'<tr>'+columns.map(([key])=>'<td>'+(key==='name'?'<button class="ins-link" '+(view==='rotas'?'data-route-open="'+esc(row.name):'data-driver-open="'+esc(row.id))+'">'+esc(row.name)+'</button>':n(row[key]))+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>':empty('Sem registros disponíveis para os filtros selecionados.'))+paged.html+
  '</section>';

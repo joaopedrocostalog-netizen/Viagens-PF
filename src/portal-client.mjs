@@ -63,7 +63,7 @@ export function createPortalClient(state,render){
  function contents(){
   if(state.remoteError)return '<p class="ins-inline-error" role="alert">'+h(state.remoteError)+'</p><button class="btn" data-action="retry-page">Tentar novamente</button>';
   if(state.view==='comparativos'&&!state.remoteSnapshot&&!comparison)return renderComparison({viagens:[],pedidos:[],ctes:[],mdfes:[],sources:{}},state);
-  if((!state.remoteSnapshot||!inRange())&&!(state.view==='comparativos'&&comparison))return '<div class="info-strip">Atualize os dados da DSS para consultar este período.</div>';
+  if((!state.remoteSnapshot||!inRange())&&!(state.view==='comparativos'&&comparison))return state.loading?'<div class="info-strip" role="status">Consulta em andamento. Os registros aparecem quando todas as etapas terminarem.</div>':'<div class="info-strip">Atualize os dados da DSS para consultar este período.</div>';
   if(viewKey!==key()){
    const bar='<div class="page-loading" role="status"><span class="page-loading-dot" aria-hidden="true"></span>Atualizando…<button class="btn btn-sm" data-action="cancel-page">Cancelar</button></div>';
    // Mesma área/empresa/consulta: mantém a página anterior esmaecida e inativa até a nova chegar, sem a tela piscar.
@@ -75,7 +75,7 @@ export function createPortalClient(state,render){
  function progress(){
   const j=state.syncProgress;if(!state.loading&&!state.comparisonLoading)return '';
   const labels={pending:'Aguardando',running:'Consultando',done:'Concluído',reused:'Reutilizado',unavailable:'Indisponível',disabled:'Não configurado',skipped:'Não consultado'};
-  return '<div class="sync-progress" role="status"><div><strong>'+h(state.loadingProgress||'Preparando consulta…')+'</strong><button class="btn btn-sm" data-action="cancel-query">Cancelar consulta</button></div>'+(j?'<progress value="'+j.completed+'" max="'+Math.max(1,j.total)+'" aria-label="Etapas concluídas"></progress><ul>'+j.steps.map(s=>'<li><span>'+h(s.label)+(s.period?' · '+h(s.period):'')+'</span><b>'+h(labels[s.status]||s.status)+'</b></li>').join('')+'</ul>':'')+'</div>';
+  return '<div class="sync-progress" role="status"><div><strong>'+h(state.loadingProgress||'Preparando consulta…')+'</strong><button class="btn btn-sm" data-action="cancel-query">Cancelar consulta</button></div>'+(j?'<progress value="'+j.completed+'" max="'+Math.max(1,j.total)+'" aria-label="Etapas concluídas"></progress><ul>'+j.steps.map(s=>'<li><span>'+h(s.label)+(s.period?' · '+h(s.period):'')+'</span><b'+(s.detail?' title="'+h(s.detail)+'"':'')+'>'+h(labels[s.status]||s.status)+(s.detail?' · '+h(s.detail):'')+'</b></li>').join('')+'</ul>':'')+'</div>';
  }
  function paintProgress(){const target=document.getElementById('syncProgress');if(target)target.innerHTML=progress();}
  async function runJob(range,{cached=false,generation=syncGeneration,token=state.token,company=state.company}={}){
@@ -155,6 +155,7 @@ export function createPortalClient(state,render){
 
  return {active,observe,contents,progress,synchronize,compare,cancel,loadPreferences,flushPreferences,
   response:()=>viewKey===key()?view:null,drawer:()=>detail||'<div class="overlay"><aside class="drawer"><p>Carregando registro…</p><button class="btn" data-action="close">Fechar</button></aside></div>',
+  reshapeStale(fn){if(lastGood)lastGood={...lastGood,html:fn(lastGood.html)};},
   invalidate(){viewKey='';pendingKey='';controller?.abort();seq++;cache.clear();},
   cancelPage(){controller?.abort();seq++;pendingKey='';viewKey=key();view={html:'<p class="help">Consulta da página cancelada.</p><button class="btn" data-action="retry-page">Carregar página</button>'};render();},
   reset(){cache.clear();lastGood=null;controller?.abort();detailController?.abort();seq++;++prefGeneration;prefReady=false;prefBlocked=false;clearTimeout(prefTimer);view=null;viewKey='';pendingKey='';detail=null;detailKey='';comparison=null;const id=jobId,token=syncToken,company=syncCompany;++syncGeneration;jobId='';if(id)request('/api/portal/sync',{method:'PATCH',body:{id},token,company}).catch(()=>{});},

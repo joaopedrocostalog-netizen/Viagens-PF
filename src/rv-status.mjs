@@ -1,8 +1,8 @@
 export const RV_STATUSES=Object.freeze(['Incluído','Escalado','Viajando','Finalizado','Encerrado']);
 const text=value=>String(value??'').trim();
 const norm=value=>text(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-const statusNames=Object.freeze({incluido:'Incluído',incluida:'Incluído',escalado:'Escalado',escalada:'Escalado',viajando:'Viajando',finalizado:'Finalizado',finalizada:'Finalizado',encerrado:'Encerrado',encerrada:'Encerrado'});
-/** Standardize spelling/gender only. Unknown codes and ambiguous completion labels stay as supplied. */
+const statusNames=Object.freeze({incluido:'Incluído',incluida:'Incluído',escalado:'Escalado',escalada:'Escalado',viajando:'Viajando',finalizado:'Finalizado',finalizada:'Finalizado',encerrado:'Encerrado',encerrada:'Encerrado',cancelado:'Cancelado',cancelada:'Cancelado'});
+/** Standardize spelling/gender only (the five stages plus Cancelado). Unknown codes and ambiguous completion labels stay as supplied. */
 export function rvStatus(value){
  const key=norm(value);
  return Object.hasOwn(statusNames,key)?statusNames[key]:text(value)||'Não informado';

@@ -1,3 +1,4 @@
+import {unavailableKey} from '../src/data-availability.mjs';
 import {normalizeOverview} from '../src/dss-mapping.mjs';
 import {scopeCompanyData,companyIdentity} from '../src/companies.mjs';
 import {projectOverview} from './access.mjs';
@@ -96,7 +97,7 @@ function renderDrawer(d){
  const [kind,id]=state.selected.split(':');if(!permittedView(state.role,kind)){state.selected=null;return '';}const item=kind==='viagens'?d.viagens.find(x=>x.id===id):kind==='ctes'?[...d.pedidos,...d.ctes].find(x=>x.id===id):d.mdfes.find(x=>x.id===id);
  if(!item){state.selected=null;return '';}
  const secureKeys=new Set(['custo','receita','abastecimento','custoAbastecimentoKm','adiantamento','proventos','liquido','valor','valorReceber','valorAverbacao','valorIcmsIss','freteSemIcms','valorMercadorias','numeroFatura','liberadoFaturamento','statusPagamentoSaldo','dataPagamentoSaldo','contratoVf']);
- const rows=Object.entries(item).filter(([k])=>!['id','isCte'].includes(k)&&(state.permissions.financeiro||!secureKeys.has(k))).map(([k,v])=>'<div class="detail-line"><span>'+esc(({tipoRv:'Tipo de RV',numero:'Número',data:'Data',cliente:'Cliente',abastecimento:'Abastecimento (R$)',nroMdf:'MDF-e informado',rvReferencia:'RV referenciada',pedidoNumero:'Pedido de frete',cteNumero:'Número CT-e',placa:'Placa',origem:'Origem',destino:'Destino',receita:'Receita',custo:'Custo',status:'Situação',viagemId:'Viagem',valor:'Valor',chave:'Chave CT-e'}[k]||k))+'</span><b>'+(['receita','custo','valor'].includes(k)?money(v):k==='data'?dateBR(v):esc(v===null||v===''?'—':v))+'</b></div>').join('');
+ const rows=Object.entries(item).filter(([k])=>!['id','isCte'].includes(k)&&!unavailableKey(k)&&(state.permissions.financeiro||!secureKeys.has(k))).map(([k,v])=>'<div class="detail-line"><span>'+esc(({tipoRv:'Tipo de RV',numero:'Número',data:'Data',cliente:'Cliente',abastecimento:'Abastecimento (R$)',nroMdf:'MDF-e informado',rvReferencia:'RV referenciada',pedidoNumero:'Pedido de frete',cteNumero:'Número CT-e',placa:'Placa',origem:'Origem',destino:'Destino',receita:'Receita',custo:'Custo',status:'Situação',viagemId:'Viagem',valor:'Valor',chave:'Chave CT-e'}[k]||k))+'</span><b>'+(['receita','custo','valor'].includes(k)?money(v):k==='data'?dateBR(v):esc(v===null||v===''?'—':v))+'</b></div>').join('');
  let related='';
  if(kind==='viagens'){
   const completeData=filterOptionsData();

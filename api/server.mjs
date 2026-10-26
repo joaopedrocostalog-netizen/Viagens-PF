@@ -72,6 +72,16 @@ const driversPath=env.DSS_MOTORISTAS_PATH??'/listarMotoristas';
 const optionalCatalogs=[{name:'ocorrencias',path:env.DSS_OCORRENCIAS_PATH??'/listarOcorrencias',fields:['empresa','rv_id','nro_rv','pf_id','nro_mdf','ocorrencia_id','data_ocorrencia','descricao','veiculo_id','placa_veiculo','ocorrencia_de','relato','causa_raiz','providencia_tomada','responsavel_atendimento','envolvido','data','status']},{name:'rotas',path:env.DSS_ROTAS_PATH??'/listarRotas',fields:['empresa','rota_id','km_previsto_rota','dsc_rota','cidade_origem_rota','cidade_destino_rota']},
  {name:'programacoes',path:env.DSS_PROGRAMACOES_PATH??'/listarProgramacoes',fields:['empresa','programacao_id','nro_programacao','rv_id','nro_rv','pf_id','motorista_id','veiculo_id','data_emissao','nro_cte','total_frete_pedido_frete']}];
 const optionalCache=new Map();
+/** Motivo curto e sem dados sensíveis para mostrar ao usuário quando uma fonte opcional falha. */
+function unavailableReason(err){
+ const text=String(err?.message||'');
+ if(err?.name==='TimeoutError'||err?.name==='AbortError'||/timeout|timed out/i.test(text))return 'tempo esgotado na DSS';
+ const http=text.match(/HTTP (\d{3})/);if(http)return 'DSS respondeu HTTP '+http[1];
+ const dss=text.match(/status DSS (\d+)/);if(dss)return 'DSS respondeu status '+dss[1];
+ if(/sem registros/.test(text))return 'resposta da DSS sem registros';
+ if(err instanceof SyntaxError)return 'resposta da DSS em formato inválido';
+ return 'falha de conexão com a DSS';
+}
 async function optionalCatalog(c,from,to,signal){
  if(!c.path)return [];
  const key=c.name+'|'+(c.name==='rotas'?'catalogo':from+'|'+to),saved=optionalCache.get(key);
@@ -82,7 +92,9 @@ async function optionalCatalog(c,from,to,signal){
   const format=d=>d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4);
   url.searchParams.set('data_inicio',format(from));url.searchParams.set('data_fim',format(to));
  }
- const response=await fetch(url,{headers:{Accept:'application/json',...dssAuthHeaders()},signal:signal?AbortSignal.any([signal,AbortSignal.timeout(Math.min(timeout,6000))]):AbortSignal.timeout(Math.min(timeout,6000)),redirect:'error'});
+ // Rotas é um catálogo pequeno (6 s). Programações/ocorrências de um mês podem demorar tanto quanto viagens/pedidos.
+ const limit=c.name==='rotas'?Math.min(timeout,6000):timeout;
+ const response=await fetch(url,{headers:{Accept:'application/json',...dssAuthHeaders()},signal:signal?AbortSignal.any([signal,AbortSignal.timeout(limit)]):AbortSignal.timeout(limit),redirect:'error'});
  if(!response.ok)throw Error(c.name+' HTTP '+response.status);
  const json=await response.json();
  if(typeof json?.status==='number'&&json.status!==200)throw Error(c.name+' status DSS '+json.status);
@@ -265,7 +277,7 @@ const staticFiles=new Map([
  ['/styles.css','styles.css'],
  ['/logo-costalog-sem-fundo-1024x876.png','logo-costalog-sem-fundo-1024x876.png'],
  ['/Ideallog.png','Ideallog.png'],
- ...['pending-data.mjs','pending-ui.mjs','pending-client.mjs','portal-client.mjs','rv-stage-filter.mjs','date-controls.mjs','rv-status.mjs','portal-links.mjs','programming.mjs','programming-data.mjs','mobile-tables.mjs','rv-checklist.mjs','view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs','filtering.mjs','companies.mjs','app.js','dss-mapping.mjs','operational.mjs','reporting.mjs','advanced-ui.mjs','access-ui.mjs','admin-users.mjs','site-config.mjs','visual-dashboard.mjs','intelligence.mjs','intelligence-ui.mjs'].map(name=>['/src/'+name,'src/'+name])
+ ...['pending-data.mjs','pending-ui.mjs','pending-client.mjs','portal-client.mjs','rv-stage-filter.mjs','date-controls.mjs','rv-status.mjs','data-availability.mjs','portal-links.mjs','programming.mjs','programming-data.mjs','mobile-tables.mjs','rv-checklist.mjs','view-cache.mjs','workflow.mjs','workflow-ui.mjs','trip-timeline.mjs','data-quality.mjs','report-templates.mjs','filtering.mjs','companies.mjs','app.js','dss-mapping.mjs','operational.mjs','reporting.mjs','advanced-ui.mjs','access-ui.mjs','admin-users.mjs','site-config.mjs','visual-dashboard.mjs','intelligence.mjs','intelligence-ui.mjs'].map(name=>['/src/'+name,'src/'+name])
 ]);
 async function serveLocalFrontend(req,res,url){
  if(req.method!=='GET'&&req.method!=='HEAD')return false;
@@ -342,7 +354,7 @@ async function synchronize(from,to,{refreshMode='recent',syncTo=to,signal,onProg
       });
      }
      quality.sources.push({name:catalog.name,status:'ok'});onProgress({key:catalog.name,status:'done'});
-    }catch(err){signal?.throwIfAborted();onProgress({key:catalog.name,status:'unavailable'});quality.sources.push({name:catalog.name,status:'unavailable'});console.warn('[DSS] catálogo opcional',catalog.name,'indisponível:',String(err.message).slice(0,110));}
+    }catch(err){signal?.throwIfAborted();const reason=unavailableReason(err);onProgress({key:catalog.name,status:'unavailable',detail:reason});quality.sources.push({name:catalog.name,status:'unavailable',detail:reason});console.warn('[DSS] catálogo opcional',catalog.name,'indisponível:',String(err.message).slice(0,110));}
    }
    signal?.throwIfAborted();onProgress({key:'motoristas',label:'Motoristas',status:'running'});
    if(driversPath){

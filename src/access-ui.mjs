@@ -1,3 +1,4 @@
+import {availableColumns as withSourceColumns} from './data-availability.mjs';
 import {memoView} from './view-cache.mjs';
 import {taskFor,taskBelongsToUser,taskDueBucket,operationalToday} from './workflow.mjs';
 import {extractRows,searchRecords,sortRecords} from './operational.mjs';
@@ -62,7 +63,7 @@ function makeOperationalReport(type,data,state,preview){
  if(!reportTypesFor(state.role).includes(type))throw Error('Relatório não permitido para este perfil.');
  const source=extractRows(type,scoped);
  const hidden=state.hiddenColumns?.['report-'+type]||[],order=state.reportColumnOrder?.[type]||[];
- const allowed=source.columns.filter(([key])=>OP_COLUMNS[type]?.includes(key));
+ const allowed=withSourceColumns(source.columns.filter(([key])=>OP_COLUMNS[type]?.includes(key)));
  if(type==='pendencias')for(const [key,label] of [['owner','Responsável'],['due','Prazo'],['priority','Prioridade do tratamento'],['status','Situação do tratamento'],['resolutionReason','Motivo da resolução'],['recurrenceCount','Reincidências'],['resolvedAt','Resolvida em'],['resolvedBy','Resolvida por'],['presence','Presença na última observação']])allowed.push([key,label]);
  const availableColumns=allowed.slice().sort((a,b)=>{const rank=key=>order.includes(key)?order.indexOf(key):order.length+allowed.findIndex(c=>c[0]===key);return rank(a[0])-rank(b[0]);});
  const columns=allowed.filter(([key])=>!hidden.includes(key)).sort((a,b)=>{const rank=key=>order.includes(key)?order.indexOf(key):order.length+allowed.findIndex(c=>c[0]===key);return rank(a[0])-rank(b[0]);});

@@ -1,3 +1,4 @@
+import {KM_FROM_API} from './data-availability.mjs';
 import {RV_STATUSES,rvStatus,tripActive,tripCompleted} from './rv-status.mjs';
 import {operationalToday} from './workflow.mjs';
 import {memoView} from './view-cache.mjs';
@@ -203,7 +204,7 @@ export function renderCharts(d,settings){
  const summary='<div class="v-stats-grid">'+
  createCard('TOTAL DE VIAGENS',N(trips.length),'RV no período','red','▤')+
  createCard('PEDIDOS REGISTRADOS',N(orders.length),'Documentos PF','green','✓')+
- createCard('QUILOMETRAGEM',trips.some(v=>Number.isFinite(v.kmRodados))?N(km)+' km':'—','KM realizado informado','blue','↗')+
+ (KM_FROM_API?createCard('QUILOMETRAGEM',trips.some(v=>Number.isFinite(v.kmRodados))?N(km)+' km':'—','KM realizado informado','blue','↗'):'')+
  (fin?createCard('FRETES INFORMADOS',orders.some(o=>Number.isFinite(o.valor))?B(orders.reduce((sum,p)=>sum+(Number.isFinite(p.valor)?p.valor:0),0)):'—','Valor de pedidos, não recebimento','violet','R$'):createCard('CT-e NUMERADOS',N(orders.filter(x=>x.isCte).length),'Não inclui validação fiscal','violet','▣'))+
  '</div>';
  return summary+

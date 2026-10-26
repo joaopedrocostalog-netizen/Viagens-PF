@@ -61,9 +61,11 @@ test('Celular mantém ações e detalhes somente das linhas da página atual',()
 });
 
 test('Comparativos reaplicam empresa interna e pesquisa nos dois períodos',()=>{
- const current={viagens:[{id:'crc~1',empresa:'CRC',data:'2026-10-01',cliente:'Alfa',kmRodados:37},{id:'comex~1',empresa:'Comex',data:'2026-10-01',cliente:'Outra',kmRodados:999}],pedidos:[]};
+ const trip=(id,empresa,cliente)=>({id,empresa,data:'2026-10-01',cliente,kmRodados:5});
+ // 37 RVs CRC/Alfa entram; 962 de Comex/Outra (999 no total) nunca podem aparecer.
+ const current={viagens:[...Array.from({length:37},(_,i)=>trip('crc~a'+i,'CRC','Alfa')),...Array.from({length:962},(_,i)=>trip('comex~'+i,'Comex','Outra'))],pedidos:[]};
  const previous={viagens:[{id:'crc~2',empresa:'CRC',data:'2026-09-01',cliente:'Alfa',kmRodados:20}],pedidos:[]};
  const state={company:'costalog',legalEntity:'crc',mode:'live',permissions:{financeiro:false},search:'Alfa',compareCurrentFrom:'2026-10-01',compareCurrentTo:'2026-10-23',comparePreviousFrom:'2026-09-01',comparePreviousTo:'2026-09-30',comparison:{company:'costalog',current,previous,currentRange:range,previousRange:{from:'2026-09-01',to:'2026-09-30'}}};
- const html=renderComparison({},state);assert(html.includes('37'));assert(!html.includes('999'));assert(html.includes('1 RVs com KM no A'));
+ const html=renderComparison({},state);assert(html.includes('37'));assert(!html.includes('999'));assert(!html.includes('RVs com KM'));
  assert(!renderComparison({},{...state,company:'ideallog'}).includes('1 RVs com KM no A'));
 });

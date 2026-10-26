@@ -77,8 +77,7 @@ test('Comparação diária semanal mensal usa calendários válidos e não divid
  assert.equal(comparison.find(x=>x.key==='viagens').previous,1);
  assert.equal(comparison.find(x=>x.key==='fretes').value,2800);
  assert.equal(comparison.find(x=>x.key==='fretes').previous,1600);
- assert.equal(comparison.find(x=>x.key==='km').value,310);
- assert.equal(comparison.find(x=>x.key==='km').coverage,1);
+ assert(!comparison.some(x=>x.key==='km'),'KM fora dos comparativos enquanto a DSS não informa');
  assert(!comparePeriodMetrics(current,prev,{financial:false}).some(x=>x.key==='fretes'));
  assert.equal(comparePeriodMetrics({viagens:[],pedidos:[]},prev).find(x=>x.key==='viagens').pct,-100);
  assert.equal(comparePeriodMetrics(current,{viagens:[],pedidos:[]}).find(x=>x.key==='viagens').pct,null);
@@ -90,7 +89,8 @@ test('Personalização isola permissões financeiras e mantém ordenação dos f
  assert.deepEqual(normalizedLayout(['viagens','fretes','pedidos'],{financial:false}),['viagens','pedidos']);
  assert.deepEqual(normalizedLayout([],{financial:true}),[]);
  assert.deepEqual(reorderMetric(['viagens','pedidos','ctes'],'pedidos',-1,{financial:false}),['pedidos','viagens','ctes']);
- assert.equal(dashboardMetrics(rows,{financial:true}).find(x=>x.id==='km').value,390);
+ assert(!dashboardMetrics(rows,{financial:true}).some(x=>x.id==='km'));
+ assert.deepEqual(normalizedLayout(['km','viagens']),['viagens'],'cartão de KM salvo antes some do painel');
 });
 test('Alertas geram pendências de CT-e, RV e comprovantes sem presumir resultado fiscal',()=>{
  const alerts=makeAlerts(rows,{asOf:'2026-10-16'});

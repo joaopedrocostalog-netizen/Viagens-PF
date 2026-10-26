@@ -69,6 +69,7 @@ test('Ordenação de motoristas e rotas funciona por maior número de CT-e e KM,
  assert.deepEqual(sortedMetricRows(rows,'km','desc').map(x=>x.name),['C','A','B']);
  const markup=renderDriverRouteDetails(d,{...state(false),tableSort:{motoristas:{key:'ctes',direction:'desc'}}},'motoristas');
  assert(markup.includes('data-sort-metric="motoristas:ctes"'));
- assert(markup.includes('data-sort-metric="motoristas:km"'));
+ assert(!markup.includes('data-sort-metric="motoristas:km"'),'coluna de KM oculta enquanto a DSS não informa');
+ assert(!markup.includes('KM médio'));
  assert(markup.includes('data-sort-metric="motoristas:orders"'));
 });

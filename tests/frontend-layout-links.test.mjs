@@ -51,7 +51,7 @@ test('Link passa pelo login e consulta manual; todas as abas têm uma busca e ro
  click('[data-ins-action]',{insAction:'load-comparison'});await tick();assert.equal(calls.filter(url=>url.pathname==='/api/overview').length,before,'Período já carregado deve ser reutilizado');
  change('comparePreviousFrom','2026-08-01');change('comparePreviousTo','2026-09-30');click('[data-ins-action]',{insAction:'load-comparison'});await tick();
  const comparisonCalls=calls.filter(url=>url.pathname==='/api/overview').slice(before);assert.equal(comparisonCalls.length,2);assert(comparisonCalls.every(url=>url.searchParams.get('company')==='ideallog'&&!url.searchParams.has('refresh')));
- assert(root.innerHTML.includes('KM informados'));assert(!root.innerHTML.includes('Fretes informados'));
+ assert(!root.innerHTML.includes('KM informados'),'KM fica fora enquanto a DSS não informa');assert(!root.innerHTML.includes('Fretes informados'));
  click('[data-action]',{action:'logout'});assert(!root.innerHTML.includes('id="technicalInfo"'));assert(!root.innerHTML.includes('IDEAL AUTORIZADO'));
  assert.equal(typeof pageEvents.popstate,'function');
 });

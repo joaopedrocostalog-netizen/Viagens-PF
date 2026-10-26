@@ -6,6 +6,7 @@ import {rvStatusCounts,renderRvStatusStages} from './rv-status.mjs';
 import {mobileTables} from './mobile-tables.mjs';
 import {parsePortalLink,portalLink} from './portal-links.mjs';
 import {renderDayProgramming,dayStageData} from './programming.mjs';
+import {unavailableKey} from './data-availability.mjs';
 import {renderTripChecklist} from './rv-checklist.mjs';
 import {memoView,clearViewCache} from './view-cache.mjs';
 import {alertKey,taskFor,updateTask,taskSummary,TASK_STATUSES,assignmentForOwner} from './workflow.mjs';
@@ -16,7 +17,7 @@ import {reportTemplate,applyReportTemplate} from './report-templates.mjs';
 import {filterOperationalData,searchOperationalData,filterLinkedRows,serviceTypeLabel} from './filtering.mjs';
 import {COMPANIES,COSTALOG_ENTITIES,companyIdentity,validCompany,scopeCompanyData} from './companies.mjs';
 import {renderGlobalSearch,renderCustomDashboard,renderCustomerProfiles,renderDriverRouteDetails,renderAlertsHub,renderComparison,renderMyTasksSummary} from './intelligence-ui.mjs';
-import {normalizedLayout,reorderMetric,comparisonWindows,subsetPeriod} from './intelligence.mjs';
+import {normalizedLayout,reorderMetric,moveMetric,comparisonWindows,subsetPeriod} from './intelligence.mjs';
 import {renderHero,renderSummary,renderCharts,renderTripsHeader,renderReportsHeader} from './visual-dashboard.mjs';
 import {resolvePortalApi} from './site-config.mjs';
 import {renderUsersManagement,renderForcePasswordChange} from './admin-users.mjs';
@@ -448,7 +449,7 @@ function renderDrawer(d){
  const [kind,id]=state.selected.split(':');if(!permittedView(state.role,kind)){state.selected=null;return '';}const item=kind==='viagens'?d.viagens.find(x=>x.id===id):kind==='ctes'?[...d.pedidos,...d.ctes].find(x=>x.id===id):d.mdfes.find(x=>x.id===id);
  if(!item){state.selected=null;return '';}
  const secureKeys=new Set(['custo','receita','abastecimento','custoAbastecimentoKm','adiantamento','proventos','liquido','valor','valorReceber','valorAverbacao','valorIcmsIss','freteSemIcms','valorMercadorias','numeroFatura','liberadoFaturamento','statusPagamentoSaldo','dataPagamentoSaldo','contratoVf']);
- const rows=Object.entries(item).filter(([k])=>!['id','isCte'].includes(k)&&(state.permissions.financeiro||!secureKeys.has(k))).map(([k,v])=>'<div class="detail-line"><span>'+esc(({tipoRv:'Tipo de RV',numero:'Número',data:'Data',cliente:'Cliente',abastecimento:'Abastecimento (R$)',nroMdf:'MDF-e informado',rvReferencia:'RV referenciada',pedidoNumero:'Pedido de frete',cteNumero:'Número CT-e',placa:'Placa',origem:'Origem',destino:'Destino',receita:'Receita',custo:'Custo',status:'Situação',viagemId:'Viagem',valor:'Valor',chave:'Chave CT-e'}[k]||k))+'</span><b>'+(['receita','custo','valor'].includes(k)?money(v):k==='data'?dateBR(v):esc(v===null||v===''?'—':v))+'</b></div>').join('');
+ const rows=Object.entries(item).filter(([k])=>!['id','isCte'].includes(k)&&!unavailableKey(k)&&(state.permissions.financeiro||!secureKeys.has(k))).map(([k,v])=>'<div class="detail-line"><span>'+esc(({tipoRv:'Tipo de RV',numero:'Número',data:'Data',cliente:'Cliente',abastecimento:'Abastecimento (R$)',nroMdf:'MDF-e informado',rvReferencia:'RV referenciada',pedidoNumero:'Pedido de frete',cteNumero:'Número CT-e',placa:'Placa',origem:'Origem',destino:'Destino',receita:'Receita',custo:'Custo',status:'Situação',viagemId:'Viagem',valor:'Valor',chave:'Chave CT-e'}[k]||k))+'</span><b>'+(['receita','custo','valor'].includes(k)?money(v):k==='data'?dateBR(v):esc(v===null||v===''?'—':v))+'</b></div>').join('');
  let related='';
  if(kind==='viagens'){
   const completeData=filterOptionsData();
@@ -960,8 +961,6 @@ root.addEventListener('click',e=>{
  }
  const compareInterval=e.target.closest('[data-compare-interval]');
  if(compareInterval){state.compareInterval=compareInterval.dataset.compareInterval;state.comparison=null;state.comparisonError='';comparisonSeq++;render();return;}
- const metricMove=e.target.closest('[data-metric-move]');
- if(metricMove){const [id,direction]=metricMove.dataset.metricMove.split(':');state.metricLayout=reorderMetric(state.metricLayout,id,Number(direction),{financial:!!state.permissions.financeiro});saveMetricPreferences();render();return;}
  const insAction=e.target.closest('[data-ins-action]');
  if(insAction){
   const action=insAction.dataset.insAction;
@@ -1142,6 +1141,47 @@ function applyDateEdit(input,{typing=false,calendar=false,enter=false}={}){
  if(textRenderTimer)clearTimeout(textRenderTimer);
  textRenderTimer=setTimeout(()=>{const focused=document.activeElement===input;render();const field=document.getElementById(id);if(focused&&field){field.focus?.();if(typeof cursor==='number')field.setSelectionRange?.(cursor,cursor);}},350);
 }
+// Personalizar cartões: arrastar e soltar com o mouse (somente com "Personalizar cartões" aberto).
+let draggedMetric='';
+const metricTarget=e=>state.showMetricOptions&&draggedMetric?e.target?.closest?.('[data-metric-card]'):null;
+const dropAfter=(card,e)=>{const r=card.getBoundingClientRect();return e.clientX>r.left+r.width/2;};
+const clearDropMarks=()=>root.querySelectorAll?.('.drop-before,.drop-after,.is-dragging').forEach(el=>el.classList.remove('drop-before','drop-after','is-dragging'));
+function applyMetricLayout(layout,focusId=''){
+ const before=JSON.stringify(normalizedLayout(state.metricLayout,{financial:!!state.permissions.financeiro}));
+ if(JSON.stringify(layout)===before)return;
+ state.metricLayout=layout;saveMetricPreferences();
+ // Enquanto o servidor redesenha o painel, a página anterior (esmaecida) já mostra a nova ordem.
+ remoteClient.reshapeStale?.(html=>reorderMetricCards(html,layout));
+ render();
+ if(focusId)document.querySelector?.('[data-metric-card="'+focusId+'"]')?.focus?.();
+}
+function reorderMetricCards(html,layout){
+ if(typeof document?.createElement!=='function')return html;
+ const box=document.createElement('template');box.innerHTML=html;
+ const grid=box.content.querySelector('.ins-metric-grid');if(!grid)return html;
+ const cards=new Map([...grid.querySelectorAll('[data-metric-card]')].map(card=>[card.dataset.metricCard,card]));
+ for(const id of layout)if(cards.has(id))grid.append(cards.get(id));
+ return box.innerHTML;
+}
+root.addEventListener('dragstart',e=>{
+ const card=state.showMetricOptions&&e.target?.closest?.('[data-metric-card]');if(!card)return;
+ draggedMetric=card.dataset.metricCard;card.classList.add('is-dragging');
+ try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',draggedMetric);}catch{}
+});
+root.addEventListener('dragover',e=>{
+ const card=metricTarget(e);if(!card)return;
+ e.preventDefault();try{e.dataTransfer.dropEffect='move';}catch{}
+ if(card.dataset.metricCard===draggedMetric)return;
+ const after=dropAfter(card,e);card.classList.toggle('drop-after',after);card.classList.toggle('drop-before',!after);
+});
+root.addEventListener('dragleave',e=>{const card=metricTarget(e);if(card&&!card.contains(e.relatedTarget))card.classList.remove('drop-before','drop-after');});
+root.addEventListener('drop',e=>{
+ const card=metricTarget(e);if(!card)return;
+ e.preventDefault();const id=draggedMetric,target=card.dataset.metricCard,after=dropAfter(card,e);
+ draggedMetric='';clearDropMarks();
+ applyMetricLayout(moveMetric(state.metricLayout,id,target,{after,financial:!!state.permissions.financeiro}));
+});
+root.addEventListener('dragend',()=>{draggedMetric='';clearDropMarks();});
 root.addEventListener('toggle',e=>{if(e.target.closest?.('.stale-view')||renderedOpen.get(e.target)===e.target.open)return;const key=e.target.id==='dayPrograms'?'dayProgramsOpen':e.target.id==='advancedFilters'?'filtersOpen':e.target.id==='technicalInfo'&&state.permissions.admin?'technicalOpen':'';if(key&&state[key]!==e.target.open){state[key]=e.target.open;render();}},true);
 root.addEventListener('input',e=>{
  if(DATE_FIELDS.has(e.target.id)){applyDateEdit(e.target,{typing:true});return;}
@@ -1155,6 +1195,11 @@ root.addEventListener('input',e=>{
  textRenderTimer=setTimeout(()=>{render();const input=document.getElementById(id);if(input){input.focus?.();if(typeof cursor==='number')input.setSelectionRange?.(cursor,cursor);}},160);
 });
 root.addEventListener('keydown',e=>{
+ const metricCard=state.showMetricOptions&&e.target?.closest?.('[data-metric-card]');
+ if(metricCard&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){
+  e.preventDefault();const id=metricCard.dataset.metricCard;
+  applyMetricLayout(reorderMetric(state.metricLayout,id,['ArrowLeft','ArrowUp'].includes(e.key)?-1:1,{financial:!!state.permissions.financeiro}),id);return;
+ }
  if(e.key==='Enter'&&DATE_FIELDS.has(e.target.id)){e.preventDefault();applyDateEdit(e.target,{enter:true});return;}
 
  const point=e.target?.closest?.('[data-chart-point]');
