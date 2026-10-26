@@ -405,7 +405,7 @@ function render() {
     '<div class="v-tools-row">' +
     dateFilters +
     tools +
-    button('toggle-advanced-filters', (state.filtersOpen ? 'Ocultar filtros avançados' : 'Filtros avançados'), 'btn-sm') +
+    button('toggle-advanced-filters', state.filtersOpen ? 'Ocultar filtros avançados' : 'Filtros avançados', 'btn-sm') +
     '</div>' +
     globalSearch +
     (state.linkMessage ? '<p class="help" role="status">' + esc(state.linkMessage) + '</p>' : '') +
