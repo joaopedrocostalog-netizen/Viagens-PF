@@ -1,0 +1,61 @@
+name: Testes
+
+# Roda a cada envio e pull request: testes do servidor/telas (Node), testes em navegador real
+# (Chromium, modo demonstração, sem DSS e sem segredos) e a checagem de formatação.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unitarios:
+    name: Servidor e telas (Node)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+
+  navegador:
+    name: Navegador (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Instalar Playwright e Chromium
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1
+          npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Guardar capturas de tela se falhar
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-falhas
+          path: test-results/
+          if-no-files-found: ignore
+
+  formatacao:
+    name: Formatação (Prettier)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run format:check

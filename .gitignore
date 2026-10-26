@@ -15,3 +15,6 @@ secrets/
 
 # Diretórios privados temporários criados pelos testes
 test-private-*/
+
+# Capturas dos testes de navegador
+test-results/

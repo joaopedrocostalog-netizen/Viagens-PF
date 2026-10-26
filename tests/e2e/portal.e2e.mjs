@@ -4,6 +4,7 @@
  */
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
 import { launch, openPortal, login, go } from './harness.mjs';
 
 let browser;
@@ -16,7 +17,16 @@ after(async () => {
 
 async function portal(t) {
   const session = await openPortal(browser);
-  t.after(() => session.context.close());
+  t.after(async () => {
+    // Captura de cada caso: o GitHub Actions publica a pasta quando algum teste falha.
+    const name = t.name
+      .normalize('NFD')
+      .replace(/[^\w]+/g, '-')
+      .slice(0, 80);
+    await mkdir('test-results', { recursive: true });
+    await session.page.screenshot({ path: 'test-results/' + name + '.png', fullPage: true }).catch(() => {});
+    await session.context.close();
+  });
   await login(session.page);
   return session;
 }
