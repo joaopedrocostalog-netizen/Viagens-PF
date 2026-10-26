@@ -123,7 +123,7 @@ test('Link passa pelo login e consulta manual; todas as abas têm uma busca e ro
     assert.equal((root.innerHTML.match(/type="search"/g) || []).length, 1, view);
     assert.equal(
       (root.innerHTML.match(/data-action="toggle-advanced-filters"/g) || []).length,
-      view === 'painel' ? 0 : 1,
+      1,
       view
     );
     assert.equal((root.innerHTML.match(/id="technicalInfo"/g) || []).length, 1, view);
