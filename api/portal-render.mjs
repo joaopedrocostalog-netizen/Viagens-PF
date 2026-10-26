@@ -115,6 +115,7 @@ export async function portalResponse({ action, input, snapshot, user, company, w
   ) {
     try {
       state.tasks = await workflowStore.get(company);
+      state.alertRules = (await workflowStore.policy(company)).stall;
       state.taskIndexLoaded = true;
     } catch {
       state.taskIndexError = 'Tratamentos indisponíveis. Configure o armazenamento persistente ou tente novamente.';

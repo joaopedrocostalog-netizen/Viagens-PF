@@ -40,8 +40,9 @@ export function createPendingService({ store, sessions }) {
         signal?.throwIfAborted();
         const data = normalized(payload, company);
         try {
+          const stall = (await store.policy(company)).stall;
           await store.observe(company, {
-            references: alertReferences(data),
+            references: alertReferences(data, { stall }),
             data,
             freshPeriods,
             coverage: { from, to },
@@ -59,7 +60,8 @@ export function createPendingService({ store, sessions }) {
       if (!input.snapshot) return undefined;
       const snapshot = sessions.get(input.snapshot, user),
         data = normalized(snapshot.payload, company);
-      for (const ref of alertReferences(data))
+      const stall = (await store.policy(company).catch(() => null))?.stall || null;
+      for (const ref of alertReferences(data, { stall }))
         if ([ref.type, ref.view, ref.record.id].join(':') === input.key) return source(ref, data);
       // An archived treatment may no longer be an active alert.
       if (await store.get(company, input.key)) return undefined;

@@ -586,7 +586,7 @@ const dueLabels = {
 function alertPager(data, state) {
   const asOf = operationalToday(),
     lateDays = state.lateDays ?? 2;
-  return cachedAlertPager(data, { asOf, lateDays });
+  return cachedAlertPager(data, { asOf, lateDays, stall: state.alertRules || null });
 }
 export function renderMyTasksSummary(data, state) {
   if (!state.user?.username || state.user.mustChangePassword) return '';
@@ -734,6 +734,8 @@ export function renderAlertsHub(data, state) {
     ocorrencia: 'Ocorrência',
     rv_sem_termino: 'RV sem término',
     km_acima: 'Excesso de KM',
+    rv_parada_incluido: 'RV parada em Incluído',
+    rv_parada_escalado: 'RV parada em Escalado',
     cte_sem_rv: 'CT-e sem RV',
     rv_sem_pedido: 'RV sem pedido PF'
   };

@@ -3,7 +3,14 @@ import { dirname, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { validCompany } from '../src/companies.mjs';
 import { validTaskKey, updateTask, taskSummary } from '../src/workflow.mjs';
-import { emptyPolicy, dueFromPolicy, PENDING_TYPES, absenceConclusive } from '../src/pending-data.mjs';
+import {
+  emptyPolicy,
+  dueFromPolicy,
+  PENDING_TYPES,
+  absenceConclusive,
+  STALL_STAGES,
+  stallRules
+} from '../src/pending-data.mjs';
 const bad = (message, status = 400) => Object.assign(Error(message), { status });
 const decode = value =>
   value?.version === 2 && value.tasks ? value : { version: 2, tasks: value || {}, policy: emptyPolicy() };
@@ -69,7 +76,8 @@ export function createWorkflowStore({ file = '', documents } = {}) {
       return key ? data.tasks[key] || null : summaries(data);
     },
     async policy(company) {
-      return (await read(company)).policy;
+      const policy = (await read(company)).policy;
+      return { ...policy, stall: stallRules(policy) };
     },
     async savePolicy(company, input, actor) {
       if (
@@ -87,9 +95,25 @@ export function createWorkflowStore({ file = '', documents } = {}) {
           return [type, value];
         })
       );
+      const stall = Object.fromEntries(
+        STALL_STAGES.map(([key]) => {
+          const value = input.stall && Object.hasOwn(input.stall, key) ? input.stall[key] : undefined;
+          if (value !== undefined && value !== null && (!Number.isInteger(value) || value < 0 || value > 365))
+            throw bad('RV parada: de 0 a 365 dias.');
+          return [key, value];
+        })
+      );
       const next = await transact(company, b => {
         if (b.policy.revision !== input.revision) throw bad('Prazos alterados por outra pessoa. Recarregue.', 409);
-        b.policy = { revision: input.revision + 1, days, updatedBy: actor, updatedAt: new Date().toISOString() };
+        // Clientes antigos sem o campo "stall" preservam o que já estava salvo.
+        const previous = stallRules(b.policy);
+        b.policy = {
+          revision: input.revision + 1,
+          days,
+          stall: Object.fromEntries(Object.entries(stall).map(([k, v]) => [k, v === undefined ? previous[k] : v])),
+          updatedBy: actor,
+          updatedAt: new Date().toISOString()
+        };
         if (input.applyUnscheduled)
           for (const [key, task] of Object.entries(b.tasks))
             if (task.status !== 'resolvida' && !task.due && task.dueOrigin !== 'manual') {

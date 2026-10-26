@@ -197,8 +197,9 @@ export function renderSummary(d, settings) {
       '</tbody></table></div>'
   );
   const asOf = operationalToday();
-  if (summaryAlertsCache?.data !== d || summaryAlertsCache.asOf !== asOf)
-    summaryAlertsCache = { data: d, asOf, pager: cachedAlertPager(d, { asOf }) };
+  const stall = settings.alertRules || null;
+  if (summaryAlertsCache?.data !== d || summaryAlertsCache.asOf !== asOf || summaryAlertsCache.stall !== stall)
+    summaryAlertsCache = { data: d, asOf, stall, pager: cachedAlertPager(d, { asOf, stall }) };
   const warnings = summaryAlertsCache.pager.getPage({ financial: fin }).rows.slice(0, 6);
   const alertHtml = warnings.length
     ? warnings

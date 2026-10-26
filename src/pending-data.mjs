@@ -1,6 +1,6 @@
 import { operationalToday, taskBelongsToUser, taskDueBucket, taskSummary } from './workflow.mjs';
 import { matchesSearch } from './filtering.mjs';
-import { tripCompleted } from './rv-status.mjs';
+import { tripCompleted, rvStatus } from './rv-status.mjs';
 export const PENDING_TYPES = Object.freeze({
   cte_pendente: 'Pedido sem CT-e',
   cte_sem_rv: 'CT-e sem RV',
@@ -10,11 +10,33 @@ export const PENDING_TYPES = Object.freeze({
   ocorrencia: 'Ocorrência',
   rv_sem_pedido: 'RV sem PF',
   rv_sem_termino: 'RV sem término',
+  rv_parada_incluido: 'RV parada em Incluído',
+  rv_parada_escalado: 'RV parada em Escalado',
   km_acima: 'Excesso de KM'
 });
+/**
+ * "RV parada": dias desde a data de INÍCIO informada pela DSS (a DSS não informa quando a etapa mudou).
+ * Incluído/Escalado começam desligados (sem SLA inventado). Viajando sem término mantém os 2 dias já usados.
+ */
+export const STALL_STAGES = Object.freeze([
+  ['incluido', 'Incluído', 'RV ainda em Incluído com início há mais de'],
+  ['escalado', 'Escalado', 'RV ainda em Escalado com início há mais de'],
+  ['viajando', 'Viajando', 'RV viajando sem término há mais de']
+]);
+export const DEFAULT_STALL = Object.freeze({ incluido: null, escalado: null, viajando: 2 });
+export function stallRules(policy) {
+  const saved = policy?.stall || {};
+  return Object.fromEntries(
+    STALL_STAGES.map(([key]) => {
+      const value = Object.hasOwn(saved, key) ? saved[key] : DEFAULT_STALL[key];
+      return [key, Number.isInteger(value) && value >= 0 && value <= 365 ? value : null];
+    })
+  );
+}
 export const emptyPolicy = () => ({
   revision: 0,
-  days: Object.fromEntries(Object.keys(PENDING_TYPES).map(type => [type, null]))
+  days: Object.fromEntries(Object.keys(PENDING_TYPES).map(type => [type, null])),
+  stall: { ...DEFAULT_STALL }
 });
 export function dueFromPolicy(type, firstSeenAt, policy) {
   const days = policy?.days?.[type];
@@ -136,6 +158,8 @@ export function absenceConclusive(type, row, data, index = {}) {
         : (data.pedidos || []).some(order => order.viagemId === row.id))
     );
   if (type === 'rv_sem_termino') return !!row.dataTermino || tripCompleted(row.status);
+  if (type === 'rv_parada_incluido') return rvStatus(row.status) !== 'Incluído';
+  if (type === 'rv_parada_escalado') return rvStatus(row.status) !== 'Escalado';
   if (type === 'km_acima')
     return (
       Number.isFinite(row.kmRodados) &&

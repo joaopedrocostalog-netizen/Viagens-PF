@@ -1,3 +1,4 @@
+import { stallRules } from './pending-data.mjs';
 import { renderPendingBell, renderPendingDialogs } from './pending-ui.mjs';
 import { parseEditableDate } from './date-controls.mjs';
 import { alertKey, operationalToday } from './workflow.mjs';
@@ -280,6 +281,14 @@ export function createPendingClient(s, render, { invalidate, exportModels } = {}
     return true;
   }
   function handleChange(target) {
+    if (target.dataset?.pendingStall) {
+      const value = target.value;
+      s.pendingRules.stall = {
+        ...stallRules(s.pendingRules),
+        [target.dataset.pendingStall]: value === '' ? null : Number(value)
+      };
+      return true;
+    }
     if (target.dataset?.pendingRule) {
       const value = target.value;
       s.pendingRules.days[target.dataset.pendingRule] = value === '' ? null : Number(value);

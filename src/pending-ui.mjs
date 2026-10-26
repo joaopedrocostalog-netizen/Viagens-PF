@@ -1,5 +1,5 @@
 import { KM_FROM_API } from './data-availability.mjs';
-import { PENDING_TYPES } from './pending-data.mjs';
+import { PENDING_TYPES, STALL_STAGES, stallRules } from './pending-data.mjs';
 import { TASK_STATUSES, TASK_PRIORITIES, alertKey } from './workflow.mjs';
 const h = v =>
   String(v ?? '').replace(
@@ -171,6 +171,7 @@ export function renderPendingDialogs(s) {
         ? '<form id="pendingRulesForm">' +
           Object.entries(PENDING_TYPES)
             .filter(([type]) => KM_FROM_API || type !== 'km_acima')
+            .filter(([type]) => !type.startsWith('rv_parada_') || stallRules(s.pendingRules)[type.slice(10)] !== null)
             .map(
               ([type, label]) =>
                 '<label class="filter">' +
@@ -182,6 +183,18 @@ export function renderPendingDialogs(s) {
                 '"></label>'
             )
             .join('') +
+          '<fieldset class="stall-rules"><legend>RV parada · dias desde o início informado pela DSS</legend><p class="help">A DSS não informa quando a RV mudou de etapa; o alerta conta a partir da data de início. Vazio desliga o alerta.</p>' +
+          STALL_STAGES.map(
+            ([key, , label]) =>
+              '<label class="filter">' +
+              label +
+              ' (dias)<input class="control" type="number" min="0" max="365" step="1" data-pending-stall="' +
+              key +
+              '" value="' +
+              h(stallRules(s.pendingRules)[key] ?? '') +
+              '"></label>'
+          ).join('') +
+          '</fieldset>' +
           '<label><input id="policyApplyUnscheduled" type="checkbox"> Aplicar também aos alertas abertos ainda sem prazo automático</label><button class="btn btn-red" ' +
           disabled +
           '>Salvar prazos</button></form>'

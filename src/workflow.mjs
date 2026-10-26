@@ -54,10 +54,15 @@ export function taskFor(alert, tasks = {}) {
 export function validTaskKey(key, company) {
   if (typeof key !== 'string' || key.length > 240) return false;
   const match = key.match(
-    /^(cte_pendente|cte_sem_rv|rv_nao_localizada|rv_ambigua|comprovante_pendente|ocorrencia|rv_sem_pedido|rv_sem_termino|km_acima):(ctes|viagens):([^:\s]+)$/
+    /^(cte_pendente|cte_sem_rv|rv_nao_localizada|rv_ambigua|comprovante_pendente|ocorrencia|rv_sem_pedido|rv_sem_termino|rv_parada_incluido|rv_parada_escalado|km_acima):(ctes|viagens):([^:\s]+)$/
   );
   if (!match) return false;
-  if (match[2] !== (['rv_sem_pedido', 'rv_sem_termino', 'km_acima'].includes(match[1]) ? 'viagens' : 'ctes'))
+  if (
+    match[2] !==
+    (['rv_sem_pedido', 'rv_sem_termino', 'rv_parada_incluido', 'rv_parada_escalado', 'km_acima'].includes(match[1])
+      ? 'viagens'
+      : 'ctes')
+  )
     return false;
   const entity = match[3].split('~')[0];
   return (

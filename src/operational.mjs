@@ -1,5 +1,5 @@
 import { KM_FROM_API } from './data-availability.mjs';
-import { tripActive, tripCompleted } from './rv-status.mjs';
+import { tripActive, tripCompleted, rvStatus } from './rv-status.mjs';
 import { memoView } from './view-cache.mjs';
 import { taskFor, taskBelongsToUser, taskDueBucket, operationalToday } from './workflow.mjs';
 import { matchesSearch } from './filtering.mjs';
@@ -56,10 +56,16 @@ export function monthsOverview(viagens, pedidos, year) {
     };
   });
 }
-function alertContext(data, { asOf = operationalToday(), lateDays = 2 } = {}) {
+function alertContext(data, { asOf = operationalToday(), lateDays = 2, stall = null } = {}) {
   return {
     asOf,
     lateDays,
+    // Prazos de "RV parada" (dias desde o início). Sem regra salva: só Viajando sem término, com lateDays.
+    stall: {
+      incluido: stall?.incluido ?? null,
+      escalado: stall?.escalado ?? null,
+      viajando: stall ? stall.viajando : lateDays
+    },
     asOfTime: Date.parse(asOf + 'T12:00:00Z'),
     hasOrders: data.sources?.pedidos === true,
     linkedTrips: new Set((data.pedidos || []).map(p => p.viagemId).filter(Boolean))
@@ -82,10 +88,12 @@ function* recordAlerts(record, view, context) {
   // Indexar vínculos uma vez evita percorrer todos os pedidos para cada RV.
   if (context.hasOrders && !context.linkedTrips.has(v.id)) yield ref('rv_sem_pedido', 'info');
   const active = tripActive(v.status);
-  if (v.data && !v.dataTermino && active) {
-    const age = (context.asOfTime - Date.parse(v.data + 'T12:00:00Z')) / 86400000;
-    if (Number.isFinite(age) && age > context.lateDays) yield ref('rv_sem_termino', 'warning', age);
-  }
+  const age = v.data ? (context.asOfTime - Date.parse(v.data + 'T12:00:00Z')) / 86400000 : NaN;
+  const late = limit => limit !== null && limit !== undefined && Number.isFinite(age) && age > limit;
+  if (!v.dataTermino && active && late(context.stall.viajando)) yield ref('rv_sem_termino', 'warning', age);
+  const stage = rvStatus(v.status);
+  if (stage === 'Incluído' && late(context.stall.incluido)) yield ref('rv_parada_incluido', 'warning', age);
+  if (stage === 'Escalado' && late(context.stall.escalado)) yield ref('rv_parada_escalado', 'warning', age);
   if (
     KM_FROM_API &&
     Number.isFinite(v.kmRodados) &&
@@ -133,6 +141,14 @@ function materializeAlert({ type, level, record: r, view, age }) {
     case 'rv_sem_termino':
       title = 'RV iniciada sem término informado';
       detail = r.numero + ' • ' + Math.floor(age) + ' dias desde o início';
+      break;
+    case 'rv_parada_incluido':
+      title = 'RV ainda em Incluído';
+      detail = 'RV ' + r.numero + ' • início há ' + Math.floor(age) + ' dias • ' + (r.cliente || '');
+      break;
+    case 'rv_parada_escalado':
+      title = 'RV ainda em Escalado';
+      detail = 'RV ' + r.numero + ' • início há ' + Math.floor(age) + ' dias • ' + (r.cliente || '');
       break;
     case 'km_acima':
       title = 'Quilometragem acima do previsto';
@@ -328,8 +344,10 @@ export function createAlertPager(data, options = {}) {
 }
 
 /** Índice compartilhado pelo painel e pela central; não guarda páginas materializadas. */
-export function cachedAlertPager(data, { asOf = operationalToday(), lateDays = 2 } = {}) {
-  return memoView('alert-pager', [data, asOf, lateDays], () => createAlertPager(data, { asOf, lateDays }));
+export function cachedAlertPager(data, { asOf = operationalToday(), lateDays = 2, stall = null } = {}) {
+  return memoView('alert-pager', [data, asOf, lateDays, JSON.stringify(stall)], () =>
+    createAlertPager(data, { asOf, lateDays, stall })
+  );
 }
 export function buildInsights(data, opts = {}) {
   const viagens = data.viagens || [],
