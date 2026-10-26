@@ -162,23 +162,12 @@ export function periodData(full, company, entity, from, to) {
   return v;
 }
 
-/** Faixa recolhível "Filtros avançados", com contador e etiquetas dos filtros ativos. */
+/** Filtros avançados controlados pelo botão único da barra superior. */
 export function renderListFilters(period, state) {
-  const active = [
-    state.customer,
-    state.vehicle,
-    state.serviceType,
-    state.status,
-    state.filter !== 'todos' ? state.filter : ''
-  ].filter(Boolean).length;
   return (
-    '<details id="advancedFilters" class="v-extra-filters" ' +
-    (state.filtersOpen ? 'open' : '') +
-    '><summary>Filtros avançados <span>' +
-    (active || '') +
-    '</span></summary>' +
-    (state.filtersOpen ? operationalFilters(period, state) : '') +
-    '</details>' +
+    (state.filtersOpen
+      ? '<div class="v-extra-filters">' + operationalFilters(period, state) + '</div>'
+      : '') +
     renderActiveFilters(state)
   );
 }
