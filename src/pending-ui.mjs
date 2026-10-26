@@ -54,23 +54,20 @@ export function renderPendingArchive(result, s) {
     '<section class="ins-module"><div class="ins-toolbar"><div><h2>' +
     (s.alertAllTracked ? 'AVISOS DA OPERAÇÃO' : 'ARQUIVO DE PENDÊNCIAS TRATADAS') +
     '</h2><p>Inclui acompanhamentos de outros períodos. Não consulta a DSS.</p></div><div><button class="btn btn-sm" data-pending-export="csv">CSV</button><button class="btn btn-sm" data-pending-export="xlsx">Excel</button><button class="btn btn-sm" data-pending-export="pdf">PDF</button></div></div><p class="help">A presença da pendência reflete a última observação válida da fonte; não é uma consulta em tempo real.</p>' +
-    '<details id="advancedFilters" class="v-extra-filters" ' +
-    (s.filtersOpen ? 'open' : '') +
-    '><summary>Filtros avançados</summary>' +
-    (s.filtersOpen
-      ? '<div class="ins-alert-filters"><label>Situação<select id="alertStatusFilter" class="control">' +
-        options(TASK_STATUSES, s.alertStatus) +
-        '</select></label><label>Tipo<select id="alertKindFilter" class="control">' +
-        options(PENDING_TYPES, s.alertKind) +
-        '</select></label><label>Prioridade<select id="alertPriorityFilter" class="control">' +
-        options(TASK_PRIORITIES, s.alertPriority) +
-        '</select></label><label>Responsável<input id="alertOwnerFilter" class="control" value="' +
-        h(s.alertOwner || '') +
-        '"></label><label>Prazo<select id="alertDueFilter" class="control">' +
-        options({ vencidas: 'Vencidas', hoje: 'Para hoje', proximas: 'Próximas', sem_prazo: 'Sem prazo' }, s.alertDue) +
-        '</select></label><button class="btn btn-sm" data-pending-action="clear-archive-filters">Limpar filtros do arquivo</button></div>'
-      : '') +
-    '</details>' +
+    // Mesmo painel do botão "Filtros avançados" da barra superior: sempre desenhado, aberto/fechado por CSS.
+    '<div class="v-extra-filters" id="advancedFiltersPanel">' +
+    ('<div class="ins-alert-filters"><label>Situação<select id="alertStatusFilter" class="control">' +
+      options(TASK_STATUSES, s.alertStatus) +
+      '</select></label><label>Tipo<select id="alertKindFilter" class="control">' +
+      options(PENDING_TYPES, s.alertKind) +
+      '</select></label><label>Prioridade<select id="alertPriorityFilter" class="control">' +
+      options(TASK_PRIORITIES, s.alertPriority) +
+      '</select></label><label>Responsável<input id="alertOwnerFilter" class="control" value="' +
+      h(s.alertOwner || '') +
+      '"></label><label>Prazo<select id="alertDueFilter" class="control">' +
+      options({ vencidas: 'Vencidas', hoje: 'Para hoje', proximas: 'Próximas', sem_prazo: 'Sem prazo' }, s.alertDue) +
+      '</select></label><button class="btn btn-sm" data-pending-action="clear-archive-filters">Limpar filtros do arquivo</button></div>') +
+    '</div>' +
     (rows.length
       ? '<div class="ins-alert-list">' +
         rows

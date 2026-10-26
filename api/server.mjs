@@ -1159,6 +1159,7 @@ const server = http.createServer(async (req, res) => {
         [
           '/api/portal/view',
           '/api/portal/metrics',
+          '/api/portal/filters',
           '/api/portal/detail',
           '/api/portal/export',
           '/api/portal/compare',

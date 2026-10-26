@@ -23,14 +23,30 @@ test('Filtro salvo com o valor antigo da DSS continua encontrando os pedidos', (
   assert.equal(filterOperationalData(data, { serviceType: 'Subcontratação' }).pedidos.length, 1);
 });
 
-test('Vínculo usa o mesmo formato de rótulo dos outros filtros avançados', () => {
-  const html = operationalFilters(
-    { viagens: [], pedidos: [{ tipoServico: 'Normal' }] },
-    { view: 'viagens', filter: 'todos' }
-  );
-  assert.match(
-    html,
-    /<label class="filter grow filter-compact"><span>Vínculo<\/span><select id="statusFilter" class="control full">/
-  );
-  assert.match(html, /<span>Tipo de serviço<\/span>/);
+test('Filtros avançados mudam com a aba: só o que faz sentido para os registros dela', () => {
+  const data = {
+    viagens: [{ cliente: 'Cliente RV', placa: 'RV-0001', status: 'Viajando' }],
+    pedidos: [{ cliente: 'Cliente PF', placa: 'PF-0001', tipoServico: 'Normal', status: 'Emitido' }],
+    mdfes: [{ placa: 'MDF-0001', status: 'Autorizado' }],
+    ocorrencias: [{ placa: 'OC-0001', status: 'Aberta' }]
+  };
+  const labels = html => [...html.matchAll(/<span>([^<]+)<\/span><select/g)].map(m => m[1]);
+  const viagens = operationalFilters(data, { view: 'viagens', filter: 'todos' });
+  assert.deepEqual(labels(viagens), ['Cliente', 'Placa', 'Pedido vinculado', 'Ordem']);
+  assert(viagens.includes('Cliente RV') && !viagens.includes('Cliente PF'), 'opções vêm das RVs');
+  assert.match(viagens, /<label class="filter filter-compact"><span>Pedido vinculado<\/span><select id="statusFilter"/);
+  assert.deepEqual(labels(operationalFilters(data, { view: 'ctes' })), [
+    'Cliente',
+    'Placa',
+    'Tipo de serviço',
+    'Situação do pedido',
+    'RV vinculada',
+    'Ordem'
+  ]);
+  const mdfes = operationalFilters(data, { view: 'mdfes' });
+  assert.deepEqual(labels(mdfes), ['Placa', 'Situação do MDF-e', 'RV vinculada', 'Ordem']);
+  assert(mdfes.includes('MDF-0001') && !mdfes.includes('RV-0001'));
+  assert.deepEqual(labels(operationalFilters(data, { view: 'painel' })), ['Cliente', 'Placa', 'Tipo de serviço']);
+  assert.deepEqual(labels(operationalFilters(data, { view: 'relatorios', reportSelected: 'mdfes' })), labels(mdfes));
+  assert(!viagens.includes('Período rápido'));
 });

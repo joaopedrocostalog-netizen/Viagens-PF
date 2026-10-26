@@ -84,7 +84,6 @@ export function renderPageSize(s) {
     '</select></label>'
   );
 }
-const LINK_LABELS = { vinculado: 'Vinculados', pendente: 'Sem vínculo' };
 /** Filtros que podem ser removidos individualmente pelas etiquetas acima da tabela. */
 export const CLEARABLE_FILTERS = Object.freeze({
   search: '',
@@ -98,16 +97,27 @@ export const CLEARABLE_FILTERS = Object.freeze({
 });
 /** Etiquetas dos filtros ativos ("Cliente: X ✕"), para ficar claro por que a lista tem menos registros. */
 export function renderActiveFilters(s) {
+  const keys = filterKeysFor(s);
+  const applies = key =>
+    !['customer', 'vehicle', 'serviceType', 'status', 'filter'].includes(key) ||
+    keys.includes(key) ||
+    (key === 'status' && filterView(s) === 'viagens');
   const chips = [
     ['search', 'Pesquisa', s.search && '"' + s.search + '"'],
     ['customer', 'Cliente', s.customer],
     ['vehicle', 'Placa', s.vehicle],
     ['serviceType', 'Tipo de serviço', s.serviceType && serviceTypeLabel(s.serviceType)],
     ['status', 'Situação', s.status],
-    ['filter', 'Vínculo', s.filter && s.filter !== 'todos' && (LINK_LABELS[s.filter] || s.filter)],
+    [
+      'filter',
+      (LINK_FILTER[filterView(s)] || ['Vínculo'])[0],
+      s.filter &&
+        s.filter !== 'todos' &&
+        (LINK_FILTER[filterView(s)] || [, 'Com vínculo', 'Sem vínculo'])[s.filter === 'vinculado' ? 1 : 2]
+    ],
     ['rvStage', 'Etapa da RV', s.view !== 'viagens' && s.rvStage],
     ['dayCategory', 'Programação', s.view === 'programacao' && s.dayCategory]
-  ].filter(([, , value]) => value);
+  ].filter(([key, , value]) => value && applies(key));
   if (!chips.length) return '';
   return (
     '<div class="active-filters" role="group" aria-label="Filtros ativos">' +
@@ -129,72 +139,145 @@ export function renderActiveFilters(s) {
     '</div>'
   );
 }
+/**
+ * Filtros de cada aba: só o que tem efeito sobre os registros que ela mostra.
+ * customer/vehicle/serviceType = Cliente/Placa/Tipo de serviço; status = situação do registro; filter = vínculo.
+ * Viagens não repete "Situação": a barra de etapas logo acima já faz isso.
+ */
+export const VIEW_FILTERS = Object.freeze({
+  painel: ['customer', 'vehicle', 'serviceType'],
+  viagens: ['customer', 'vehicle', 'filter'],
+  ctes: ['customer', 'vehicle', 'serviceType', 'status', 'filter'],
+  entregas: ['customer', 'vehicle', 'serviceType', 'status'],
+  programacao: ['customer', 'vehicle'],
+  comparativos: ['customer', 'vehicle', 'serviceType'],
+  pendencias: ['customer', 'vehicle', 'serviceType'],
+  rotas: ['customer', 'vehicle'],
+  veiculos: ['customer', 'vehicle'],
+  motoristas: ['customer', 'vehicle', 'serviceType'],
+  mdfes: ['vehicle', 'status', 'filter'],
+  ocorrencias: ['vehicle', 'status']
+});
+const REPORT_AS_VIEW = {
+  viagens: 'viagens',
+  pedidos: 'ctes',
+  ctes: 'ctes',
+  entregas: 'entregas',
+  rotas: 'rotas',
+  veiculos: 'veiculos',
+  motoristas: 'motoristas',
+  mdfes: 'mdfes',
+  ocorrencias: 'ocorrencias',
+  pendencias: 'pendencias',
+  programacao: 'programacao',
+  mensal: 'painel'
+};
+/** Aba efetiva para os filtros (em Relatórios, a do relatório escolhido). */
+export const filterView = s =>
+  s.view === 'relatorios' ? REPORT_AS_VIEW[s.reportSelected] || 'painel' : s.view || 'painel';
+export const filterKeysFor = s => VIEW_FILTERS[filterView(s)] || [];
+const LINK_FILTER = {
+  viagens: ['Pedido vinculado', 'Com pedido', 'Sem pedido'],
+  ctes: ['RV vinculada', 'Com RV', 'Sem RV'],
+  mdfes: ['RV vinculada', 'Com RV', 'Sem RV']
+};
+const STATUS_LABEL = { ctes: 'Situação do pedido', entregas: 'Situação do pedido', mdfes: 'Situação do MDF-e' };
+/** Opções dos filtros da aba atual, tiradas dos registros que a aba mostra (ex.: placas de MDF-e na aba MDF-e).
+ * Separadas do desenho para o navegador guardar as opções e redesenhar o painel com a seleção atual sem ir ao servidor. */
+export function filterOptions(d, s) {
+  const view = filterView(s),
+    keys = filterKeysFor(s);
+  const rows =
+    view === 'viagens' || view === 'programacao'
+      ? d.viagens || []
+      : ['ctes', 'entregas'].includes(view)
+        ? d.pedidos || []
+        : view === 'mdfes'
+          ? d.mdfes || []
+          : view === 'ocorrencias'
+            ? d.ocorrencias || []
+            : [...(d.viagens || []), ...(d.pedidos || [])];
+  const distinct = field => [...new Set(rows.map(x => x[field]).filter(Boolean))];
+  return {
+    view,
+    customers: keys.includes('customer') ? distinct('cliente').sort((a, b) => a.localeCompare(b, 'pt-BR')) : [],
+    plates: keys.includes('vehicle') ? distinct('placa').sort() : [],
+    types: keys.includes('serviceType')
+      ? [...new Set((d.pedidos || []).map(x => x.tipoServico).filter(Boolean))].sort()
+      : [],
+    statuses: keys.includes('status') ? distinct('status').sort() : []
+  };
+}
 export function operationalFilters(d, s) {
-  const clients = [
-    ...new Set([...(d.viagens || []).map(x => x.cliente), ...(d.pedidos || []).map(x => x.cliente)].filter(Boolean))
-  ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  const plates = [
-    ...new Set([...(d.viagens || []).map(x => x.placa), ...(d.pedidos || []).map(x => x.placa)].filter(Boolean))
-  ].sort();
-  const types = [...new Set((d.pedidos || []).map(x => x.tipoServico).filter(Boolean))].sort();
-  const filter = (id, title, items, val) => {
+  return renderFilterPanel(filterOptions(d, s), s);
+}
+/** Painel de filtros avançados com as opções já carregadas e a seleção atual do usuário. */
+export function renderFilterPanel(o, s) {
+  const view = filterView(s),
+    keys = filterKeysFor(s);
+  const select = (id, title, items, val, all = 'Todos') => {
     if (val && !items.includes(val)) items = [...items, val];
     return (
-      '<label class="filter grow filter-compact"><span>' +
+      '<label class="filter filter-compact"><span>' +
       h(title) +
       '</span><select id="' +
       id +
-      '" class="control full"><option value="">Todos</option>' +
+      '" class="control full"><option value="">' +
+      all +
+      '</option>' +
       opts(items, val) +
       '</select></label>'
     );
   };
-  const view = s.view === 'relatorios' ? s.reportSelected : s.view;
-  const source =
-    view === 'mdfes'
-      ? d.mdfes
-      : view === 'ocorrencias'
-        ? d.ocorrencias
-        : ['pedidos', 'ctes', 'entregas'].includes(view)
-          ? d.pedidos
-          : d.viagens;
-  const values = [
-    ...new Set((source || []).map(row => (view === 'viagens' ? rvStatus(row.status) : row.status)).filter(Boolean))
-  ].sort();
-  const statuses =
-    view === 'viagens' ? [...RV_STATUSES, ...values.filter(value => !RV_STATUSES.includes(value))] : values;
-  if (s.status && !statuses.includes(s.status)) statuses.push(s.status);
-  const extra =
-    (['viagens', 'pedidos', 'ctes', 'entregas', 'mdfes', 'ocorrencias'].includes(view)
-      ? filter('recordStatusFilter', 'Situação', statuses, s.status || '')
-      : '') +
-    (['viagens', 'pedidos', 'ctes', 'mdfes'].includes(view)
-      ? '<label class="filter grow filter-compact"><span>Vínculo</span><select id="statusFilter" class="control full"><option value="todos">Todos</option><option value="vinculado" ' +
+  const fields = [];
+  if (keys.includes('customer')) fields.push(select('filterClient', 'Cliente', o.customers || [], s.customer || ''));
+  if (keys.includes('vehicle')) fields.push(select('filterPlate', 'Placa', o.plates || [], s.vehicle || ''));
+  if (keys.includes('serviceType'))
+    fields.push(
+      select('filterType', 'Tipo de serviço', o.types || [], s.serviceType ? serviceTypeLabel(s.serviceType) : '')
+    );
+  if (keys.includes('status')) {
+    const statuses = [...(o.statuses || [])];
+    if (s.status && !statuses.includes(s.status)) statuses.push(s.status);
+    fields.push(select('recordStatusFilter', STATUS_LABEL[view] || 'Situação', statuses, s.status || '', 'Todas'));
+  }
+  if (keys.includes('filter')) {
+    const [label, yes, no] = LINK_FILTER[view] || ['Vínculo', 'Com vínculo', 'Sem vínculo'];
+    fields.push(
+      '<label class="filter filter-compact"><span>' +
+        label +
+        '</span><select id="statusFilter" class="control full"><option value="todos">Todos</option><option value="vinculado" ' +
         (s.filter === 'vinculado' ? 'selected' : '') +
-        '>Vinculados</option><option value="pendente" ' +
+        '>' +
+        yes +
+        '</option><option value="pendente" ' +
         (s.filter === 'pendente' ? 'selected' : '') +
-        '>Sem vínculo</option></select></label>'
-      : '');
+        '>' +
+        no +
+        '</option></select></label>'
+    );
+  }
+  const tableOrder = !['painel', 'pendencias', 'comparativos'].includes(view)
+    ? '<label class="filter filter-compact"><span>Ordem</span><select id="sortDir" class="control full"><option value="desc" ' +
+      (s.sortDir !== 'asc' ? 'selected' : '') +
+      '>Mais recentes</option><option value="asc" ' +
+      (s.sortDir === 'asc' ? 'selected' : '') +
+      '>Mais antigos</option></select></label>'
+    : '';
+  const presets = Object.keys(s.presets || {});
   return (
-    '<div class="filter-advanced"><div class="filter-row">' +
-    filter('filterClient', 'Cliente', clients, s.customer || '') +
-    filter('filterPlate', 'Veículo / placa', plates, s.vehicle || '') +
-    filter('filterType', 'Tipo de serviço', types, s.serviceType ? serviceTypeLabel(s.serviceType) : '') +
-    extra +
-    '<label class="filter"><span>Período rápido</span><select class="control" id="quickPeriod"><option value="">Selecionar</option><option value="this-month">Este mês</option><option value="last-month">Mês anterior</option><option value="this-year">Ano atual</option><option value="last-90">Últimos 90 dias</option></select></label>' +
-    '</div><div class="filter-row filter-row-actions">' +
-    (!['painel', 'pendencias'].includes(s.view) && !(s.view === 'relatorios' && s.reportSelected === 'pendencias')
-      ? '<label class="filter"><span>Ordem da tabela</span><select id="sortDir" class="control"><option value="desc" ' +
-        (s.sortDir !== 'asc' ? 'selected' : '') +
-        '>Decrescente</option><option value="asc" ' +
-        (s.sortDir === 'asc' ? 'selected' : '') +
-        '>Crescente</option></select></label>'
+    '<div class="filter-advanced">' +
+    (fields.length || tableOrder
+      ? '<div class="filter-row">' + fields.join('') + tableOrder + '</div>'
+      : '<p class="help">Esta área não tem filtros adicionais.</p>') +
+    '<div class="filter-row filter-row-actions">' +
+    '<button class="btn btn-sm" data-action="clear-filters">Limpar</button>' +
+    '<button class="btn btn-sm" data-action="save-filter">Salvar filtros</button>' +
+    (presets.length
+      ? '<select id="savedPreset" class="control control-sm" aria-label="Filtros salvos"><option value="">Filtros salvos…</option>' +
+        opts(presets, '') +
+        '</select><button class="btn btn-sm btn-ghost" data-action="delete-filter">Excluir salvo</button>'
       : '') +
-    '<button class="btn btn-sm" data-action="clear-filters">Limpar filtros</button><button class="btn btn-sm" data-action="save-filter">Salvar filtros</button>' +
-    '<label class="filter"><span>Filtros salvos</span><select id="savedPreset" class="control"><option value="">Carregar</option>' +
-    opts(Object.keys(s.presets || {}), '') +
-    '</select></label>' +
-    '<button class="btn btn-sm" data-action="delete-filter">Excluir filtro salvo</button>' +
     '</div></div>'
   );
 }

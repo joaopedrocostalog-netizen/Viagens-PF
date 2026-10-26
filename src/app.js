@@ -12,9 +12,9 @@ import {
 } from './date-controls.mjs';
 import { mobileTables } from './mobile-tables.mjs';
 import { parsePortalLink, portalLink } from './portal-links.mjs';
-import { renderPortalView } from './portal-view.mjs';
+import { renderPortalView, FILTER_SLOT } from './portal-view.mjs';
 import { demoPayload } from './demo-data.mjs';
-import { CLEARABLE_FILTERS } from './advanced-ui.mjs';
+import { CLEARABLE_FILTERS, filterKeysFor, filterView, renderFilterPanel } from './advanced-ui.mjs';
 import { shiftDay } from './programming-data.mjs';
 import { demoSignin, demoRights, demoAccountAction, demoChangeOwnPassword } from './demo-accounts.mjs';
 import { parseCsv } from './mdfe-csv.mjs';
@@ -359,9 +359,10 @@ function render() {
   const dateFilters = state.view === 'administracao' ? '' : renderFilters();
   const globalSearch = state.view === 'administracao' ? '' : remote ? remoteResponse?.search || '' : local.search || '';
   if (state.view !== 'programacao') state.tvMode = false;
-  root.innerHTML =
+  const pageHtml =
     '<div class="layout v-app' +
     (state.tvMode ? ' tv-mode' : '') +
+    (state.filtersOpen ? ' filters-open' : '') +
     '"><main class="main v-main">' +
     renderTvBar() +
     '<header class="topbar v-topbar"><div class="v-topbrand"><img class="v-brand-logo ' +
@@ -411,7 +412,7 @@ function render() {
     '<div class="v-tools-row">' +
     dateFilters +
     tools +
-    button('toggle-advanced-filters', state.filtersOpen ? 'Ocultar filtros avançados' : 'Filtros avançados', 'btn-sm') +
+    renderFiltersButton() +
     '</div>' +
     globalSearch +
     (state.linkMessage ? '<p class="help" role="status">' + esc(state.linkMessage) + '</p>' : '') +
@@ -452,6 +453,10 @@ function render() {
     (state.connect ? renderConnect() : '') +
     (state.user?.mustChangePassword ? renderForcePasswordChange() : '') +
     (state.adminResetUser && state.permissions.admin ? renderAdminPasswordReset(state.adminResetUser) : '');
+  // Painel de filtros aberto: entra já preenchido (opções guardadas) ou com "Carregando filtros…" até chegarem.
+  root.innerHTML = state.filtersOpen
+    ? pageHtml.replace(FILTER_SLOT, () => FILTER_SLOT.replace('></div>', '>' + filterPanelHtml() + '</div>'))
+    : pageHtml;
   for (const box of root.querySelectorAll?.('details[id]') || []) renderedOpen.set(box, box.open);
   pendingClient.afterRender();
   if (focusedDate) {
@@ -598,6 +603,80 @@ function renderTvBar() {
     button('tv-mode', 'Sair do modo TV', 'btn') +
     '</div></div>'
   );
+}
+function renderFiltersButton() {
+  if (state.view === 'administracao') return '';
+  const active = filterKeysFor(state).filter(key =>
+    key === 'filter' ? state.filter && state.filter !== 'todos' : !!state[key]
+  ).length;
+  return (
+    '<button type="button" class="btn btn-sm filters-toggle" data-action="toggle-advanced-filters" aria-controls="advancedFiltersPanel" aria-expanded="' +
+    !!state.filtersOpen +
+    '"><span class="label">' +
+    (state.filtersOpen ? 'Ocultar filtros' : 'Filtros avançados') +
+    '</span>' +
+    (active ? '<span class="count">' + active + '</span>' : '') +
+    '</button>'
+  );
+}
+/* Filtros avançados: as opções da aba (clientes, placas, situações…) só são buscadas quando o painel abre e ficam
+ * guardadas por consulta/empresa/período/aba; o painel é redesenhado na hora com a seleção atual. */
+const filterOptionCache = new Map();
+let filterLoading = '',
+  filterError = null;
+const filterOptionsKey = () =>
+  JSON.stringify([
+    state.remoteSnapshot,
+    state.token,
+    state.company,
+    state.legalEntity,
+    state.from,
+    state.to,
+    filterView(state)
+  ]);
+function filterPanelHtml() {
+  if (!remoteClient.active())
+    return renderFilterPanel(renderPortalView({ action: 'filters', full: state.dataset, state }).options, state);
+  const k = filterOptionsKey(),
+    options = filterOptionCache.get(k);
+  if (options) return renderFilterPanel(options, state);
+  if (filterError?.key === k)
+    return (
+      '<p class="ins-inline-error" role="alert">' +
+      esc(filterError.message) +
+      '</p><button type="button" class="btn btn-sm" data-action="retry-filters">Tentar novamente</button>'
+    );
+  loadFilterOptions(k);
+  return '<div class="filters-loading" role="status"><span class="page-loading-dot" aria-hidden="true"></span>Carregando filtros…</div>';
+}
+function loadFilterOptions(k) {
+  if (filterLoading === k) return;
+  filterLoading = k;
+  remoteClient
+    .filterOptions()
+    .then(
+      options => {
+        filterOptionCache.set(k, options);
+        while (filterOptionCache.size > 20) filterOptionCache.delete(filterOptionCache.keys().next().value);
+      },
+      error => (filterError = { key: k, message: error.message || 'Não foi possível carregar os filtros.' })
+    )
+    .finally(() => {
+      if (filterLoading === k) filterLoading = '';
+      if (state.filtersOpen && k === filterOptionsKey()) fillFilterPanel();
+    });
+}
+/** Preenche só o painel (sem redesenhar a página); sem DOM (testes), redesenha tudo. */
+function fillFilterPanel() {
+  const panel = document.querySelector?.('#advancedFiltersPanel[data-filter-slot]');
+  if (panel) panel.innerHTML = filterPanelHtml();
+  else if (!document.querySelector?.('.v-app')) render();
+}
+/** Ao trocar de aba ou de relatório: tira filtros que não fazem sentido na nova área. */
+function keepApplicableFilters() {
+  const keys = filterKeysFor(state);
+  for (const key of ['customer', 'vehicle', 'serviceType', 'status']) if (!keys.includes(key)) state[key] = '';
+  if (!keys.includes('filter')) state.filter = 'todos';
 }
 function renderUpdatedAt() {
   if (state.mode === 'demo') return '<small class="last-sync">Dados de demonstração</small>';
@@ -2133,6 +2212,7 @@ root.addEventListener('click', e => {
     if (state.user?.mustChangePassword) return;
     if (!permittedView(state.role, nav.dataset.nav)) return;
     state.view = nav.dataset.nav;
+    keepApplicableFilters();
     state.alertArchive = false;
     state.alertAllTracked = false;
     state.alertUnassigned = false;
@@ -2208,6 +2288,7 @@ root.addEventListener('click', e => {
   const report = e.target.closest('[data-report-select]');
   if (report) {
     state.reportSelected = report.dataset.reportSelect;
+    keepApplicableFilters();
     state.reportMulti = false;
     state.page = 1;
     state.sortKey = '';
@@ -2275,8 +2356,22 @@ root.addEventListener('click', e => {
     return;
   }
   if (action === 'toggle-advanced-filters') {
+    // Abre/fecha na hora: o painel já está na página; só muda a classe, sem redesenhar nem ir ao servidor.
     state.filtersOpen = !state.filtersOpen;
-    render();
+    const app = document.querySelector?.('.v-app');
+    if (!app) return render();
+    if (state.filtersOpen) fillFilterPanel();
+    app.classList.toggle('filters-open', state.filtersOpen);
+    for (const button of document.querySelectorAll('[data-action="toggle-advanced-filters"]')) {
+      button.setAttribute('aria-expanded', String(state.filtersOpen));
+      button.querySelector('.label').textContent = state.filtersOpen ? 'Ocultar filtros' : 'Filtros avançados';
+    }
+    if (state.filtersOpen) document.querySelector('#advancedFiltersPanel select')?.focus?.();
+    return;
+  }
+  if (action === 'retry-filters') {
+    filterError = null;
+    fillFilterPanel();
     return;
   }
   if (action === 'share-query' || action === 'share-record') {
@@ -2790,6 +2885,7 @@ root.addEventListener('change', e => {
   }
   if (e.target.id === 'reportSelected') {
     state.reportSelected = e.target.value;
+    keepApplicableFilters();
     state.page = 1;
     state.sortKey = '';
     render();
@@ -3017,11 +3113,9 @@ root.addEventListener(
     const key =
       e.target.id === 'dayPrograms'
         ? 'dayProgramsOpen'
-        : e.target.id === 'advancedFilters'
-          ? 'filtersOpen'
-          : e.target.id === 'technicalInfo' && state.permissions.admin
-            ? 'technicalOpen'
-            : '';
+        : e.target.id === 'technicalInfo' && state.permissions.admin
+          ? 'technicalOpen'
+          : '';
     if (key && state[key] !== e.target.open) {
       state[key] = e.target.open;
       render();

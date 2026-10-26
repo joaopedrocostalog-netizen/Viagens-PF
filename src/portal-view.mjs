@@ -17,8 +17,9 @@ import {
   renderGrid,
   renderAdvanced,
   renderReportHub,
-  operationalFilters,
-  renderActiveFilters
+  filterOptions,
+  renderActiveFilters,
+  filterView
 } from './advanced-ui.mjs';
 import {
   renderGlobalSearch,
@@ -162,12 +163,11 @@ export function periodData(full, company, entity, from, to) {
   return v;
 }
 
-/** Filtros avançados controlados pelo botão único da barra superior. */
+/** Espaço do painel de filtros na página. As opções chegam à parte (ação "filters") só quando o painel é aberto,
+ * para a página não carregar listas grandes de clientes/placas em cada clique. */
+export const FILTER_SLOT = '<div class="v-extra-filters" id="advancedFiltersPanel" data-filter-slot></div>';
 export function renderListFilters(period, state) {
-  return (
-    (state.filtersOpen ? '<div class="v-extra-filters">' + operationalFilters(period, state) + '</div>' : '') +
-    renderActiveFilters(state)
-  );
+  return FILTER_SLOT + renderActiveFilters(state);
 }
 
 function renderDrawer(period, state) {
@@ -326,6 +326,7 @@ function renderDrawer(period, state) {
  */
 export function renderPortalView({ action, full, state, workflowWarning = '', exportMulti = false, exportType = '' }) {
   const period = periodData(full, state.company, state.legalEntity, state.from, state.to);
+  if (action === 'filters') return { options: filterOptions(period, state) };
   const stageBase = filterOperationalData(period, { ...state, status: state.view === 'viagens' ? '' : state.status });
   const staged = filterRvStage(period, state.rvStage || '');
   const d = filterOperationalData(staged, state);

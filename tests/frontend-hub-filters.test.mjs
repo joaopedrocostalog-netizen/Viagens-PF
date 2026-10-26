@@ -159,7 +159,7 @@ test('Painel, buscas, filtros salvos e relatório CSV usam a empresa e os filtro
   assert(!root.innerHTML.includes('data-nav="administracao"'));
   click('[data-action]', { action: 'toggle-advanced-filters' });
   change('filterClient', 'Alfa');
-  assert(root.innerHTML.includes('<div class="v-extra-filters">'));
+  assert(root.innerHTML.includes('<div class="v-extra-filters" id="advancedFiltersPanel" data-filter-slot>'));
   assert(
     !root.innerHTML.includes('<details id="advancedFilters"'),
     'Não deve existir um segundo controle de filtros avançados'

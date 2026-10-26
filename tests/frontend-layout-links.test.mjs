@@ -133,9 +133,13 @@ test('Link passa pelo login e consulta manual; todas as abas têm uma busca e ro
   events.toggle({ target: { id: 'technicalInfo', open: false } });
   assert(!root.innerHTML.includes('data-quality-summary'));
   click('[data-action]', { action: 'toggle-advanced-filters' });
-  assert(root.innerHTML.includes('recordStatusFilter'));
+  assert(root.innerHTML.includes('Pedido vinculado'), 'Viagens mostra o filtro de pedido vinculado');
+  assert(!root.innerHTML.includes('recordStatusFilter'), 'Situação da RV fica nas etapas, não no painel de filtros');
   change('filterClient', 'IDEAL AUTORIZADO');
-  assert(root.innerHTML.includes('<div class="v-extra-filters">'));
+  assert(root.innerHTML.includes('value="IDEAL AUTORIZADO" selected'));
+  click('[data-nav]', { nav: 'mdfes' });
+  assert(root.innerHTML.includes('RV vinculada') && !root.innerHTML.includes('id="filterClient"'));
+  click('[data-nav]', { nav: 'viagens' });
   click('[data-nav]', { nav: 'comparativos' });
   change('compareCurrentFrom', '2026-10-01');
   change('compareCurrentTo', '2026-10-23');

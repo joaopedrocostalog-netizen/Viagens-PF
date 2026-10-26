@@ -62,15 +62,24 @@ test('viagens: etapas e ficha da RV vêm do renderizador único', async t => {
   assert.deepEqual(errors, []);
 });
 
-test('filtros avançados abrem e fecham sem reabrir sozinhos', async t => {
-  const { page } = await portal(t);
+test('filtros avançados abrem e fecham na hora e mudam conforme a aba', async t => {
+  const { page, errors } = await portal(t);
   await go(page, 'viagens');
+  const panel = page.locator('#advancedFiltersPanel');
+  assert.equal(await panel.isVisible(), false);
   await page.click('[data-action="toggle-advanced-filters"]');
-  await page.waitForSelector('.v-extra-filters');
-  assert.equal(await page.locator('.v-extra-filters').isVisible(), true);
+  await page.waitForSelector('#advancedFiltersPanel #filterClient', { state: 'visible' });
+  assert.match(await panel.innerText(), /Pedido vinculado/);
   await page.click('[data-action="toggle-advanced-filters"]');
-  await page.waitForSelector('.v-extra-filters', { state: 'detached' });
-  assert.equal(await page.locator('.v-extra-filters').count(), 0);
+  await page.waitForTimeout(400);
+  assert.equal(await panel.isVisible(), false, 'não reabre sozinho');
+  await page.click('[data-action="toggle-advanced-filters"]');
+  await page.waitForSelector('#advancedFiltersPanel #filterClient', { state: 'visible' });
+  await go(page, 'mdfes');
+  await page.waitForSelector('#advancedFiltersPanel #filterPlate', { state: 'visible' });
+  assert.equal(await page.locator('#advancedFiltersPanel #filterClient').count(), 0, 'MDF-e não tem filtro de cliente');
+  assert.match(await panel.innerText(), /Situação do MDF-e/);
+  assert.deepEqual(errors, []);
 });
 
 test('programação do dia: barra de etapas soma o mesmo que a tabela', async t => {
@@ -154,8 +163,8 @@ test('etiquetas de filtros ativos explicam a lista e removem o filtro', async t 
   const { page, errors } = await portal(t);
   await go(page, 'viagens');
   const total = await tableCount(page);
-  await page.click('#advancedFilters summary');
-  await page.waitForSelector('#filterClient');
+  await page.click('[data-action="toggle-advanced-filters"]');
+  await page.waitForSelector('#filterClient', { state: 'visible' });
   const client = await page.locator('#filterClient option').nth(1).getAttribute('value');
   await page.selectOption('#filterClient', client);
   await page.waitForTimeout(200);

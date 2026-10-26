@@ -4414,3 +4414,46 @@ body {
 .sync-progress li.more {
   opacity: 0.7;
 }
+/* Filtros avançados: painel sempre presente, aberto pelo botão da barra superior (sem recarregar) */
+.v-extra-filters {
+  display: none;
+}
+.filters-open .v-extra-filters {
+  display: block;
+  animation: filters-in 0.12s ease-out;
+}
+@keyframes filters-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .filters-open .v-extra-filters {
+    animation: none;
+  }
+}
+.filters-toggle .count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+}
+.filters-toggle[aria-expanded='true'] {
+  border-color: var(--red);
+}
+.control-sm {
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 12px;
+}

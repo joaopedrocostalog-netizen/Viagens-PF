@@ -109,6 +109,7 @@ export async function portalResponse({ action, input, snapshot, user, company, w
     (!state.from || !state.to || state.from < snapshot.from || state.to > snapshot.to || state.from > state.to)
   )
     throw Object.assign(Error('Período fora da consulta carregada. Atualize os dados da DSS.'), { status: 409 });
+  if (action === 'filters') return renderPortalView({ action, full, state });
   if (
     action === 'metrics' ||
     state.view === 'pendencias' ||

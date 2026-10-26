@@ -131,6 +131,19 @@ test('HTTP portal: pages, metrics, durable account preferences and cancellation 
   const first = await response.json();
   assert(first.html.includes('Cliente-0'));
   assert(!first.html.includes('Cliente-59'));
+  assert(first.html.includes('data-filter-slot></div>'), 'opções dos filtros não vêm na página');
+  const filters = await (
+    await request('/api/portal/filters', {
+      method: 'POST',
+      body: { ...input, state: { ...input.state, view: 'mdfes' } }
+    })
+  ).json();
+  assert.deepEqual(Object.keys(filters), ['options']);
+  assert.equal(filters.options.view, 'mdfes');
+  assert.deepEqual(filters.options.customers, [], 'MDF-e não tem filtro de cliente');
+  const tripFilters = await (await request('/api/portal/filters', { method: 'POST', body: input })).json();
+  assert(tripFilters.options.customers.includes('Cliente-59'), 'opções cobrem o período todo, não só a página');
+  assert(!tripFilters.options.customers.includes('Cliente-60'), 'outra empresa fica de fora');
   input.state.page = 2;
   const second = await (await request('/api/portal/view', { method: 'POST', body: input })).json();
   assert.equal(second.page, 2);

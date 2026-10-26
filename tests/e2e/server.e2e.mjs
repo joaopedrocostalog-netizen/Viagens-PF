@@ -142,11 +142,18 @@ test('servidor: atualizar a DSS, navegar, filtrar e abrir a ficha', async t => {
   assert.equal(await page.locator('.page-loading').count(), 0);
   assert.equal(await count(page), total);
   // Filtros avançados abrem e fecham também quando a página vem do servidor.
-  await page.click('#advancedFilters summary');
-  await page.waitForSelector('#filterClient');
-  await page.click('#advancedFilters summary');
-  await page.waitForTimeout(800);
-  assert.equal(await page.locator('#advancedFilters').evaluate(el => el.open), false);
+  // Abrir busca só as opções dos filtros (uma vez); fechar e reabrir não volta ao servidor.
+  const filterCalls = [];
+  page.on('request', r => r.url().includes('/api/portal/') && filterCalls.push(new URL(r.url()).pathname));
+  await page.click('[data-action="toggle-advanced-filters"]');
+  await page.waitForSelector('#filterClient', { state: 'visible' });
+  await page.click('[data-action="toggle-advanced-filters"]');
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator('#advancedFiltersPanel').isVisible(), false);
+  await page.click('[data-action="toggle-advanced-filters"]');
+  await page.waitForSelector('#filterClient', { state: 'visible' });
+  assert.deepEqual(filterCalls, ['/api/portal/filters']);
+  await page.click('[data-action="toggle-advanced-filters"]');
   await page.click('.row-link');
   await page.waitForSelector('.drawer h3');
   assert.match(await page.locator('.drawer').innerText(), /linha do tempo da viagem/i);

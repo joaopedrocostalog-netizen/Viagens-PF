@@ -49,7 +49,6 @@ const fields = [
   'tvMode',
   'dayProgramsOpen',
   'programPage',
-  'filtersOpen',
   'technicalOpen',
   'drilldown',
   'selected',
@@ -631,9 +630,18 @@ export function createPortalClient(state, render) {
     );
   }
 
+  /** Opções do painel de filtros avançados da aba atual (só quando o usuário abre o painel). */
+  async function filterOptions() {
+    if (!state.remoteSnapshot || !inRange()) return {};
+    const result = await request('/api/portal/filters', {
+      body: { snapshot: state.remoteSnapshot, state: queryState() }
+    });
+    return result.options || {};
+  }
   return {
     active,
     observe,
+    filterOptions,
     contents,
     progress,
     synchronize,
