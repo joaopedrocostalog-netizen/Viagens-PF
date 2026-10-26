@@ -1,5 +1,14 @@
 import {rvStatus,tripActive,tripCompleted} from './rv-status.mjs';
 import {companyIdentity} from './companies.mjs';
+const SERVICE_WORDS={intermediario:'intermediário',servico:'serviço',servicos:'serviços',rodoviario:'rodoviário',ferroviario:'ferroviário',aereo:'aéreo',maritimo:'marítimo',aquaviario:'aquaviário',proprio:'próprio',terceirizacao:'terceirização',municipal:'municipal'};
+/** Grafia do tipo de serviço da DSS (ex.: "subcontratacao" -> "Subcontratação"). Só acentos e maiúscula inicial; nunca troca o significado. */
+export function serviceTypeLabel(value){
+ const raw=String(value??'').trim().replace(/[_\s]+/g,' ');if(!raw)return '';
+ const words=raw.split(' ').map(word=>{const lower=word.toLowerCase();if(word!==lower&&word!==word.toUpperCase())return word;
+  return SERVICE_WORDS[lower]||(lower.length>4&&/cao$/.test(lower)?lower.slice(0,-3)+'ção':lower.length>5&&/coes$/.test(lower)?lower.slice(0,-4)+'ções':lower);});
+ const text=words.join(' ');return text.charAt(0).toUpperCase()+text.slice(1);
+}
+const sameService=(a,b)=>a===b||serviceTypeLabel(a)===serviceTypeLabel(b);
 /** Busca comum: ignora acentos e separadores de placas/documentos; aceita vários termos. */
 export const normalizeSearch=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 const compact=value=>normalizeSearch(value).replace(/[^a-z0-9]/g,'');
@@ -27,8 +36,8 @@ export function filterOperationalData(data,{from='',to='',customer='',vehicle=''
  const base=row=>(!customer||row.cliente===customer)&&(!vehicle||row.placa===vehicle);
  const drillOrder=row=>drilldown==='sem_cte'?!row.isCte:drilldown==='sem_rv'?row.isCte&&!row.viagemId:drilldown==='entregas'?row.entregaConcluida===true&&row.comprovanteEntrega===false:drilldown==='ctes'?row.isCte:true;
  const drillTrip=row=>{return drilldown==='andamento'?tripActive(row.status):drilldown==='concluidas'?tripCompleted(row.status):drilldown==='km'?Number.isFinite(row.kmRodados):true;};
- const pedidos=dates(data.pedidos).filter(row=>(!tripFocus||!!focused&&row.viagemId===tripFocus)&&drillOrder(row)&&base(row)&&statusMatches(row,'pedidos')&&(!serviceType||row.tipoServico===serviceType));
- const ctes=dates(data.ctes).filter(row=>(!tripFocus||!!focused&&row.viagemId===tripFocus)&&drillOrder(row)&&base(row)&&statusMatches(row,'pedidos')&&(!serviceType||row.tipoServico===serviceType));
+ const pedidos=dates(data.pedidos).filter(row=>(!tripFocus||!!focused&&row.viagemId===tripFocus)&&drillOrder(row)&&base(row)&&statusMatches(row,'pedidos')&&(!serviceType||sameService(row.tipoServico,serviceType)));
+ const ctes=dates(data.ctes).filter(row=>(!tripFocus||!!focused&&row.viagemId===tripFocus)&&drillOrder(row)&&base(row)&&statusMatches(row,'pedidos')&&(!serviceType||sameService(row.tipoServico,serviceType)));
  const serviceTrips=new Set([...pedidos,...ctes].map(row=>row.viagemId).filter(Boolean));
  const viagens=dates(data.viagens).filter(row=>(!tripFocus||row.id===tripFocus)&&drillTrip(row)&&base(row)&&statusMatches(row,'viagens')&&(!serviceType||serviceTrips.has(row.id)));
  const tripIds=new Set(viagens.map(row=>row.id)),tripRefs=new Set(viagens.flatMap(row=>[row.id,row.rvId,row.numero]).filter(Boolean).map(String));

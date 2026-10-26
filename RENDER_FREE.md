@@ -137,3 +137,7 @@ No painel da aplicação Node.js do Plesk, configurar exclusivamente como variá
 A aplicação exige Node.js 20+ e instalação de dependências com `npm install --omit=dev` no Plesk. O arquivo `package.json` contém o driver privado `mysql2`. Se o banco estiver indisponível, a aplicação continua consultando a DSS, com aviso sem revelar credenciais. A sincronização continua **manual pelo botão Atualizar**, e períodos em cache serão reutilizados dentro da validade; portanto, o botão **Atualizar dados da DSS** envia `refresh=1` e consulta novamente a DSS, renovando a cópia mensal somente após uma resposta completa. Consultas normais, como períodos de comparação não presentes nos dados já carregados, podem reutilizar cache dentro da validade.
 
 **Importante:** esta etapa cria cache mensal de viagens/pedidos, não migra automaticamente todos os dados históricos nem substitui as demais funcionalidades. Até ativar as variáveis, a execução no Render permanece idêntica. A resposta da API continua filtrada pelas permissões de cada perfil.
+
+## Evitar que o serviço durma
+
+O workflow **Manter Render acordado** (`.github/workflows/manter-render-acordado.yml`) acessa `/api/health` a cada 10 minutos. Para conferir: GitHub → Actions → "Manter Render acordado" → execuções com "HTTP 200". Também é possível executar manualmente em **Run workflow**. Se o endereço do Render mudar, atualize `HEALTH_URL` no arquivo.

@@ -1,3 +1,4 @@
+import {serviceTypeLabel} from './filtering.mjs';
 import {RV_STATUSES,rvStatus} from './rv-status.mjs';
 import {memoView} from './view-cache.mjs';
 import {renderAlertsHub} from './intelligence-ui.mjs';
@@ -26,11 +27,11 @@ export function operationalFilters(d,s){
  const statuses=view==='viagens'?[...RV_STATUSES,...values.filter(value=>!RV_STATUSES.includes(value))]:values;
  if(s.status&&!statuses.includes(s.status))statuses.push(s.status);
  const extra=(['viagens','pedidos','ctes','entregas','mdfes','ocorrencias'].includes(view)?filter('recordStatusFilter','Situação',statuses,s.status||''):'')+
- (['viagens','pedidos','ctes','mdfes'].includes(view)?'<label class="filter">Vínculo<select id="statusFilter" class="control"><option value="todos">Todos</option><option value="vinculado" '+(s.filter==='vinculado'?'selected':'')+'>Vinculados</option><option value="pendente" '+(s.filter==='pendente'?'selected':'')+'>Sem vínculo</option></select></label>':'');
+ (['viagens','pedidos','ctes','mdfes'].includes(view)?'<label class="filter grow filter-compact"><span>Vínculo</span><select id="statusFilter" class="control full"><option value="todos">Todos</option><option value="vinculado" '+(s.filter==='vinculado'?'selected':'')+'>Vinculados</option><option value="pendente" '+(s.filter==='pendente'?'selected':'')+'>Sem vínculo</option></select></label>':'');
  return '<div class="filter-advanced"><div class="filter-row">'+
  filter('filterClient','Cliente',clients,s.customer||'')+
  filter('filterPlate','Veículo / placa',plates,s.vehicle||'')+
- filter('filterType','Tipo de serviço',types,s.serviceType||'')+extra+
+ filter('filterType','Tipo de serviço',types,s.serviceType?serviceTypeLabel(s.serviceType):'')+extra+
  '<label class="filter"><span>Período rápido</span><select class="control" id="quickPeriod"><option value="">Selecionar</option><option value="this-month">Este mês</option><option value="last-month">Mês anterior</option><option value="this-year">Ano atual</option><option value="last-90">Últimos 90 dias</option></select></label>'+
  '</div><div class="filter-row filter-row-actions">'+
  (!['painel','pendencias'].includes(s.view)&&!(s.view==='relatorios'&&s.reportSelected==='pendencias')?'<label class="filter"><span>Ordem da tabela</span><select id="sortDir" class="control"><option value="desc" '+(s.sortDir!=='asc'?'selected':'')+'>Decrescente</option><option value="asc" '+(s.sortDir==='asc'?'selected':'')+'>Crescente</option></select></label>':'')+
@@ -43,7 +44,7 @@ export function applyAdvancedFilters(rows,s,kind){
  let out=searchRecords(rows,s.search);
  if(s.customer)out=out.filter(x=>x.cliente===s.customer||(kind==='clientes'&&x.name===s.customer));
  if(s.vehicle)out=out.filter(x=>x.placa===s.vehicle||(kind==='veiculos'&&x.name===s.vehicle));
- if(s.serviceType)out=out.filter(x=>x.tipoServico===s.serviceType);
+ if(s.serviceType)out=out.filter(x=>x.tipoServico===s.serviceType||serviceTypeLabel(x.tipoServico)===serviceTypeLabel(s.serviceType));
  return sortRecords(out,s.sortKey||((kind==='clientes'?'freight':'data')),s.sortDir||'desc');
 }
 function section(title,sub,content){return '<section class="card"><div class="card-head"><h3>'+h(title)+'</h3><span>'+h(sub||'')+'</span></div>'+content+'</section>';}

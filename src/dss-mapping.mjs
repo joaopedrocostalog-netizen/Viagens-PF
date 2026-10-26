@@ -1,6 +1,7 @@
 import {rvStatus} from './rv-status.mjs';
 import {normalizePrograms} from './programming-data.mjs';
 import {companyIdentity} from './companies.mjs';
+import {serviceTypeLabel} from './filtering.mjs';
 /**
  * Mapeamento real DSS para as telas COSTALOG.
  * Formatos baseados nos esquemas enviados para listarViagens e listarPedidosFrete.
@@ -71,7 +72,7 @@ function mapPedido(v,i){
   motoristaCpf:s(v.motorista_cpf),operacaoTransporte:s(v.operacao_transporte),
   numeroFatura:s(v.nro_fatura),liberadoFaturamento:v.liberado_para_faturamento??null,
   entregaConcluida:v.entrega_concluida??null,comprovanteEntrega:v.comprovante_entrega??null,
-  ocorrencia:s(v.ocorrencia),tipoServico:s(v.tipo_servico),freteMunicipal:v.frete_municipal??null,
+  ocorrencia:s(v.ocorrencia),tipoServico:serviceTypeLabel(v.tipo_servico),freteMunicipal:v.frete_municipal??null,
   numeroAverbacao:s(v.nro_averbacao),valorAverbacao:moneyNumber(v.valor_averbacao),
   valorIcmsIss:moneyNumber(v.valor_icms_iss),freteSemIcms:moneyNumber(v.total_frete_sem_icms),
   numeroNfse:s(v.numero_nfse),processoId:id(v.processo_id),numeroProcesso:s(v.numero_processo),

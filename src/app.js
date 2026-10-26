@@ -13,7 +13,7 @@ import {renderTaskDrawer} from './workflow-ui.mjs';
 import {createTripTimeline} from './trip-timeline.mjs';
 import {renderDataQuality} from './data-quality.mjs';
 import {reportTemplate,applyReportTemplate} from './report-templates.mjs';
-import {filterOperationalData,searchOperationalData,filterLinkedRows} from './filtering.mjs';
+import {filterOperationalData,searchOperationalData,filterLinkedRows,serviceTypeLabel} from './filtering.mjs';
 import {COMPANIES,COSTALOG_ENTITIES,companyIdentity,validCompany,scopeCompanyData} from './companies.mjs';
 import {renderGlobalSearch,renderCustomDashboard,renderCustomerProfiles,renderDriverRouteDetails,renderAlertsHub,renderComparison,renderMyTasksSummary} from './intelligence-ui.mjs';
 import {normalizedLayout,reorderMetric,comparisonWindows,subsetPeriod} from './intelligence.mjs';
@@ -236,6 +236,9 @@ function totals(data){
 const navItems=[['painel','home','Painel'],['viagens','truck','Viagens / RV'],['ctes','doc','Pedidos de frete'],['relatorios','doc','Relatórios'],['programacao','truck','Programação do dia'],['comparativos','chart','Comparativos'],['entregas','doc','Entregas'],['pendencias','shield','Pendências'],['rotas','chart','Rotas'],['veiculos','truck','Frota'],['motoristas','home','Motoristas'],['mdfes','shield','MDF-e'],['ocorrencias','shield','Ocorrências']];
 function button(action,label,extra){return '<button type="button" class="btn '+(extra||'')+'" data-action="'+action+'">'+label+'</button>';}
 let textRenderTimer=null;
+// Estado "aberto" de cada <details> no momento em que a tela o desenhou. Um <details open> recriado dispara
+// "toggle" sozinho; só mudanças diferentes do desenhado vêm do usuário (antes o filtro reabria ao ser fechado).
+const renderedOpen=new WeakMap();
 function render(){
  pendingClient.observe();remoteClient.observe();
  const focusedDate=document.activeElement?.dataset?.editDate?{id:document.activeElement.id,cursor:document.activeElement.selectionStart}:null;
@@ -274,6 +277,7 @@ function render(){
  (state.selected?(remote?remoteClient.drawer():renderDrawer(filterOptionsData())):'')+renderTaskDrawer(state)+pendingClient.dialogs()+(state.connect?renderConnect():'')+
  (state.user?.mustChangePassword?renderForcePasswordChange():'')+
  (state.adminResetUser&&state.permissions.admin?renderAdminPasswordReset(state.adminResetUser):'');
+ for(const box of root.querySelectorAll?.('details[id]')||[])renderedOpen.set(box,box.open);
  pendingClient.afterRender();
  if(focusedDate){const field=document.getElementById(focusedDate.id);field?.focus?.();if(typeof focusedDate.cursor==='number')field?.setSelectionRange?.(focusedDate.cursor,focusedDate.cursor);}
  if(!remote&&(state.view==='pendencias'||state.view==='painel'&&state.user?.username&&!state.user.mustChangePassword||state.view==='relatorios'&&state.reportSelected==='pendencias')&&!state.user?.mustChangePassword&&!state.taskIndexLoaded&&!state.taskIndexLoading&&!state.taskIndexError)loadTaskIndex();
@@ -784,7 +788,7 @@ async function comparePeriods(){
   if(!response.ok)throw Error('HTTP '+response.status);
   const previous=normalizePayload(await response.json());
  const matches=r=>(!state.customer||r.cliente===state.customer)&&(!state.vehicle||r.placa===state.vehicle);
- const pedidos=previous.pedidos.filter(p=>matches(p)&&(!state.serviceType||p.tipoServico===state.serviceType));
+ const pedidos=previous.pedidos.filter(p=>matches(p)&&(!state.serviceType||serviceTypeLabel(p.tipoServico)===serviceTypeLabel(state.serviceType)));
  const viagens=previous.viagens.filter(v=>matches(v)&&(!state.serviceType||pedidos.some(p=>p.viagemId===v.id)));
  state.prevDataset={...previous,allViagens:previous.viagens,viagens,pedidos,ctes:previous.ctes.filter(matches),mdfes:previous.mdfes};render();
  }catch(err){alert('Não foi possível obter o período anterior: '+err.message);}
@@ -1138,7 +1142,7 @@ function applyDateEdit(input,{typing=false,calendar=false,enter=false}={}){
  if(textRenderTimer)clearTimeout(textRenderTimer);
  textRenderTimer=setTimeout(()=>{const focused=document.activeElement===input;render();const field=document.getElementById(id);if(focused&&field){field.focus?.();if(typeof cursor==='number')field.setSelectionRange?.(cursor,cursor);}},350);
 }
-root.addEventListener('toggle',e=>{const key=e.target.id==='dayPrograms'?'dayProgramsOpen':e.target.id==='advancedFilters'?'filtersOpen':e.target.id==='technicalInfo'&&state.permissions.admin?'technicalOpen':'';if(key&&state[key]!==e.target.open){state[key]=e.target.open;render();}},true);
+root.addEventListener('toggle',e=>{if(e.target.closest?.('.stale-view')||renderedOpen.get(e.target)===e.target.open)return;const key=e.target.id==='dayPrograms'?'dayProgramsOpen':e.target.id==='advancedFilters'?'filtersOpen':e.target.id==='technicalInfo'&&state.permissions.admin?'technicalOpen':'';if(key&&state[key]!==e.target.open){state[key]=e.target.open;render();}},true);
 root.addEventListener('input',e=>{
  if(DATE_FIELDS.has(e.target.id)){applyDateEdit(e.target,{typing:true});return;}
 
