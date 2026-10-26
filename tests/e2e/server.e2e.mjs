@@ -163,3 +163,14 @@ test('servidor: segundo acesso já abre com a última consulta, sem chamar a DSS
   assert.equal(dssCalls, before, 'nenhuma chamada nova à DSS');
   assert.deepEqual(errors, []);
 });
+
+test('servidor: "Desde o início" busca o histórico e ajusta o período ao início real', async t => {
+  const { page, errors } = await open(t);
+  page.on('dialog', dialog => dialog.accept());
+  await page.click('[data-action="refresh-all"]');
+  await page.waitForFunction(() => /Histórico completo da DSS/.test(document.body.innerText), null, { timeout: 90000 });
+  const from = await page.inputValue('#from');
+  assert.match(from, /^\d{2}\/\d{2}\/\d{4}$/);
+  assert.notEqual(from, '01/01/2026', 'De foi ajustado ao início real dos dados');
+  assert.deepEqual(errors, []);
+});
