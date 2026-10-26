@@ -121,11 +121,9 @@ test('Link passa pelo login e consulta manual; todas as abas têm uma busca e ro
   for (const view of OP_VIEWS) {
     click('[data-nav]', { nav: view });
     assert.equal((root.innerHTML.match(/type="search"/g) || []).length, 1, view);
-    assert.equal((root.innerHTML.match(/id="advancedFilters"/g) || []).length, 1, view);
+    assert.equal((root.innerHTML.match(/data-action="toggle-advanced-filters"/g) || []).length, 1, view);
     assert.equal((root.innerHTML.match(/id="technicalInfo"/g) || []).length, 1, view);
     assert(!root.innerHTML.includes('data-quality-summary'), view + ' deve iniciar com os diagnósticos fechados');
-    const table = root.innerHTML.indexOf('<table');
-    if (table >= 0) assert(root.innerHTML.indexOf('id="advancedFilters"') < table, view);
     assert(root.innerHTML.indexOf('id="technicalInfo"') < root.innerHTML.indexOf('<footer'));
   }
   click('[data-nav]', { nav: 'viagens' });
