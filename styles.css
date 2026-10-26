@@ -4201,3 +4201,9 @@ body {
     transition: none;
   }
 }
+/* Etiquetas de filtros ativos */
+.active-filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 14px}
+.filter-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 6px 5px 11px;border-radius:999px;background:#2a1418;border:1px solid #6b2630;font-size:12px;color:#f3d6da}
+.filter-chip b{color:#fff;font-weight:800}
+.filter-chip button{border:0;background:transparent;color:#ffb3bd;cursor:pointer;font-size:12px;line-height:1;padding:3px 6px;border-radius:999px}
+.filter-chip button:hover,.filter-chip button:focus-visible{background:#5a1f28;color:#fff}

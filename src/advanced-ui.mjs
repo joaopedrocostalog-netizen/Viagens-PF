@@ -69,6 +69,51 @@ export const EXPORT_LABELS = {
   pendencias: 'Pendências',
   mensal: 'Resumo mensal'
 };
+const LINK_LABELS = { vinculado: 'Vinculados', pendente: 'Sem vínculo' };
+/** Filtros que podem ser removidos individualmente pelas etiquetas acima da tabela. */
+export const CLEARABLE_FILTERS = Object.freeze({
+  search: '',
+  customer: '',
+  vehicle: '',
+  serviceType: '',
+  status: '',
+  filter: 'todos',
+  rvStage: '',
+  dayCategory: ''
+});
+/** Etiquetas dos filtros ativos ("Cliente: X ✕"), para ficar claro por que a lista tem menos registros. */
+export function renderActiveFilters(s) {
+  const chips = [
+    ['search', 'Pesquisa', s.search && '"' + s.search + '"'],
+    ['customer', 'Cliente', s.customer],
+    ['vehicle', 'Placa', s.vehicle],
+    ['serviceType', 'Tipo de serviço', s.serviceType && serviceTypeLabel(s.serviceType)],
+    ['status', 'Situação', s.status],
+    ['filter', 'Vínculo', s.filter && s.filter !== 'todos' && (LINK_LABELS[s.filter] || s.filter)],
+    ['rvStage', 'Etapa da RV', s.view !== 'viagens' && s.rvStage],
+    ['dayCategory', 'Programação', s.view === 'programacao' && s.dayCategory]
+  ].filter(([, , value]) => value);
+  if (!chips.length) return '';
+  return (
+    '<div class="active-filters" role="group" aria-label="Filtros ativos">' +
+    chips
+      .map(
+        ([key, label, value]) =>
+          '<span class="filter-chip"><span>' +
+          h(label) +
+          ': <b>' +
+          h(value) +
+          '</b></span><button type="button" data-clear-filter="' +
+          key +
+          '" aria-label="Remover filtro ' +
+          h(label) +
+          '">✕</button></span>'
+      )
+      .join('') +
+    (chips.length > 1 ? '<button type="button" class="btn btn-sm" data-clear-filter="*">Limpar todos</button>' : '') +
+    '</div>'
+  );
+}
 export function operationalFilters(d, s) {
   const clients = [
     ...new Set([...(d.viagens || []).map(x => x.cliente), ...(d.pedidos || []).map(x => x.cliente)].filter(Boolean))

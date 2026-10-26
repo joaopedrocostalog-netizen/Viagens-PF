@@ -174,6 +174,8 @@ test('backend DSS converte filtros para dd/mm/aaaa, lê registros e mantém aute
     'date-controls.mjs',
     'rv-status.mjs',
     'data-availability.mjs',
+    'portal-view.mjs',
+    'demo-data.mjs',
     'portal-links.mjs',
     'programming.mjs',
     'programming-data.mjs',

@@ -532,6 +532,8 @@ const staticFiles = new Map([
     'date-controls.mjs',
     'rv-status.mjs',
     'data-availability.mjs',
+      'portal-view.mjs',
+      'demo-data.mjs',
     'portal-links.mjs',
     'programming.mjs',
     'programming-data.mjs',
