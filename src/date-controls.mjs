@@ -102,3 +102,26 @@ export function openDateCalendar(id) {
   picker.focus?.();
   picker.click?.();
 }
+
+/** "Atualizado agora" / "há 5 min" / "há 3 h" / "em 24/10 às 09:12", no fuso de São Paulo. */
+export function updatedAgo(iso, now = Date.now()) {
+  const time = Date.parse(iso || '');
+  if (!Number.isFinite(time)) return '';
+  const minutes = Math.max(0, Math.floor((now - time) / 60000));
+  const clock = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(time);
+  if (minutes < 1) return 'Atualizado agora (' + clock + ')';
+  if (minutes < 60) return 'Atualizado há ' + minutes + ' min (' + clock + ')';
+  if (minutes < 24 * 60) return 'Atualizado há ' + Math.floor(minutes / 60) + ' h (' + clock + ')';
+  const day = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit'
+  }).format(time);
+  return 'Atualizado em ' + day + ' às ' + clock;
+}
+/** Consulta com mais de 1 hora é destacada para lembrar de atualizar. */
+export const updatedIsOld = (iso, now = Date.now()) => now - Date.parse(iso || '') > 3600000;

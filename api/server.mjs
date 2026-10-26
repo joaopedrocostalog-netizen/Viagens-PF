@@ -988,6 +988,8 @@ const server = http.createServer(async (req, res) => {
           );
         }
       }
+      if (url.pathname === '/api/portal/latest' && req.method === 'GET')
+        return reply(res, 200, { snapshot: portalSessions.latest() }, origin);
       if (url.pathname === '/api/portal/sync') {
         if (req.method === 'POST') return reply(res, 202, portalSessions.start(await bodyJSON(req), user), origin);
         if (req.method === 'GET')

@@ -157,7 +157,26 @@ test('sync jobs publish atomically, enforce ownership and really abort their sou
   const status = sessions.status(completed.id, user);
   assert.equal(status.status, 'complete');
   assert.equal(sessions.get(status.snapshot, user).payload, payload);
-  assert.throws(() => sessions.get(status.snapshot, { username: 'outro' }), { status: 404 });
+  // A última consulta MANUAL é compartilhada: outro usuário entra e já vê dados (permissões aplicadas na apresentação).
+  assert.equal(sessions.get(status.snapshot, { username: 'outro' }).payload, payload);
+  assert.deepEqual(sessions.latest(), {
+    id: status.snapshot,
+    from: range.from,
+    to: range.to,
+    updatedAt: payload.updatedAt || null
+  });
+  // Consultas de comparativo (cached) continuam privadas de quem as fez e não viram "última consulta".
+  const cached = sessions.start({ ...range, refresh: 'cached' }, user);
+  await tick();
+  finish(payload);
+  await tick();
+  const cachedSnapshot = sessions.status(cached.id, user).snapshot;
+  assert.throws(() => sessions.get(cachedSnapshot, { username: 'outro' }), { status: 404 });
+  assert.equal(sessions.latest().id, status.snapshot);
+  // Sair não apaga a consulta compartilhada; apaga as privadas.
+  sessions.release(user);
+  assert.equal(sessions.latest().id, status.snapshot);
+  assert.throws(() => sessions.get(cachedSnapshot, user), { status: 404 });
   assert.throws(() => sessions.start({ from: '2026-02-30', to: '2026-03-01' }, user), { status: 400 });
 });
 

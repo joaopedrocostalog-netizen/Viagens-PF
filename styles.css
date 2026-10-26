@@ -4207,3 +4207,6 @@ body {
 .filter-chip b{color:#fff;font-weight:800}
 .filter-chip button{border:0;background:transparent;color:#ffb3bd;cursor:pointer;font-size:12px;line-height:1;padding:3px 6px;border-radius:999px}
 .filter-chip button:hover,.filter-chip button:focus-visible{background:#5a1f28;color:#fff}
+/* Horário da última consulta DSS, sob o botão Atualizar */
+.last-sync{display:block;margin-top:6px;font-size:11px;color:#9fd8b8;white-space:nowrap}
+.last-sync.is-old{color:#ffcf7a}

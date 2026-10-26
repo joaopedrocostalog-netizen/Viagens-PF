@@ -403,6 +403,7 @@ export function createPortalClient(state, render) {
       if (generation !== syncGeneration || token !== state.token) return;
       state.workflowRefresh = (state.workflowRefresh || 0) + 1;
       state.remoteSnapshot = snapshot;
+      state.reusedLatest = false;
       state.loadedRange = range;
       state.lastSync = new Date().toISOString();
       state.page = 1;
@@ -609,6 +610,30 @@ export function createPortalClient(state, render) {
     drawer: () =>
       detail ||
       '<div class="overlay"><aside class="drawer"><p>Carregando registro…</p><button class="btn" data-action="close">Fechar</button></aside></div>',
+    /** Ao entrar: usa a última consulta manual pronta no servidor, sem chamar a DSS. */
+    async adoptLatest({ keepDates = false } = {}) {
+      if (!active() || state.remoteSnapshot || state.loading) return false;
+      const generation = syncGeneration,
+        token = state.token;
+      try {
+        const { snapshot } = await request('/api/portal/latest', { method: 'GET' });
+        if (!snapshot || generation !== syncGeneration || token !== state.token || state.remoteSnapshot) return false;
+        state.remoteSnapshot = snapshot.id;
+        state.loadedRange = { from: snapshot.from, to: snapshot.to };
+        if (!keepDates && !(state.from >= snapshot.from && state.to <= snapshot.to)) {
+          state.from = snapshot.from;
+          state.to = snapshot.to;
+        }
+        state.lastSync = snapshot.updatedAt;
+        state.reusedLatest = true;
+        viewKey = '';
+        cache.clear();
+        render();
+        return true;
+      } catch {
+        return false;
+      }
+    },
     reshapeStale(fn) {
       if (lastGood) lastGood = { ...lastGood, html: fn(lastGood.html) };
     },

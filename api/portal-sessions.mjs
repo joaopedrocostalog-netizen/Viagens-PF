@@ -12,6 +12,9 @@ export function createPortalSessions({
 } = {}) {
   const jobs = new Map(),
     snapshots = new Map();
+  // Última consulta MANUAL completa (não a de comparativos): compartilhada com todos os usuários autenticados,
+  // para o portal abrir já com dados. A apresentação continua aplicando as permissões de cada perfil.
+  let latestId = '';
   const owned = (map, id, user) => {
     const v = map.get(id);
     if (!v || v.username !== user.username) throw fail('Consulta não encontrada ou expirada. Atualize os dados.', 404);
@@ -87,8 +90,12 @@ export function createPortalSessions({
           if (input.refresh !== 'cached') await afterSync(payload, { from, to, signal: j.controller.signal });
           if (j.status !== 'running' || j.controller.signal.aborted) return;
           const id = randomUUID();
-          while (snapshots.size >= maxSnapshots) snapshots.delete(snapshots.keys().next().value);
+          for (const old of snapshots.keys()) {
+            if (snapshots.size < maxSnapshots) break;
+            if (old !== latestId) snapshots.delete(old);
+          }
           snapshots.set(id, { id, username: j.username, from, to, payload, touched: Date.now() });
+          if (input.refresh !== 'cached') latestId = id;
           j.snapshot = id;
           j.status = 'complete';
           j.touched = Date.now();
@@ -119,7 +126,7 @@ export function createPortalSessions({
     },
     get(id, user) {
       prune();
-      const s = owned(snapshots, id, user);
+      const s = id && id === latestId && snapshots.has(id) ? snapshots.get(id) : owned(snapshots, id, user);
       s.touched = Date.now();
       return s;
     },
@@ -129,7 +136,13 @@ export function createPortalSessions({
           j.status = 'cancelled';
           j.controller.abort();
         }
-      for (const [id, s] of snapshots) if (s.username === user.username) snapshots.delete(id);
+      for (const [id, s] of snapshots) if (s.username === user.username && id !== latestId) snapshots.delete(id);
+    },
+    /** Metadados da última consulta manual completa, sem registros. */
+    latest() {
+      prune();
+      const s = latestId && snapshots.get(latestId);
+      return s ? { id: s.id, from: s.from, to: s.to, updatedAt: s.payload?.updatedAt || null } : null;
     }
   };
 }

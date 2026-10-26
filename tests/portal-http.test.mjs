@@ -149,7 +149,10 @@ test('HTTP portal: pages, metrics, durable account preferences and cancellation 
   assert.equal((await (await request('/api/preferences')).json()).values.reportFormat, 'csv');
   const other = await login('outra.conta');
   assert.deepEqual((await (await request('/api/preferences', { token: other.token })).json()).values, {});
-  assert.equal((await request('/api/portal/view', { method: 'POST', body: input, token: other.token })).status, 404);
+  // Última consulta manual: compartilhada, para quem entra depois já ver dados sem consultar a DSS de novo.
+  assert.equal((await request('/api/portal/view', { method: 'POST', body: input, token: other.token })).status, 200);
+  assert.equal((await (await request('/api/portal/latest', { token: other.token })).json()).snapshot.id, job.snapshot);
+  assert.equal(calls, 2, 'reaproveitar a última consulta não chama a DSS');
   assert.equal((await request('/api/portal/view?company=todas', { method: 'POST', body: input })).status, 400);
   const actions = (body, token = account.token, company = 'costalog') =>
     request('/api/workflow/actions?company=' + company, { method: 'POST', body, token });

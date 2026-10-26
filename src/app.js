@@ -6,7 +6,9 @@ import {
   resetDateControls,
   hasDateErrors,
   openDateCalendar,
-  parseEditableDate
+  parseEditableDate,
+  updatedAgo,
+  updatedIsOld
 } from './date-controls.mjs';
 import { mobileTables } from './mobile-tables.mjs';
 import { parsePortalLink, portalLink } from './portal-links.mjs';
@@ -453,6 +455,27 @@ function render() {
   )
     loadTaskIndex();
 }
+function renderUpdatedAt() {
+  if (!state.lastSync) return '<small class="last-sync">Ainda sem consulta nesta sessão</small>';
+  return (
+    '<small class="last-sync' +
+    (updatedIsOld(state.lastSync) ? ' is-old' : '') +
+    '" data-updated-at="' +
+    attr(state.lastSync) +
+    '" title="Horário em que os dados foram buscados na DSS">' +
+    esc(updatedAgo(state.lastSync)) +
+    (state.reusedLatest ? ' · consulta compartilhada' : '') +
+    '</small>'
+  );
+}
+// Atualiza só o texto "há X min", sem redesenhar a tela.
+setInterval(() => {
+  for (const el of document.querySelectorAll?.('[data-updated-at]') || []) {
+    const shared = el.textContent.includes('compartilhada') ? ' · consulta compartilhada' : '';
+    el.textContent = updatedAgo(el.dataset.updatedAt) + shared;
+    el.classList.toggle('is-old', updatedIsOld(el.dataset.updatedAt));
+  }
+}, 30000).unref?.(); // no Node (testes) não segura o processo
 function renderFilters() {
   const validDates =
     /^\d{4}-\d{2}-\d{2}$/.test(state.from) &&
@@ -488,7 +511,9 @@ function renderFilters() {
         (state.loading || !validDates ? 'disabled' : '') +
         '>' +
         (state.loading ? state.loadingProgress || 'Consultando DSS...' : 'Atualizar dados da DSS') +
-        '</button></div>'
+        '</button>' +
+        renderUpdatedAt() +
+        '</div>'
       : '') +
     '</div>'
   );
@@ -595,8 +620,11 @@ async function portalLogin() {
     }
     render();
     if (state.user.mustChangePassword) return;
-    if (remoteClient.active()) remoteClient.loadPreferences();
-    // Dados DSS são carregados apenas ao clicar em Atualizar.
+    if (remoteClient.active()) {
+      remoteClient.loadPreferences();
+      // Abre com a última consulta já pronta no servidor (não chama a DSS). Atualizar continua manual.
+      remoteClient.adoptLatest({ keepDates: !!state.linkMessage });
+    }
   } catch (err) {
     const offline = err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(err.message || '');
     alert(
