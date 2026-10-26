@@ -67,7 +67,8 @@ export const EXPORT_LABELS = {
   containers: 'Containers',
   mdfes: 'Referências MDF-e',
   pendencias: 'Pendências',
-  mensal: 'Resumo mensal'
+  mensal: 'Resumo mensal',
+  programacao: 'Programação do dia'
 };
 const LINK_LABELS = { vinculado: 'Vinculados', pendente: 'Sem vínculo' };
 /** Filtros que podem ser removidos individualmente pelas etiquetas acima da tabela. */

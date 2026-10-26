@@ -52,6 +52,8 @@ const stateFields = [
   'alertGroup',
   'tripFocus',
   'dayDate',
+  'dayCategory',
+  'tvMode',
   'dayProgramsOpen',
   'programPage',
   'filtersOpen',

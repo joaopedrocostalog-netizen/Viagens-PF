@@ -4202,11 +4202,167 @@ body {
   }
 }
 /* Etiquetas de filtros ativos */
-.active-filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 14px}
-.filter-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 6px 5px 11px;border-radius:999px;background:#2a1418;border:1px solid #6b2630;font-size:12px;color:#f3d6da}
-.filter-chip b{color:#fff;font-weight:800}
-.filter-chip button{border:0;background:transparent;color:#ffb3bd;cursor:pointer;font-size:12px;line-height:1;padding:3px 6px;border-radius:999px}
-.filter-chip button:hover,.filter-chip button:focus-visible{background:#5a1f28;color:#fff}
+.active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px 5px 11px;
+  border-radius: 999px;
+  background: #2a1418;
+  border: 1px solid #6b2630;
+  font-size: 12px;
+  color: #f3d6da;
+}
+.filter-chip b {
+  color: #fff;
+  font-weight: 800;
+}
+.filter-chip button {
+  border: 0;
+  background: transparent;
+  color: #ffb3bd;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 999px;
+}
+.filter-chip button:hover,
+.filter-chip button:focus-visible {
+  background: #5a1f28;
+  color: #fff;
+}
 /* Horário da última consulta DSS, sob o botão Atualizar */
-.last-sync{display:block;margin-top:6px;font-size:11px;color:#9fd8b8;white-space:nowrap}
-.last-sync.is-old{color:#ffcf7a}
+.last-sync {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #9fd8b8;
+  white-space: nowrap;
+}
+.last-sync.is-old {
+  color: #ffcf7a;
+}
+/* Programação do dia: navegação por dia, ações e cartões que filtram */
+.day-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  margin-bottom: 16px;
+}
+.day-nav,
+.day-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.day-actions {
+  margin-left: auto;
+}
+.day-card {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.day-card:hover:not(:disabled) {
+  border-color: #5b5e66;
+}
+.day-card:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 2px;
+}
+.day-card.active {
+  border-color: var(--red);
+  background: #2a1418;
+}
+.day-card:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.day-card small {
+  font-size: 10px;
+  color: #8b8e97;
+}
+.day-card.active small {
+  color: #ffb3bd;
+}
+/* Modo TV: só o essencial, letras maiores, para um monitor da operação */
+.tv-bar {
+  display: none;
+}
+.tv-mode .tv-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 28px;
+  background: #111112;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+.tv-mode .tv-bar strong {
+  font-size: 22px;
+  letter-spacing: -0.3px;
+}
+.tv-mode .tv-bar .last-sync {
+  font-size: 14px;
+  margin-top: 4px;
+}
+.tv-mode .tv-actions {
+  display: flex;
+  gap: 10px;
+}
+.tv-mode .v-topbar,
+.tv-mode .v-menu-row,
+.tv-mode .v-sub-nav,
+.tv-mode .v-tools-row,
+.tv-mode .ins-search,
+.tv-mode .v-footer,
+.tv-mode .v-hero,
+.tv-mode .day-toolbar,
+.tv-mode .day-programs,
+.tv-mode .table-tools .columns-picker,
+.tv-mode #advancedFilters,
+.tv-mode .technical-footer,
+.tv-mode .demo-label {
+  display: none !important;
+}
+.tv-mode .content {
+  max-width: none;
+  padding: 20px 28px;
+}
+.tv-mode .day-cards {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.tv-mode .day-card strong {
+  font-size: 44px;
+}
+.tv-mode .day-card > div {
+  font-size: 14px;
+}
+.tv-mode table {
+  font-size: 17px;
+}
+.tv-mode td,
+.tv-mode th {
+  padding: 12px 14px;
+}
+@media (min-width: 1241px) {
+  .day-cards {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}

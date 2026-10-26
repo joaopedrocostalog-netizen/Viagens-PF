@@ -2,7 +2,8 @@ import { availableColumns as withSourceColumns } from './data-availability.mjs';
 import { memoView } from './view-cache.mjs';
 import { taskFor, taskBelongsToUser, taskDueBucket, operationalToday } from './workflow.mjs';
 import { extractRows, searchRecords, sortRecords } from './operational.mjs';
-import { filterLinkedRows } from './filtering.mjs';
+import { filterLinkedRows, searchOperationalData } from './filtering.mjs';
+import { dayRows, dailyStatus } from './programming-data.mjs';
 /** Regras visuais: segurança real é aplicada em api/access.mjs no servidor. */
 export const OP_VIEWS = [
   'painel',
@@ -32,9 +33,22 @@ export const OP_REPORTS = [
   'mdfes',
   'pendencias',
   'ocorrencias',
-  'mensal'
+  'mensal',
+  'programacao'
 ];
 export const OP_COLUMNS = {
+  programacao: [
+    'numero',
+    'categoria',
+    'status',
+    'placa',
+    'motoristaNome',
+    'cliente',
+    'origem',
+    'destino',
+    'data',
+    'dataTermino'
+  ],
   viagens: [
     'numero',
     'tipoRv',
@@ -107,6 +121,32 @@ export const OP_COLUMNS = {
   ],
   mensal: ['month', 'trips', 'orders', 'ctes', 'km']
 };
+/** Programação do dia: mesmas RVs e mesmo filtro de categoria da tela. */
+function dayReport(data, state) {
+  const date = state.dayDate || '',
+    label = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.slice(8, 10) + '/' + date.slice(5, 7) + '/' + date.slice(0, 4) : '';
+  return {
+    title: 'Programação do dia ' + label + (state.dayCategory ? ' · ' + state.dayCategory : ''),
+    columns: [
+      ['numero', 'RV'],
+      ['categoria', 'Categoria'],
+      ['status', 'Situação'],
+      ['placa', 'Placa'],
+      ['motoristaNome', 'Motorista'],
+      ['cliente', 'Cliente'],
+      ['origem', 'Origem'],
+      ['destino', 'Destino'],
+      ['data', 'Início'],
+      ['dataTermino', 'Término']
+    ],
+    rows: date
+      ? dayRows(searchOperationalData(data, state.search), date, state.dayCategory).map(row => ({
+          ...row,
+          categoria: dailyStatus(row)
+        }))
+      : []
+  };
+}
 export function permittedView(role, view) {
   if (ADMIN_VIEWS.includes(view)) return role === 'administrador';
   if (FIN_VIEWS.includes(view)) return role === 'financeiro' || role === 'administrador';
@@ -204,7 +244,7 @@ function makeOperationalReport(type, data, state, preview) {
     if (type === 'ctes') scoped.ctes = filterLinkedRows(data.ctes || [], 'pedidos', data, state.filter);
   }
   if (!reportTypesFor(state.role).includes(type)) throw Error('Relatório não permitido para este perfil.');
-  const source = extractRows(type, scoped);
+  const source = type === 'programacao' ? dayReport(scoped, state) : extractRows(type, scoped);
   const hidden = state.hiddenColumns?.['report-' + type] || [],
     order = state.reportColumnOrder?.[type] || [];
   const allowed = withSourceColumns(source.columns.filter(([key]) => OP_COLUMNS[type]?.includes(key)));

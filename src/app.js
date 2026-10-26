@@ -14,6 +14,8 @@ import { mobileTables } from './mobile-tables.mjs';
 import { parsePortalLink, portalLink } from './portal-links.mjs';
 import { renderPortalView } from './portal-view.mjs';
 import { demoPayload } from './demo-data.mjs';
+import { CLEARABLE_FILTERS } from './advanced-ui.mjs';
+import { shiftDay } from './programming-data.mjs';
 import { demoSignin, demoRights, demoAccountAction, demoChangeOwnPassword } from './demo-accounts.mjs';
 import { parseCsv } from './mdfe-csv.mjs';
 import { installMetricDrag, reorderMetricCards } from './metric-drag.mjs';
@@ -82,6 +84,8 @@ const state = {
   alertGrouping: 'lista',
   alertGroup: '',
   dayDate: localToday(),
+  dayCategory: '',
+  tvMode: false,
   tripFocus: '',
   alertScope: 'todos',
   alertDue: 'todos',
@@ -347,8 +351,12 @@ function render() {
     : '';
   const dateFilters = state.view === 'administracao' ? '' : renderFilters();
   const globalSearch = state.view === 'administracao' ? '' : remote ? remoteResponse?.search || '' : local.search || '';
+  if (state.view !== 'programacao') state.tvMode = false;
   root.innerHTML =
-    '<div class="layout v-app"><main class="main v-main">' +
+    '<div class="layout v-app' +
+    (state.tvMode ? ' tv-mode' : '') +
+    '"><main class="main v-main">' +
+    renderTvBar() +
     '<header class="topbar v-topbar"><div class="v-topbrand"><img class="v-brand-logo ' +
     (state.company === 'ideallog' ? 'v-ideal-logo' : '') +
     '" src="./' +
@@ -455,7 +463,41 @@ function render() {
   )
     loadTaskIndex();
 }
+function setTvMode(on) {
+  state.tvMode = !!on && state.view === 'programacao';
+  try {
+    if (state.tvMode && !document.fullscreenElement) document.documentElement?.requestFullscreen?.().catch?.(() => {});
+    if (!state.tvMode && document.fullscreenElement) document.exitFullscreen?.().catch?.(() => {});
+  } catch {}
+  render();
+}
+document.addEventListener?.('fullscreenchange', () => {
+  if (!document.fullscreenElement && state.tvMode) setTvMode(false);
+});
+function renderTvBar() {
+  if (!state.tvMode || state.view !== 'programacao') return '';
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(state.dayDate || '') ? state.dayDate.split('-').reverse().join('/') : '';
+  return (
+    '<div class="tv-bar"><div><strong>' +
+    esc(COMPANIES[state.company].name) +
+    ' · Programação do dia ' +
+    esc(day) +
+    '</strong>' +
+    renderUpdatedAt() +
+    '</div><div class="tv-actions">' +
+    (state.mode === 'live' && !PUBLIC_DEMO
+      ? '<button type="button" class="btn btn-red" data-action="refresh" ' +
+        (state.loading ? 'disabled' : '') +
+        '>' +
+        (state.loading ? 'Atualizando…' : 'Atualizar dados') +
+        '</button>'
+      : '') +
+    button('tv-mode', 'Sair do modo TV', 'btn') +
+    '</div></div>'
+  );
+}
 function renderUpdatedAt() {
+  if (state.mode === 'demo') return '<small class="last-sync">Dados de demonstração</small>';
   if (!state.lastSync) return '<small class="last-sync">Ainda sem consulta nesta sessão</small>';
   return (
     '<small class="last-sync' +
@@ -1814,6 +1856,35 @@ root.addEventListener('click', e => {
     openChecklistRecords(checklist.dataset.checklistOpen);
     return;
   }
+  const clearFilter = e.target.closest('[data-clear-filter]');
+  if (clearFilter) {
+    const key = clearFilter.dataset.clearFilter;
+    for (const [name, value] of Object.entries(CLEARABLE_FILTERS)) if (key === '*' || key === name) state[name] = value;
+    if (key === 'search' || key === '*') {
+      const input = document.getElementById('searchInput');
+      if (input) input.value = '';
+    }
+    state.page = 1;
+    render();
+    return;
+  }
+  const dayCategory = e.target.closest('[data-day-category]');
+  if (dayCategory) {
+    const value = dayCategory.dataset.dayCategory;
+    state.dayCategory = state.dayCategory === value ? '' : value;
+    state.page = 1;
+    render();
+    return;
+  }
+  const dayExport = e.target.closest('[data-export-day]');
+  if (dayExport) {
+    try {
+      exportAdvanced('programacao', dayExport.dataset.exportDay);
+    } catch (err) {
+      alert(err.message);
+    }
+    return;
+  }
   const metric = e.target.closest('[data-metric-open]');
   if (metric) {
     openMetric(metric.dataset.metricOpen);
@@ -2104,11 +2175,17 @@ root.addEventListener('click', e => {
     render();
     return;
   }
-  if (action === 'day-today') {
+  if (action === 'day-today' || action === 'day-prev' || action === 'day-next') {
     resetDateControls(['dayDate']);
-    state.dayDate = localToday();
+    state.dayDate =
+      action === 'day-today' ? localToday() : shiftDay(state.dayDate || localToday(), action === 'day-prev' ? -1 : 1);
     state.page = 1;
+    state.programPage = 1;
     render();
+    return;
+  }
+  if (action === 'tv-mode') {
+    setTvMode(!state.tvMode);
     return;
   }
   if (action === 'clear-alert-group') {

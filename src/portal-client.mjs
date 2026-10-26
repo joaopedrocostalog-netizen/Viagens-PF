@@ -43,6 +43,8 @@ const fields = [
   'alertGroup',
   'tripFocus',
   'dayDate',
+  'dayCategory',
+  'tvMode',
   'dayProgramsOpen',
   'programPage',
   'filtersOpen',

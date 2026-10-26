@@ -24,7 +24,8 @@ test('CSV, Excel e PDF de viagens/PF usam somente campos operacionais para todos
       'mdfes',
       'pendencias',
       'ocorrencias',
-      'mensal'
+      'mensal',
+      'programacao'
     ]);
     assert.throws(() => secureReport(extractRows('clientes', data), 'clientes', role));
     const models = ['viagens', 'pedidos'].map(type => secureReport(extractRows(type, data), type, role));

@@ -91,3 +91,22 @@ export function dailyStatus(row) {
           ? 'Planejadas'
           : 'Situação não informada';
 }
+
+export const DAY_CATEGORIES = Object.freeze([
+  'Planejadas',
+  'Em andamento',
+  'Concluídas',
+  'Situação não informada',
+  'Outras situações'
+]);
+/** RVs da data da programação, com o filtro de categoria clicado nos cartões (se houver). */
+export function dayRows(data, date, category = '') {
+  const rows = dayTrips(data, date);
+  return category ? rows.filter(row => dailyStatus(row) === category) : rows;
+}
+/** Dia anterior/seguinte em ISO, sem depender do fuso do computador. */
+export function shiftDay(iso, delta) {
+  const [y, m, d] = String(iso).split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d + delta));
+  return Number.isNaN(date.getTime()) ? iso : date.toISOString().slice(0, 10);
+}

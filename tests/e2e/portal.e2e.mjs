@@ -87,3 +87,55 @@ test('personalizar cartões: arrastar com o mouse muda e salva a ordem', async t
   const after = await order();
   assert.deepEqual(after.slice(0, 3), [before[1], before[2], before[0]]);
 });
+
+test('programação do dia: ◀ ▶ trocam o dia e os cartões filtram a tabela', async t => {
+  const { page, errors } = await portal(t);
+  await go(page, 'programacao');
+  await page.waitForSelector('.day-cards');
+  const date = () => page.inputValue('#dayDate');
+  const today = await date();
+  await page.click('[data-action="day-prev"]');
+  await page.waitForTimeout(150);
+  assert.notEqual(await date(), today);
+  await page.click('[data-action="day-next"]');
+  await page.waitForTimeout(150);
+  assert.equal(await date(), today);
+  const total = await tableCount(page);
+  const planned = Number(await page.locator('[data-day-category="Planejadas"] strong').textContent());
+  assert(planned > 0 && planned < total, 'demonstração tem RVs planejadas e outras hoje');
+  await page.click('[data-day-category="Planejadas"]');
+  await page.waitForTimeout(150);
+  assert.equal(await tableCount(page), planned);
+  assert.equal(await page.locator('[data-day-category="Planejadas"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('.filter-chip').count(), 1, 'etiqueta mostra o filtro ativo');
+  // Barra de etapas acompanha o filtro: "Todas" = linhas da tabela.
+  assert.equal(Number(await page.locator('[data-related-rv-stage=""] span').textContent()), planned);
+  await page.click('[data-clear-filter="dayCategory"]');
+  await page.waitForTimeout(150);
+  assert.equal(await tableCount(page), total);
+  assert.deepEqual(errors, []);
+});
+
+test('programação do dia: exportar Excel baixa o arquivo do dia', async t => {
+  const { page, errors } = await portal(t);
+  await go(page, 'programacao');
+  await page.waitForSelector('[data-export-day="xlsx"]');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('[data-export-day="xlsx"]')]);
+  assert.match(download.suggestedFilename(), /\.xlsx$/);
+  assert.deepEqual(errors, []);
+});
+
+test('modo TV esconde menus e filtros e volta pelo botão', async t => {
+  const { page, errors } = await portal(t);
+  await go(page, 'programacao');
+  await page.click('[data-action="tv-mode"]');
+  await page.waitForSelector('.tv-mode .tv-bar');
+  assert.equal(await page.locator('.v-main-nav').isVisible(), false);
+  assert.equal(await page.locator('.v-tools-row').isVisible(), false);
+  assert.equal(await page.locator('.day-cards').isVisible(), true);
+  await page.click('.tv-bar [data-action="tv-mode"]');
+  await page.waitForTimeout(150);
+  assert.equal(await page.locator('.tv-mode').count(), 0);
+  assert.equal(await page.locator('.v-main-nav').isVisible(), true);
+  assert.deepEqual(errors, []);
+});

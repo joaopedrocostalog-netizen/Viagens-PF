@@ -1,5 +1,5 @@
 import { renderDateControl } from './date-controls.mjs';
-import { dayTrips, dailyStatus } from './programming-data.mjs';
+import { dayRows, dailyStatus, dayTrips, DAY_CATEGORIES } from './programming-data.mjs';
 import { memoView } from './view-cache.mjs';
 import { searchOperationalData } from './filtering.mjs';
 import { renderGrid } from './advanced-ui.mjs';
@@ -22,13 +22,15 @@ const dayOutside = state => {
 /** RVs da data da programação (mesma regra da tabela "Viagens do dia"), para as contagens da barra de etapas. */
 export function dayStageData(data, state) {
   if (dayOutside(state)) return { viagens: [] };
-  return { viagens: dayTrips(searchOperationalData(data, state.search), state.dayDate) };
+  return { viagens: dayRows(searchOperationalData(data, state.search), state.dayDate, state.dayCategory) };
 }
 export function renderDayProgramming(data, state) {
   const date = state.dayDate,
     source = memoView('day-search', [data, state.search], () => searchOperationalData(data, state.search));
-  const rows = memoView('day-trips', [source, date], () => dayTrips(source, date));
-  const counts = rows.reduce((acc, row) => {
+  const all = memoView('day-trips', [source, date], () => dayTrips(source, date));
+  const category = DAY_CATEGORIES.includes(state.dayCategory) ? state.dayCategory : '';
+  const rows = category ? all.filter(row => dailyStatus(row) === category) : all;
+  const counts = all.reduce((acc, row) => {
     const label = dailyStatus(row);
     acc[label] = (acc[label] || 0) + 1;
     return acc;
@@ -37,22 +39,40 @@ export function renderDayProgramming(data, state) {
   const controls =
     '<div class="day-toolbar"><div class="filter"><label for="dayDate">Data da programação</label>' +
     renderDateControl('dayDate', date, { label: 'Data da programação' }) +
-    '</div><button class="btn btn-sm" data-action="day-today">Hoje</button></div>';
+    '</div><div class="day-nav" role="group" aria-label="Navegar entre dias">' +
+    '<button class="btn btn-sm" data-action="day-prev" aria-label="Dia anterior" title="Dia anterior">◀</button>' +
+    '<button class="btn btn-sm" data-action="day-today">Hoje</button>' +
+    '<button class="btn btn-sm" data-action="day-next" aria-label="Próximo dia" title="Próximo dia">▶</button>' +
+    '</div><div class="day-actions">' +
+    '<button class="btn btn-sm" data-export-day="xlsx">Exportar Excel</button>' +
+    '<button class="btn btn-sm" data-export-day="pdf">PDF</button>' +
+    '<button class="btn btn-sm btn-red" data-action="tv-mode">' +
+    (state.tvMode ? 'Sair do modo TV' : 'Modo TV') +
+    '</button></div></div>';
   const note = outside
     ? '<p class="ins-inline-error" role="status">Esta data está fora do período carregado ou selecionado. Ajuste o período e atualize os dados para consultar.</p>'
     : '';
+  // Cartões filtram a tabela (clicar de novo remove o filtro), como os indicadores do Painel.
   const cards =
-    '<div class="ins-kpi-row">' +
-    ['Planejadas', 'Em andamento', 'Concluídas', 'Situação não informada', 'Outras situações']
-      .map(
-        label =>
-          '<div class="ins-kpi"><div>' +
-          label +
-          '</div><strong>' +
-          (outside ? '—' : counts[label] || 0) +
-          '</strong></div>'
-      )
-      .join('') +
+    '<div class="ins-kpi-row day-cards" role="group" aria-label="Filtrar viagens do dia por situação">' +
+    DAY_CATEGORIES.map(
+      label =>
+        '<button type="button" class="ins-kpi day-card' +
+        (category === label ? ' active' : '') +
+        '" data-day-category="' +
+        h(label) +
+        '" aria-pressed="' +
+        (category === label) +
+        '" ' +
+        (outside ? 'disabled' : '') +
+        '><div>' +
+        label +
+        '</div><strong>' +
+        (outside ? '—' : counts[label] || 0) +
+        '</strong><small>' +
+        (category === label ? 'Filtrando · clique para mostrar todas' : 'Clique para filtrar') +
+        '</small></button>'
+    ).join('') +
     '</div>';
   const columns = [
     { key: 'numero', label: 'RV', detail: 'viagens' },
@@ -101,6 +121,16 @@ export function renderDayProgramming(data, state) {
       : '') +
     '</details>';
   return (
-    controls + note + cards + renderGrid('Viagens do dia', outside ? [] : rows, columns, state, 'programacao') + extra
+    controls +
+    note +
+    cards +
+    renderGrid(
+      category ? 'Viagens do dia · ' + category : 'Viagens do dia',
+      outside ? [] : rows,
+      columns,
+      state,
+      'programacao'
+    ) +
+    extra
   );
 }
