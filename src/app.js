@@ -12,6 +12,9 @@ import { mobileTables } from './mobile-tables.mjs';
 import { parsePortalLink, portalLink } from './portal-links.mjs';
 import { renderPortalView } from './portal-view.mjs';
 import { demoPayload } from './demo-data.mjs';
+import { demoSignin, demoRights, demoAccountAction, demoChangeOwnPassword } from './demo-accounts.mjs';
+import { parseCsv } from './mdfe-csv.mjs';
+import { installMetricDrag, reorderMetricCards } from './metric-drag.mjs';
 import { clearViewCache } from './view-cache.mjs';
 import { alertKey, taskFor, updateTask, taskSummary, assignmentForOwner } from './workflow.mjs';
 import { renderTaskDrawer } from './workflow-ui.mjs';
@@ -56,138 +59,6 @@ const readPrefs = (key, def) => {
    Os dados reais DSS nunca devem ser servidos com a autenticação local do navegador. */
 const portalSettings = resolvePortalApi(window.location);
 const PUBLIC_DEMO = portalSettings.demoOnly;
-const DEMO_USERS_KEY = 'costalog_demo_users_v1';
-const TEMP_ADMIN_SALT = '0586030c9088763dba9e1cde008cce5a';
-const TEMP_ADMIN_HASH = '977b36fdad10f371180e01878f3d4331ae80c73e7b422eaeabb058ac48e65bdd';
-const PBKDF2_ITERATIONS = 120000;
-const demoRoles = ['operacional', 'financeiro', 'administrador'];
-const demoRights = role => ({ operacional: true, financeiro: false, admin: role === 'administrador' });
-function demoUsers() {
-  try {
-    const rows = JSON.parse(localStorage.getItem(DEMO_USERS_KEY) || 'null');
-    if (Array.isArray(rows) && rows.length) return rows;
-  } catch {}
-  return [
-    {
-      username: 'admin',
-      name: 'Administrador (demonstração)',
-      role: 'administrador',
-      salt: TEMP_ADMIN_SALT,
-      hash: TEMP_ADMIN_HASH,
-      disabled: false,
-      mustChangePassword: true
-    }
-  ];
-}
-function demoSave(rows) {
-  localStorage.setItem(DEMO_USERS_KEY, JSON.stringify(rows));
-}
-const randomHex = n =>
-  [...crypto.getRandomValues(new Uint8Array(n))].map(x => x.toString(16).padStart(2, '0')).join('');
-async function demoHash(password, salt) {
-  if (typeof password !== 'string' || password.length < 12 || password.length > 256)
-    throw Error('Use uma senha de 12 a 256 caracteres.');
-  if (!crypto?.subtle) throw Error('O modo de demonstração exige HTTPS e navegador atualizado.');
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
-  const derived = await crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      salt: new Uint8Array(salt.match(/../g).map(x => parseInt(x, 16))),
-      iterations: PBKDF2_ITERATIONS,
-      hash: 'SHA-256'
-    },
-    key,
-    256
-  );
-  return [...new Uint8Array(derived)].map(x => x.toString(16).padStart(2, '0')).join('');
-}
-const demoPublic = u => ({
-  username: u.username,
-  displayName: u.name || u.username,
-  name: u.name || u.username,
-  role: u.role,
-  disabled: !!u.disabled,
-  mustChangePassword: !!u.mustChangePassword
-});
-async function demoSignin(username, password) {
-  const u = demoUsers().find(
-    x =>
-      x.username ===
-        String(username || '')
-          .toLowerCase()
-          .trim() && !x.disabled
-  );
-  if (!u || (await demoHash(password, u.salt)) !== u.hash) throw Error('Usuário ou senha temporária incorretos.');
-  return demoPublic(u);
-}
-async function demoAccountAction(path = '', options = {}) {
-  if (state.role !== 'administrador' || !state.user || state.user.mustChangePassword)
-    throw Error('Somente o administrador pode modificar contas demonstrativas.');
-  const rows = demoUsers(),
-    operation = options.method || 'GET',
-    input = options.body ? JSON.parse(options.body) : {};
-  const admins = () => rows.filter(x => x.role === 'administrador' && !x.disabled).length;
-  if (!path && operation === 'GET') return { users: rows.map(demoPublic) };
-  if (!path && operation === 'POST') {
-    const username = String(input.username || '')
-        .trim()
-        .toLowerCase(),
-      name = String(input.name || '').trim();
-    if (!/^[a-z0-9._-]{3,60}$/.test(username) || name.length < 2 || name.length > 100)
-      throw Error('Informe nome e login válidos.');
-    if (!demoRoles.includes(input.role)) throw Error('Permissão inválida.');
-    if (rows.some(x => x.username === username)) throw Error('Este login já está cadastrado neste navegador.');
-    const salt = randomHex(16),
-      hash = await demoHash(input.password, salt);
-    const newUser = { username, name, role: input.role, salt, hash, disabled: false, mustChangePassword: true };
-    rows.push(newUser);
-    demoSave(rows);
-    return { user: demoPublic(newUser) };
-  }
-  if (path.startsWith('/') && operation === 'PATCH') {
-    const username = decodeURIComponent(path.slice(1)),
-      target = rows.find(x => x.username === username);
-    if (!target) throw Error('Funcionário não encontrado.');
-    switch (input.action) {
-      case 'role':
-        if (!demoRoles.includes(input.role)) throw Error('Permissão inválida.');
-        if (target.username === state.user.username && input.role !== 'administrador')
-          throw Error('Não é possível rebaixar sua própria conta.');
-        if (target.role === 'administrador' && input.role !== 'administrador' && admins() <= 1)
-          throw Error('Mantenha um administrador.');
-        target.role = input.role;
-        break;
-      case 'disable':
-        if (target.username === state.user.username) throw Error('Não pode bloquear sua própria conta.');
-        if (target.role === 'administrador' && admins() <= 1) throw Error('Mantenha um administrador.');
-        target.disabled = true;
-        break;
-      case 'enable':
-        target.disabled = false;
-        break;
-      case 'reset-password':
-        target.salt = randomHex(16);
-        target.hash = await demoHash(input.password, target.salt);
-        target.mustChangePassword = true;
-        break;
-      default:
-        throw Error('Ação inválida.');
-    }
-    demoSave(rows);
-    return { user: demoPublic(target) };
-  }
-  throw Error('Operação inválida.');
-}
-async function demoChangeOwnPassword(currentPassword, newPassword) {
-  const rows = demoUsers(),
-    u = rows.find(x => x.username === state.user?.username);
-  if (!u || (await demoHash(currentPassword, u.salt)) !== u.hash) throw Error('Senha provisória incorreta.');
-  if (currentPassword === newPassword) throw Error('A nova senha deve ser diferente.');
-  const salt = randomHex(16),
-    hash = await demoHash(newPassword, salt);
-  Object.assign(u, { salt, hash, mustChangePassword: false });
-  demoSave(rows);
-}
 
 const requestedCompany =
   new URLSearchParams(window.location.search || '').get('empresa') || readPrefs('viagens_pf_company', 'costalog');
@@ -336,56 +207,6 @@ function dateBR(v) {
 }
 function attr(v) {
   return esc(v);
-}
-function normalKey(v) {
-  return String(v || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]/gi, '')
-    .toLowerCase();
-}
-function pick(o, aliases) {
-  if (!o || typeof o !== 'object') return undefined;
-  const keys = Object.keys(o);
-  for (const a of aliases) {
-    const k = keys.find(x => normalKey(x) === normalKey(a));
-    if (k && o[k] !== null && o[k] !== '') return o[k];
-  }
-  return undefined;
-}
-function toDay(v) {
-  if (!v) return '';
-  const s = String(v);
-  const match = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-  if (match) return match[3] + '-' + match[2] + '-' + match[1];
-  return s.slice(0, 10);
-}
-function str(v) {
-  return v === undefined || v === null ? '' : String(v);
-}
-function extractList(v) {
-  if (Array.isArray(v)) return v;
-  if (!v || typeof v !== 'object') return [];
-  for (const key of ['data', 'dados', 'results', 'result', 'items', 'lista', 'registros', 'retorno', 'content']) {
-    const match = Object.keys(v).find(k => normalKey(k) === key);
-    if (match) {
-      const r = extractList(v[match]);
-      if (r.length || Array.isArray(v[match])) return r;
-    }
-  }
-  return [];
-}
-function normalizeMdfe(v, i) {
-  const n = str(pick(v, ['numeroMDFe', 'nroMDFe', 'nrMDFe', 'numero', 'id']));
-  return {
-    id: n || String(i + 1),
-    numero: n || '—',
-    empresa: str(pick(v, ['empresa', 'company', 'nomeEmpresa'])),
-    data: toDay(pick(v, ['dataEmissao', 'dtEmissao', 'data'])),
-    viagemId: str(pick(v, ['idViagem', 'numeroViagem', 'nroViagem', 'nrViagem', 'viagemId', 'viagem'])) || null,
-    placa: str(pick(v, ['placaVeiculo', 'placa', 'placaTracao'])),
-    status: str(pick(v, ['situacao', 'status'])) || 'Não informado'
-  };
 }
 function normalizePayload(raw, company = state.company) {
   return operationalDataset(normalizeOverview({ data: scopeCompanyData(raw?.data || raw, company) }));
@@ -789,7 +610,7 @@ function adminEndpoint(path = '') {
   return state.apiUrl.replace(/\/$/, '') + '/api/users' + path;
 }
 async function adminFetch(path = '', options = {}) {
-  if (PUBLIC_DEMO) return demoAccountAction(path, options);
+  if (PUBLIC_DEMO) return demoAccountAction(state, path, options);
   if (!state.permissions.admin || !state.token) throw Error('Somente administradores podem gerenciar contas.');
   const headers = {
     Authorization: 'Bearer ' + state.token,
@@ -894,7 +715,7 @@ async function changePortalPassword() {
   }
   try {
     if (PUBLIC_DEMO) {
-      await demoChangeOwnPassword(currentPassword, newPassword);
+      await demoChangeOwnPassword(state, currentPassword, newPassword);
       clearSession();
       state.connect = true;
       render();
@@ -1245,106 +1066,6 @@ function clearSession() {
   state.selected = null;
   state.lastSync = null;
   state.apiDiagnostics = null;
-}
-function csvCell(s) {
-  const v = str(s);
-  return '"' + v.replace(/"/g, '""') + '"';
-}
-function exportCsv(which) {
-  const d = scoped();
-  let rows = [],
-    name = 'relatorio';
-  if (which === 'viagens') {
-    name = 'viagens';
-    rows = [
-      ['RV', 'Data', 'Cliente', 'Placa', 'MDF-e', 'Origem', 'Destino', 'Fretes', 'Abastecimento ou custo', 'Situacao'],
-      ...d.viagens.map(v => [
-        v.numero,
-        v.data,
-        v.cliente,
-        v.placa,
-        v.nroMdf,
-        v.origem,
-        v.destino,
-        v.receita,
-        state.mode === 'live' ? v.abastecimento : v.custo,
-        v.status
-      ])
-    ];
-  } else if (which === 'ctes') {
-    name = 'pedidos_cte';
-    rows = [
-      ['Documento', 'Pedido PF', 'Tipo', 'Data', 'Cliente', 'RV', 'MDF-e', 'Valor', 'Situacao'],
-      ...[
-        ...d.ctes.map(x => ({ ...x, tipo: 'CT-e' })),
-        ...d.pedidos.filter(x => !x.isCte).map(x => ({ ...x, tipo: 'Pedido de frete' }))
-      ].map(v => [v.numero, v.pedidoNumero, v.tipo, v.data, v.cliente, v.viagemId, v.nroMdf, v.valor, v.status])
-    ];
-  } else if (which === 'clientes') {
-    name = 'clientes';
-    rows = [
-      ['Cliente', 'Viagens', 'Receita', 'Custo'],
-      ...aggregateClients(d.viagens, d.pedidos).map(v => [
-        v.cliente,
-        v.viagens,
-        v.receitaN === v.viagens ? v.receita : '',
-        v.custoN === v.viagens ? v.custo : ''
-      ])
-    ];
-  } else if (which === 'mdfes') {
-    name = 'mdfe';
-    rows = [
-      ['MDF-e', 'Data', 'Viagem', 'Placa', 'Situacao', 'Conciliacao'],
-      ...d.mdfes.map(v => [v.numero, v.data, v.viagemId, v.placa, v.status, mdfeSituation(v, d)])
-    ];
-  } else {
-    return exportCsv('viagens');
-  }
-  const blob = new Blob(['\uFEFF' + rows.map(r => r.map(csvCell).join(';')).join('\r\n')], {
-    type: 'text/csv;charset=utf-8;'
-  });
-  const u = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = u;
-  a.download = 'costalog_' + name + '_' + state.from + '_' + state.to + (state.mode === 'demo' ? '_DEMO' : '') + '.csv';
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(u), 1000);
-}
-function parseCsv(content) {
-  const text = content.replace(/^\uFEFF/, '').replace(/\r/g, '');
-  const rows = text.split('\n').filter(x => x.trim());
-  if (rows.length < 2) return [];
-  const sep = rows[0].includes(';') ? ';' : ',';
-  function parseLine(l) {
-    const out = [];
-    let token = '',
-      quoted = false;
-    for (let i = 0; i < l.length; i++) {
-      const c = l[i];
-      if (c === '"' && l[i + 1] === '"' && quoted) {
-        token += '"';
-        i++;
-      } else if (c === '"') {
-        quoted = !quoted;
-      } else if (c === sep && !quoted) {
-        out.push(token);
-        token = '';
-      } else token += c;
-    }
-    out.push(token);
-    return out;
-  }
-  const headers = parseLine(rows.shift()).map(normalKey);
-  return rows
-    .map((l, i) => {
-      const fields = parseLine(l);
-      const v = {};
-      headers.forEach((h, j) => (v[h] = fields[j] || ''));
-      return normalizeMdfe(v, i);
-    })
-    .filter(x => x.numero !== '—');
 }
 // Carrega mês a mês: evita respostas de 80 mil registros em uma única conexão HTTP.
 function splitMonths(from, to) {
@@ -3031,17 +2752,6 @@ function applyDateEdit(input, { typing = false, calendar = false, enter = false 
     }
   }, 350);
 }
-// Personalizar cartões: arrastar e soltar com o mouse (somente com "Personalizar cartões" aberto).
-let draggedMetric = '';
-const metricTarget = e => (state.showMetricOptions && draggedMetric ? e.target?.closest?.('[data-metric-card]') : null);
-const dropAfter = (card, e) => {
-  const r = card.getBoundingClientRect();
-  return e.clientX > r.left + r.width / 2;
-};
-const clearDropMarks = () =>
-  root
-    .querySelectorAll?.('.drop-before,.drop-after,.is-dragging')
-    .forEach(el => el.classList.remove('drop-before', 'drop-after', 'is-dragging'));
 function applyMetricLayout(layout, focusId = '') {
   const before = JSON.stringify(normalizedLayout(state.metricLayout, { financial: !!state.permissions.financeiro }));
   if (JSON.stringify(layout) === before) return;
@@ -3052,56 +2762,12 @@ function applyMetricLayout(layout, focusId = '') {
   render();
   if (focusId) document.querySelector?.('[data-metric-card="' + focusId + '"]')?.focus?.();
 }
-function reorderMetricCards(html, layout) {
-  if (typeof document?.createElement !== 'function') return html;
-  const box = document.createElement('template');
-  box.innerHTML = html;
-  const grid = box.content.querySelector('.ins-metric-grid');
-  if (!grid) return html;
-  const cards = new Map([...grid.querySelectorAll('[data-metric-card]')].map(card => [card.dataset.metricCard, card]));
-  for (const id of layout) if (cards.has(id)) grid.append(cards.get(id));
-  return box.innerHTML;
-}
-root.addEventListener('dragstart', e => {
-  const card = state.showMetricOptions && e.target?.closest?.('[data-metric-card]');
-  if (!card) return;
-  draggedMetric = card.dataset.metricCard;
-  card.classList.add('is-dragging');
-  try {
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', draggedMetric);
-  } catch {}
-});
-root.addEventListener('dragover', e => {
-  const card = metricTarget(e);
-  if (!card) return;
-  e.preventDefault();
-  try {
-    e.dataTransfer.dropEffect = 'move';
-  } catch {}
-  if (card.dataset.metricCard === draggedMetric) return;
-  const after = dropAfter(card, e);
-  card.classList.toggle('drop-after', after);
-  card.classList.toggle('drop-before', !after);
-});
-root.addEventListener('dragleave', e => {
-  const card = metricTarget(e);
-  if (card && !card.contains(e.relatedTarget)) card.classList.remove('drop-before', 'drop-after');
-});
-root.addEventListener('drop', e => {
-  const card = metricTarget(e);
-  if (!card) return;
-  e.preventDefault();
-  const id = draggedMetric,
-    target = card.dataset.metricCard,
-    after = dropAfter(card, e);
-  draggedMetric = '';
-  clearDropMarks();
-  applyMetricLayout(moveMetric(state.metricLayout, id, target, { after, financial: !!state.permissions.financeiro }));
-});
-root.addEventListener('dragend', () => {
-  draggedMetric = '';
-  clearDropMarks();
+const metricKey = installMetricDrag(root, {
+  isActive: () => !!state.showMetricOptions,
+  move: (id, target, after) =>
+    applyMetricLayout(moveMetric(state.metricLayout, id, target, { after, financial: !!state.permissions.financeiro })),
+  step: (id, delta) =>
+    applyMetricLayout(reorderMetric(state.metricLayout, id, delta, { financial: !!state.permissions.financeiro }), id)
 });
 root.addEventListener(
   'toggle',
@@ -3161,18 +2827,7 @@ root.addEventListener('input', e => {
   }, 160);
 });
 root.addEventListener('keydown', e => {
-  const metricCard = state.showMetricOptions && e.target?.closest?.('[data-metric-card]');
-  if (metricCard && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-    e.preventDefault();
-    const id = metricCard.dataset.metricCard;
-    applyMetricLayout(
-      reorderMetric(state.metricLayout, id, ['ArrowLeft', 'ArrowUp'].includes(e.key) ? -1 : 1, {
-        financial: !!state.permissions.financeiro
-      }),
-      id
-    );
-    return;
-  }
+  if (metricKey(e)) return;
   if (e.key === 'Enter' && DATE_FIELDS.has(e.target.id)) {
     e.preventDefault();
     applyDateEdit(e.target, { enter: true });
