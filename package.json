@@ -2,7 +2,16 @@
   "name": "costalog-viagens-pf",
   "private": true,
   "type": "module",
-  "engines": {"node": ">=20"},
-  "dependencies": {"mysql2": "^3.15.3"},
-  "scripts": {"start": "node api/server.mjs", "test": "node --test tests/*.test.mjs"}
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "mysql2": "^3.15.3"
+  },
+  "scripts": {
+    "start": "node api/server.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "format": "npx -y prettier@3 --write \"src/**/*.{js,mjs}\" \"api/**/*.mjs\" \"tests/**/*.mjs\" styles.css index.html",
+    "format:check": "npx -y prettier@3 --check \"src/**/*.{js,mjs}\" \"api/**/*.mjs\" \"tests/**/*.mjs\" styles.css index.html"
+  }
 }

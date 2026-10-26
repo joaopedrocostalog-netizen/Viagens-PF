@@ -1,65 +1,223 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import {mkdtemp,rm,writeFile} from 'node:fs/promises';
-import {join} from 'node:path';
-import {spawn} from 'node:child_process';
-import {passwordHash} from '../api/auth.mjs';
-const pause=()=>new Promise(resolve=>setTimeout(resolve,30));
-const listen=server=>new Promise(resolve=>server.listen(0,'127.0.0.1',()=>resolve(server.address().port)));
-test('HTTP portal: pages, metrics, durable account preferences and cancellation without hidden DSS calls',async t=>{
- const dir=await mkdtemp(join(process.cwd(),'test-private-'));t.after(()=>rm(dir,{recursive:true,force:true}));
- const password='test-password-very-private';await writeFile(join(dir,'users.json'),JSON.stringify({users:['operador','outra.conta','admin'].map(username=>({username,role:username==='admin'?'administrador':'operacional',...passwordHash(password)}))}));
- let calls=0,delay=false,aborted=0;
- const upstream=http.createServer((req,res)=>{
-  calls++;res.on('close',()=>{if(!res.writableEnded)aborted++;});
-  const send=()=>{if(res.destroyed)return;res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({status:200,registros:Array.from({length:70},(_,i)=>req.url.includes('listarViagens')?{empresa:i<60?'CRC':'Ideallog',rv_id:i+1,nro_rv:'RV-'+i,data_inicio:'10/10/2026',status_rv:'Viajando',cliente_nome:'Cliente-'+i}:{empresa:i<60?'CRC':'Ideallog',pf_id:i+1,nro_pf:'PF-'+i,rv_viagem:'RV-'+i,data_emissao:'10/10/2026'})}));};
-  if(delay){const timer=setTimeout(send,5000);res.once('close',()=>clearTimeout(timer));}else send();
- });
- const source=await listen(upstream);t.after(()=>{upstream.closeAllConnections();upstream.close();});
- const reserve=http.createServer();const port=await listen(reserve);await new Promise(resolve=>reserve.close(resolve));
- const child=spawn(process.execPath,['api/server.mjs'],{env:{...process.env,PORT:String(port),PORTAL_USERS_FILE:join(dir,'users.json'),PORTAL_DATA_DIR:dir,RENDER:'',DSS_BASE_URL:'http://127.0.0.1:'+source,DSS_USERNAME:'test',DSS_PASSWORD:'private',DSS_CTES_PATH:'',DSS_MDFES_PATH:'',DSS_OCORRENCIAS_PATH:'',DSS_PROGRAMACOES_PATH:'',DSS_ROTAS_PATH:'',DSS_MOTORISTAS_PATH:''},stdio:['ignore','pipe','pipe']});
- t.after(()=>child.kill());let logs='';child.stderr.on('data',v=>logs+=v);
- const base='http://127.0.0.1:'+port;
- for(let i=0;i<100;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{}await pause();}
- const login=async username=>(await(await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})})).json());
- const account=await login('operador');assert.equal(account.portalVersion,2);
- const request=(path,{method='GET',body,token=account.token}={})=>fetch(base+path,{method,headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
- const range={from:'2026-10-01',to:'2026-10-23'};
- assert.equal((await fetch(base+'/api/portal/sync')).status,401);
- let job=await(await request('/api/portal/sync',{method:'POST',body:range})).json();assert(job.id,logs);
- for(let i=0;i<100&&job.status==='running';i++){await pause();job=await(await request('/api/portal/sync?id='+job.id)).json();}
- assert.equal(job.status,'complete',logs);assert.equal(calls,2);assert.equal(job.completed,job.total);
- const input={snapshot:job.snapshot,state:{...range,view:'viagens',page:1,sortDir:'asc'}};
- let response=await request('/api/portal/view',{method:'POST',body:input});assert.equal(response.status,200,logs);const first=await response.json();assert(first.html.includes('Cliente-0'));assert(!first.html.includes('Cliente-59'));
- input.state.page=2;const second=await(await request('/api/portal/view',{method:'POST',body:input})).json();assert.equal(second.page,2);assert.notEqual(second.html,first.html);
- const ideal=await(await request('/api/portal/view?company=ideallog',{method:'POST',body:input})).json();assert(ideal.html.includes('Cliente-60'));assert(!ideal.html.includes('Cliente-0'));
- for(const name of ['portal-client.mjs','rv-stage-filter.mjs'])assert.equal((await request('/src/'+name)).status,200);
- assert.equal(calls,2,'opening pages or changing company must not call DSS');
- assert.equal((await request('/api/preferences',{method:'PATCH',body:{revision:0,values:{reportFormat:'csv'}}})).status,200);
- assert.equal((await(await request('/api/preferences')).json()).values.reportFormat,'csv');
- const other=await login('outra.conta');assert.deepEqual((await(await request('/api/preferences',{token:other.token})).json()).values,{});
- assert.equal((await request('/api/portal/view',{method:'POST',body:input,token:other.token})).status,404);
- assert.equal((await request('/api/portal/view?company=todas',{method:'POST',body:input})).status,400);
- const actions=(body,token=account.token,company='costalog')=>request('/api/workflow/actions?company='+company,{method:'POST',body,token});
- assert.equal((await actions({action:'save-rules',policy:{revision:0,days:{cte_pendente:2}}})).status,403);
- const archiveBefore=await(await actions({action:'archive',state:{from:'1990-01-01',to:'1990-01-02'}})).json();assert.equal(archiveBefore.total,0);
- const selected=[{key:'cte_pendente:ctes:crc~1',revision:0},{key:'cte_pendente:ctes:crc~2',revision:0}];
- assert.equal((await actions({action:'preview-batch',items:selected,changes:{status:'resolvida',comment:'Sem motivo explícito'}})).status,400);
- const preview=await(await actions({action:'preview-batch',items:selected,changes:{status:'resolvida',resolutionReason:'Documentos conferidos'}})).json();assert.equal(preview.count,2);
- assert.equal((await actions({action:'apply-batch',token:preview.token},other.token)).status,409);
- assert.equal((await actions({action:'apply-batch',token:preview.token},account.token,'ideallog')).status,409);
- assert.equal((await actions({action:'apply-batch',token:preview.token})).status,200);
- const archived=await(await actions({action:'archive',state:{from:'1990-01-01',to:'1990-01-02',legalEntity:'crc'}})).json();assert.equal(archived.total,2);assert(archived.html.includes('Documentos conferidos'));
- assert.equal((await(await actions({action:'archive',state:{}},account.token,'ideallog')).json()).total,0);
- const admin=await login('admin');assert.equal((await actions({action:'save-rules',policy:{revision:0,days:{cte_pendente:2},applyUnscheduled:true}},admin.token)).status,200);
- const summary=await(await request('/api/workflow?company=costalog')).json();assert(summary.tasks['cte_pendente:ctes:crc~3'].due);assert.equal(summary.tasks['cte_pendente:ctes:crc~1'].status,'resolvida');
- const notices=await(await actions({action:'notices',state:{legalEntity:'crc'}})).json();assert(notices.counts.sem_responsavel>0);
- const exported=await(await actions({action:'export-archive',state:{legalEntity:'crc'}})).json();assert.equal(exported.models[0].rows.length,2);assert.equal(calls,2,'workflow actions never call DSS');
- delay=true;const cancel=await(await request('/api/portal/sync',{method:'POST',body:range})).json();
- for(let i=0;i<30&&calls<4;i++)await pause();assert.equal(calls,4);
- assert.equal((await request('/api/portal/sync',{method:'PATCH',body:{id:cancel.id}})).status,200);
- for(let i=0;i<30&&aborted<2;i++)await pause();assert.equal(aborted,2,'cancel must abort the DSS connections');
- assert.equal((await(await request('/api/portal/sync?id='+cancel.id)).json()).status,'cancelled');
- const kept=await request('/api/portal/view',{method:'POST',body:input});assert.equal(kept.status,200,'previous complete snapshot survives cancellation');
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { spawn } from 'node:child_process';
+import { passwordHash } from '../api/auth.mjs';
+const pause = () => new Promise(resolve => setTimeout(resolve, 30));
+const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
+test('HTTP portal: pages, metrics, durable account preferences and cancellation without hidden DSS calls', async t => {
+  const dir = await mkdtemp(join(process.cwd(), 'test-private-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const password = 'test-password-very-private';
+  await writeFile(
+    join(dir, 'users.json'),
+    JSON.stringify({
+      users: ['operador', 'outra.conta', 'admin'].map(username => ({
+        username,
+        role: username === 'admin' ? 'administrador' : 'operacional',
+        ...passwordHash(password)
+      }))
+    })
+  );
+  let calls = 0,
+    delay = false,
+    aborted = 0;
+  const upstream = http.createServer((req, res) => {
+    calls++;
+    res.on('close', () => {
+      if (!res.writableEnded) aborted++;
+    });
+    const send = () => {
+      if (res.destroyed) return;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          status: 200,
+          registros: Array.from({ length: 70 }, (_, i) =>
+            req.url.includes('listarViagens')
+              ? {
+                  empresa: i < 60 ? 'CRC' : 'Ideallog',
+                  rv_id: i + 1,
+                  nro_rv: 'RV-' + i,
+                  data_inicio: '10/10/2026',
+                  status_rv: 'Viajando',
+                  cliente_nome: 'Cliente-' + i
+                }
+              : {
+                  empresa: i < 60 ? 'CRC' : 'Ideallog',
+                  pf_id: i + 1,
+                  nro_pf: 'PF-' + i,
+                  rv_viagem: 'RV-' + i,
+                  data_emissao: '10/10/2026'
+                }
+          )
+        })
+      );
+    };
+    if (delay) {
+      const timer = setTimeout(send, 5000);
+      res.once('close', () => clearTimeout(timer));
+    } else send();
+  });
+  const source = await listen(upstream);
+  t.after(() => {
+    upstream.closeAllConnections();
+    upstream.close();
+  });
+  const reserve = http.createServer();
+  const port = await listen(reserve);
+  await new Promise(resolve => reserve.close(resolve));
+  const child = spawn(process.execPath, ['api/server.mjs'], {
+    env: {
+      ...process.env,
+      PORT: String(port),
+      PORTAL_USERS_FILE: join(dir, 'users.json'),
+      PORTAL_DATA_DIR: dir,
+      RENDER: '',
+      DSS_BASE_URL: 'http://127.0.0.1:' + source,
+      DSS_USERNAME: 'test',
+      DSS_PASSWORD: 'private',
+      DSS_CTES_PATH: '',
+      DSS_MDFES_PATH: '',
+      DSS_OCORRENCIAS_PATH: '',
+      DSS_PROGRAMACOES_PATH: '',
+      DSS_ROTAS_PATH: '',
+      DSS_MOTORISTAS_PATH: ''
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  t.after(() => child.kill());
+  let logs = '';
+  child.stderr.on('data', v => (logs += v));
+  const base = 'http://127.0.0.1:' + port;
+  for (let i = 0; i < 100; i++) {
+    try {
+      if ((await fetch(base + '/api/health')).ok) break;
+    } catch {}
+    await pause();
+  }
+  const login = async username =>
+    await (
+      await fetch(base + '/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      })
+    ).json();
+  const account = await login('operador');
+  assert.equal(account.portalVersion, 2);
+  const request = (path, { method = 'GET', body, token = account.token } = {}) =>
+    fetch(base + path, {
+      method,
+      headers: { Authorization: 'Bearer ' + token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+  const range = { from: '2026-10-01', to: '2026-10-23' };
+  assert.equal((await fetch(base + '/api/portal/sync')).status, 401);
+  let job = await (await request('/api/portal/sync', { method: 'POST', body: range })).json();
+  assert(job.id, logs);
+  for (let i = 0; i < 100 && job.status === 'running'; i++) {
+    await pause();
+    job = await (await request('/api/portal/sync?id=' + job.id)).json();
+  }
+  assert.equal(job.status, 'complete', logs);
+  assert.equal(calls, 2);
+  assert.equal(job.completed, job.total);
+  const input = { snapshot: job.snapshot, state: { ...range, view: 'viagens', page: 1, sortDir: 'asc' } };
+  let response = await request('/api/portal/view', { method: 'POST', body: input });
+  assert.equal(response.status, 200, logs);
+  const first = await response.json();
+  assert(first.html.includes('Cliente-0'));
+  assert(!first.html.includes('Cliente-59'));
+  input.state.page = 2;
+  const second = await (await request('/api/portal/view', { method: 'POST', body: input })).json();
+  assert.equal(second.page, 2);
+  assert.notEqual(second.html, first.html);
+  const ideal = await (await request('/api/portal/view?company=ideallog', { method: 'POST', body: input })).json();
+  assert(ideal.html.includes('Cliente-60'));
+  assert(!ideal.html.includes('Cliente-0'));
+  for (const name of ['portal-client.mjs', 'rv-stage-filter.mjs'])
+    assert.equal((await request('/src/' + name)).status, 200);
+  assert.equal(calls, 2, 'opening pages or changing company must not call DSS');
+  assert.equal(
+    (await request('/api/preferences', { method: 'PATCH', body: { revision: 0, values: { reportFormat: 'csv' } } }))
+      .status,
+    200
+  );
+  assert.equal((await (await request('/api/preferences')).json()).values.reportFormat, 'csv');
+  const other = await login('outra.conta');
+  assert.deepEqual((await (await request('/api/preferences', { token: other.token })).json()).values, {});
+  assert.equal((await request('/api/portal/view', { method: 'POST', body: input, token: other.token })).status, 404);
+  assert.equal((await request('/api/portal/view?company=todas', { method: 'POST', body: input })).status, 400);
+  const actions = (body, token = account.token, company = 'costalog') =>
+    request('/api/workflow/actions?company=' + company, { method: 'POST', body, token });
+  assert.equal(
+    (await actions({ action: 'save-rules', policy: { revision: 0, days: { cte_pendente: 2 } } })).status,
+    403
+  );
+  const archiveBefore = await (
+    await actions({ action: 'archive', state: { from: '1990-01-01', to: '1990-01-02' } })
+  ).json();
+  assert.equal(archiveBefore.total, 0);
+  const selected = [
+    { key: 'cte_pendente:ctes:crc~1', revision: 0 },
+    { key: 'cte_pendente:ctes:crc~2', revision: 0 }
+  ];
+  assert.equal(
+    (
+      await actions({
+        action: 'preview-batch',
+        items: selected,
+        changes: { status: 'resolvida', comment: 'Sem motivo explícito' }
+      })
+    ).status,
+    400
+  );
+  const preview = await (
+    await actions({
+      action: 'preview-batch',
+      items: selected,
+      changes: { status: 'resolvida', resolutionReason: 'Documentos conferidos' }
+    })
+  ).json();
+  assert.equal(preview.count, 2);
+  assert.equal((await actions({ action: 'apply-batch', token: preview.token }, other.token)).status, 409);
+  assert.equal((await actions({ action: 'apply-batch', token: preview.token }, account.token, 'ideallog')).status, 409);
+  assert.equal((await actions({ action: 'apply-batch', token: preview.token })).status, 200);
+  const archived = await (
+    await actions({ action: 'archive', state: { from: '1990-01-01', to: '1990-01-02', legalEntity: 'crc' } })
+  ).json();
+  assert.equal(archived.total, 2);
+  assert(archived.html.includes('Documentos conferidos'));
+  assert.equal((await (await actions({ action: 'archive', state: {} }, account.token, 'ideallog')).json()).total, 0);
+  const admin = await login('admin');
+  assert.equal(
+    (
+      await actions(
+        { action: 'save-rules', policy: { revision: 0, days: { cte_pendente: 2 }, applyUnscheduled: true } },
+        admin.token
+      )
+    ).status,
+    200
+  );
+  const summary = await (await request('/api/workflow?company=costalog')).json();
+  assert(summary.tasks['cte_pendente:ctes:crc~3'].due);
+  assert.equal(summary.tasks['cte_pendente:ctes:crc~1'].status, 'resolvida');
+  const notices = await (await actions({ action: 'notices', state: { legalEntity: 'crc' } })).json();
+  assert(notices.counts.sem_responsavel > 0);
+  const exported = await (await actions({ action: 'export-archive', state: { legalEntity: 'crc' } })).json();
+  assert.equal(exported.models[0].rows.length, 2);
+  assert.equal(calls, 2, 'workflow actions never call DSS');
+  delay = true;
+  const cancel = await (await request('/api/portal/sync', { method: 'POST', body: range })).json();
+  for (let i = 0; i < 30 && calls < 4; i++) await pause();
+  assert.equal(calls, 4);
+  assert.equal((await request('/api/portal/sync', { method: 'PATCH', body: { id: cancel.id } })).status, 200);
+  for (let i = 0; i < 30 && aborted < 2; i++) await pause();
+  assert.equal(aborted, 2, 'cancel must abort the DSS connections');
+  assert.equal((await (await request('/api/portal/sync?id=' + cancel.id)).json()).status, 'cancelled');
+  const kept = await request('/api/portal/view', { method: 'POST', body: input });
+  assert.equal(kept.status, 200, 'previous complete snapshot survives cancellation');
 });

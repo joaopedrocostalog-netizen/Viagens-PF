@@ -1,0 +1,5 @@
+node_modules/
+*.md
+*.png
+*.sql
+package-lock.json
