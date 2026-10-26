@@ -180,3 +180,7 @@
 - Trocar de aba limpa filtros que não se aplicam à nova aba.
 - O painel abre/fecha na hora (só muda uma classe). As opções vêm do servidor apenas ao abrir (`/api/portal/filters`), com "Carregando filtros…" e cache no navegador; a página deixou de carregar a lista de clientes/placas a cada clique.
 - Removido "Período rápido" do painel (duplicava as datas do topo).
+
+## 2026-10-26 — Interface compacta
+- Bloco "Interface compacta" no fim de `styles.css`: cabeçalho, menus, título da área, controles, botões, indicadores, etapas da RV, tabelas e pendências com menos altura e fontes menores. No celular, o cabeçalho deixou de sobrepor os botões.
+- Removidos textos repetidos: "Indicador calculado com os registros disponíveis" nos cartões do painel e "Clique para filtrar" nos cartões da Programação do dia (virou dica ao passar o mouse).

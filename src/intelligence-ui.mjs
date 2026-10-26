@@ -201,7 +201,7 @@ export function renderCustomDashboard(data, state) {
       const extra =
         m.coverage !== null
           ? 'Dados conhecidos: ' + m.coverage + '/' + data.viagens.length + ' RVs'
-          : metricDescription[id] || 'Indicador calculado com os registros disponíveis';
+          : metricDescription[id] || '';
       const arrange = state.showMetricOptions
         ? ' is-arrangeable" draggable="true" tabindex="0" data-metric-card="' +
           id +
@@ -223,9 +223,8 @@ export function renderCustomDashboard(data, state) {
         '</div>' +
         '<strong>' +
         esc(val) +
-        '</strong><span>' +
-        esc(extra) +
-        '</span>' +
+        '</strong>' +
+        (extra ? '<span>' + esc(extra) + '</span>' : '') +
         (!m.financial
           ? '<button class="btn btn-sm ins-metric-open" data-metric-open="' + id + '">Ver registros ↗</button>'
           : '') +

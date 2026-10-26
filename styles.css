@@ -4457,3 +4457,445 @@ body {
   padding: 4px 8px;
   font-size: 12px;
 }
+
+/* ===================== Interface compacta =====================
+ * O portal é uma ferramenta de trabalho: menos altura, menos espaço vazio e fontes menores em tudo.
+ * Fica no fim do arquivo para valer sobre as regras anteriores; o que muda a disposição só vale acima de 780px. */
+.btn {
+  padding: 6px 10px;
+  font-size: 11px;
+  border-radius: 7px;
+  gap: 6px;
+}
+.btn-sm {
+  padding: 4px 8px;
+}
+.control {
+  padding: 6px 9px;
+  min-height: 30px;
+  font-size: 11.5px;
+  border-radius: 7px;
+}
+.filter {
+  gap: 4px;
+}
+.filter label,
+.filter-row .filter span {
+  font-size: 10px;
+}
+.filter-row {
+  gap: 7px;
+}
+.info-strip {
+  padding: 7px 10px;
+  margin-bottom: 10px;
+  font-size: 11px;
+}
+table {
+  font-size: 11.5px;
+}
+thead {
+  font-size: 9.5px;
+}
+th,
+td {
+  padding: 7px 10px;
+}
+.card {
+  padding: 12px;
+  border-radius: 10px;
+}
+.card-head {
+  margin-bottom: 8px;
+  padding-bottom: 7px;
+}
+.table-tools {
+  margin-bottom: 8px;
+  gap: 8px;
+}
+.table-tools h2,
+.section-title h2 {
+  font-size: 13px;
+}
+.v-content > .table-tools h2 {
+  font-size: 14px;
+}
+.drawer-top h2 {
+  font-size: 15px;
+}
+
+/* Cabeçalho e navegação */
+.v-topbar {
+  height: 46px;
+}
+.v-brand-logo {
+  width: 28px;
+  height: 30px;
+}
+.v-topbrand {
+  gap: 9px;
+}
+.v-topbrand b {
+  font-size: 13px;
+  letter-spacing: 1.5px;
+}
+.v-topbrand small {
+  font-size: 7px;
+}
+.v-topbrand > i {
+  height: 20px;
+}
+.v-topbrand > strong {
+  font-size: 10.5px;
+}
+.v-accountbar {
+  gap: 8px;
+}
+.v-environment {
+  padding: 3px 7px;
+  font-size: 9px;
+}
+.v-menu-row {
+  min-height: 0;
+  padding: 4px clamp(12px, 1.6vw, 28px);
+}
+.v-nav-item {
+  padding: 6px 10px;
+  gap: 6px;
+  font-size: 11px;
+}
+.v-nav-item svg {
+  width: 14px;
+  height: 14px;
+}
+.v-right-hint {
+  padding: 4px 8px;
+  font-size: 9px;
+}
+.v-sub-nav {
+  padding: 3px clamp(12px, 1.6vw, 28px);
+  gap: 2px;
+}
+.v-sub-item {
+  padding: 4px 8px;
+  font-size: 10px;
+}
+.v-sub-item svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Título da área */
+.v-hero {
+  padding: 9px 13px;
+  gap: 11px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+}
+.v-hero-mark {
+  width: 30px;
+  height: 30px;
+  font-size: 16px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+.v-hero h1 {
+  font-size: 15px;
+  margin: 0 0 1px;
+}
+.v-hero p {
+  font-size: 10.5px;
+}
+.v-hero-badge {
+  font-size: 9px;
+  padding: 2px 5px;
+}
+.v-hero-side > span {
+  font-size: 8.5px;
+}
+.v-hero-side > strong {
+  font-size: 12px;
+}
+.v-hero-side > small {
+  font-size: 10px;
+}
+
+/* Datas, pesquisa e ações */
+.v-tools-row {
+  margin-bottom: 8px;
+  gap: 8px;
+}
+.v-tools-row .control {
+  min-height: 30px;
+  padding: 5px 9px;
+}
+.v-tools-row .filter {
+  min-width: 120px;
+}
+.v-tools-row .filter label {
+  font-size: 9.5px;
+}
+.date-control {
+  grid-template-columns: minmax(0, 1fr) 30px;
+}
+.date-control .date-text {
+  font-size: 11.5px;
+  min-width: 96px !important;
+}
+.date-calendar-button {
+  height: 30px;
+  min-height: 30px;
+}
+.date-calendar-button svg {
+  width: 14px;
+  height: 14px;
+}
+.last-sync {
+  font-size: 10px;
+}
+.v-extra-filters {
+  border-radius: 9px;
+  margin-bottom: 9px;
+}
+.v-extra-filters .filter-advanced {
+  padding: 8px 10px 9px;
+}
+.filter-row-actions {
+  margin-top: 6px;
+}
+.filters-loading {
+  padding: 9px 11px;
+  font-size: 11px;
+}
+.filter-chip {
+  font-size: 11px;
+  padding: 2px 4px 2px 8px;
+}
+
+/* Indicadores */
+.v-stats-grid,
+.ins-kpi-row,
+.ins-metric-grid {
+  gap: 9px;
+}
+.v-stats-grid {
+  margin-bottom: 9px;
+}
+.v-stat {
+  min-height: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+.v-stat-caption {
+  font-size: 9.5px;
+}
+.v-stat-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.v-stat-value {
+  font-size: 21px;
+  margin: 4px 0 2px;
+}
+.v-stat-sub {
+  font-size: 10px;
+  min-height: 0;
+}
+.ins-module {
+  margin: 10px 0 12px;
+  padding: 12px 13px;
+  border-radius: 10px;
+}
+.ins-module h2 {
+  font-size: 13px;
+}
+.ins-module h3 {
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.ins-toolbar {
+  margin-bottom: 10px;
+}
+.ins-toolbar p {
+  font-size: 10.5px;
+}
+.ins-kpi,
+.ins-metric-card {
+  min-height: 0;
+  padding: 9px 11px;
+  gap: 3px;
+  border-radius: 9px;
+}
+.ins-kpi strong,
+.ins-metric-card > strong {
+  font-size: 19px;
+}
+.ins-metric-card .ins-metric-open {
+  margin-top: 4px;
+  align-self: flex-start;
+  padding: 3px 7px;
+  font-size: 10px;
+}
+.v-panel {
+  padding: 12px 13px 13px;
+  border-radius: 10px;
+}
+.v-panel h3 {
+  font-size: 12.5px;
+}
+
+/* Etapas da RV e paginação */
+.rv-status-step {
+  min-height: 28px;
+  padding: 4px 15px 4px 10px;
+  font-size: 11px;
+  gap: 6px;
+}
+.pagination {
+  gap: 6px;
+  padding: 8px 4px;
+  font-size: 11px;
+}
+
+@media (min-width: 781px) {
+  .v-hero-side {
+    min-width: 0;
+    padding-left: 14px;
+    gap: 2px;
+  }
+  .v-content {
+    padding: 12px clamp(12px, 1.6vw, 28px) 48px;
+  }
+}
+.v-tools-row .filter .control,
+.v-extra-filters .control {
+  height: auto;
+  min-height: 30px;
+  font-size: 11.5px;
+}
+.filter-row-actions .btn,
+.alert-scope-tabs .btn,
+.rv-checklist .btn {
+  min-height: 28px;
+}
+.v-accountbar .btn-company-switch {
+  min-height: 28px;
+}
+.v-extra-filters .filter span {
+  font-size: 10px;
+}
+.my-task-bucket {
+  gap: 4px;
+  padding: 9px 12px;
+}
+.my-task-bucket span {
+  font-size: 11px;
+}
+.my-task-bucket strong {
+  font-size: 19px;
+}
+.technical-footer > summary {
+  min-height: 32px;
+  font-size: 12px;
+}
+.ins-alert-item {
+  padding: 8px 11px;
+  gap: 10px;
+  border-radius: 9px;
+}
+.ins-alert-signal {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+.ins-alert-item p {
+  margin: 2px 0;
+}
+.ins-alert-list {
+  gap: 6px;
+}
+.pending-toolbar {
+  margin: 8px 0;
+}
+.pending-toolbar label,
+.pending-toolbar span {
+  font-size: 11px;
+}
+@media (max-width: 780px) {
+  .v-topbar {
+    height: auto;
+    min-height: 44px;
+    padding: 6px 10px;
+    gap: 8px;
+  }
+  .v-accountbar {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  .v-accountbar .btn,
+  .v-accountbar .btn-company-switch {
+    min-height: 28px;
+    padding: 4px 8px;
+  }
+  .v-menu-row,
+  .v-sub-nav {
+    padding: 3px 8px;
+  }
+  .v-content {
+    padding: 10px 10px 40px;
+  }
+  .v-hero {
+    padding: 10px 12px;
+  }
+  .v-hero h1 {
+    font-size: 15px;
+  }
+  .v-hero-side {
+    padding-top: 7px;
+  }
+}
+@media (max-width: 700px) {
+  .v-nav-item,
+  .v-sub-item,
+  .rv-status-step,
+  .v-tools-row > .btn {
+    min-height: 36px;
+  }
+  .rv-status-step:not(:last-child)::after {
+    top: 11px;
+  }
+  .date-control {
+    grid-template-columns: minmax(0, 1fr) 34px;
+  }
+  .date-control .date-text {
+    padding: 7px !important;
+    font-size: 12px !important;
+  }
+  .date-calendar-button {
+    height: 34px;
+    min-height: 34px;
+  }
+  .v-tools-row .filter .control,
+  .v-extra-filters .control {
+    min-height: 34px;
+  }
+}
+@media (max-width: 470px) {
+  .v-stat {
+    min-height: 0;
+    padding: 10px;
+  }
+  .v-stat-value {
+    font-size: 19px;
+  }
+  .v-hero-mark {
+    width: 28px;
+    height: 28px;
+    font-size: 15px;
+  }
+}

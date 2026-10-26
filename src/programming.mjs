@@ -61,7 +61,7 @@ export function renderDayProgramming(data, state) {
         (category === label ? ' active' : '') +
         '" data-day-category="' +
         h(label) +
-        '" aria-pressed="' +
+        '" title="Clique para filtrar a tabela" aria-pressed="' +
         (category === label) +
         '" ' +
         (outside ? 'disabled' : '') +
@@ -69,9 +69,9 @@ export function renderDayProgramming(data, state) {
         label +
         '</div><strong>' +
         (outside ? '—' : counts[label] || 0) +
-        '</strong><small>' +
-        (category === label ? 'Filtrando · clique para mostrar todas' : 'Clique para filtrar') +
-        '</small></button>'
+        '</strong>' +
+        (category === label ? '<small>Filtrando · clique para mostrar todas</small>' : '') +
+        '</button>'
     ).join('') +
     '</div>';
   const columns = [
