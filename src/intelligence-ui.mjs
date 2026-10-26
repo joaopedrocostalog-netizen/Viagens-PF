@@ -16,7 +16,8 @@ import {
   comparePeriodMetrics,
   dashboardMetrics,
   DASH_METRICS,
-  normalizedLayout
+  normalizedLayout,
+  compareStages
 } from './intelligence.mjs';
 import { cachedAlertPager, searchRecords } from './operational.mjs';
 const esc = v =>
@@ -1038,10 +1039,39 @@ export function renderComparison(data, state) {
               '</td></tr>'
           )
           .join('') +
-        '</tbody></table></div>'
+        '</tbody></table></div>' +
+        renderStageComparison(compareStages(current, previous))
       : state.mode === 'demo'
         ? empty('Sem dados para comparar no período selecionado')
         : '') +
     '</section>'
+  );
+}
+function renderStageComparison(rows) {
+  const pct = x => (x === null ? '—' : (x > 0 ? '+' : '') + x.toFixed(1).replace('.', ',') + '%');
+  return (
+    '<h3 class="ins-subtitle">Etapas da RV · período A × período B</h3>' +
+    '<p class="help">Quantas RVs de cada período estão em cada etapa, conforme a situação informada pela DSS. A DSS não guarda o histórico de mudanças de etapa, então a tabela não mostra quantas RVs passaram de uma etapa para outra.</p>' +
+    '<div class="ins-responsive-table"><table class="stage-compare"><thead><tr><th>Etapa</th><th>Período A</th><th>Período B</th><th>Diferença</th><th>Variação (%)</th></tr></thead><tbody>' +
+    rows
+      .map(
+        r =>
+          '<tr><td>' +
+          esc(r.stage) +
+          '</td><td>' +
+          n(r.value) +
+          '</td><td>' +
+          n(r.previous) +
+          '</td><td class="' +
+          (r.delta > 0 ? 'ins-positive' : r.delta < 0 ? 'ins-negative' : '') +
+          '">' +
+          (r.delta > 0 ? '+' : '') +
+          n(r.delta) +
+          '</td><td>' +
+          pct(r.pct) +
+          '</td></tr>'
+      )
+      .join('') +
+    '</tbody></table></div>'
   );
 }

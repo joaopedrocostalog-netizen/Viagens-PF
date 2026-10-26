@@ -1,5 +1,5 @@
 import { KM_FROM_API } from './data-availability.mjs';
-import { tripActive, tripCompleted } from './rv-status.mjs';
+import { tripActive, tripCompleted, rvStatus, RV_STATUSES } from './rv-status.mjs';
 import { matchesSearch, normalizeSearch } from './filtering.mjs';
 /** Índices operacionais DSS; somente registros normalizados, sem consultas diretas nem valores inventados. */
 const str = v => String(v ?? '').trim();
@@ -406,4 +406,28 @@ export function moveMetric(layout, id, targetId, { after = false, financial = fa
 }
 export function alertsForRole(alerts, financial) {
   return (alerts || []).filter(a => financial || a.type !== 'sem_fatura');
+}
+
+/**
+ * Quantas RVs de cada período estão em cada etapa (situação informada pela DSS na consulta).
+ * A DSS não informa o histórico de mudanças de etapa, então isto NÃO mede transições.
+ */
+export function compareStages(current, previous) {
+  const count = rows => {
+    const counts = new Map();
+    for (const row of rows || []) {
+      const stage = rvStatus(row.status);
+      counts.set(stage, (counts.get(stage) || 0) + 1);
+    }
+    return counts;
+  };
+  const a = count(current?.viagens),
+    b = count(previous?.viagens);
+  const extra = [...new Set([...a.keys(), ...b.keys()])].filter(stage => !RV_STATUSES.includes(stage)).sort();
+  return [...RV_STATUSES, ...extra].map(stage => {
+    const value = a.get(stage) || 0,
+      old = b.get(stage) || 0,
+      delta = value - old;
+    return { stage, value, previous: old, delta, pct: old ? (100 * delta) / old : null };
+  });
 }

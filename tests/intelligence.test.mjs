@@ -212,3 +212,21 @@ test('Alertas geram pendências de CT-e, RV e comprovantes sem presumir resultad
   assert(!safe.some(x => x.type === 'sem_fatura'));
   assert(alertsForRole(alerts, true).length >= alertsForRole(alerts, false).length);
 });
+
+test('Comparativo de etapas: RVs de cada período por etapa, com diferença e variação', async () => {
+  const { compareStages } = await import('../src/intelligence.mjs');
+  const rv = status => ({ status });
+  const rows = compareStages(
+    { viagens: [rv('Escalado'), rv('escalada'), rv('Viajando'), rv('cancelado')] },
+    { viagens: [rv('Escalado'), rv('Encerrado'), rv('Encerrado')] }
+  );
+  const by = Object.fromEntries(rows.map(r => [r.stage, r]));
+  assert.deepEqual(
+    rows.slice(0, 5).map(r => r.stage),
+    ['Incluído', 'Escalado', 'Viajando', 'Finalizado', 'Encerrado']
+  );
+  assert.deepEqual([by.Escalado.value, by.Escalado.previous, by.Escalado.delta, by.Escalado.pct], [2, 1, 1, 100]);
+  assert.deepEqual([by.Encerrado.value, by.Encerrado.previous, by.Encerrado.delta], [0, 2, -2]);
+  assert.equal(by.Viajando.pct, null, 'sem base no período B');
+  assert.equal(by.Cancelado.value, 1);
+});

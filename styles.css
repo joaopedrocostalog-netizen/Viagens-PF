@@ -4378,3 +4378,8 @@ body {
   min-height: 30px;
   padding: 4px 8px;
 }
+.ins-subtitle {
+  font-size: 14px;
+  letter-spacing: 0.2px;
+  margin: 22px 0 6px;
+}

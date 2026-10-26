@@ -173,3 +173,13 @@ test('linhas por página: 50 mostra mais linhas e fica salvo', async t => {
   await go(page, 'ctes');
   assert.equal(await page.inputValue('[data-page-size]'), '50');
 });
+
+test('comparativos: tabela de etapas da RV entre os períodos A e B', async t => {
+  const { page, errors } = await portal(t);
+  await go(page, 'comparativos');
+  await page.waitForSelector('table.stage-compare');
+  const stages = await page.$$eval('table.stage-compare tbody tr td:first-child', els => els.map(e => e.textContent));
+  assert.deepEqual(stages.slice(0, 5), ['Incluído', 'Escalado', 'Viajando', 'Finalizado', 'Encerrado']);
+  assert.match(await page.locator('.ins-module').last().innerText(), /não mostra quantas RVs passaram/i);
+  assert.deepEqual(errors, []);
+});
