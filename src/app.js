@@ -5,7 +5,7 @@ import {renderDateControl,editDateControl,resetDateControls,hasDateErrors,openDa
 import {rvStatusCounts,renderRvStatusStages} from './rv-status.mjs';
 import {mobileTables} from './mobile-tables.mjs';
 import {parsePortalLink,portalLink} from './portal-links.mjs';
-import {renderDayProgramming} from './programming.mjs';
+import {renderDayProgramming,dayStageData} from './programming.mjs';
 import {renderTripChecklist} from './rv-checklist.mjs';
 import {memoView,clearViewCache} from './view-cache.mjs';
 import {alertKey,taskFor,updateTask,taskSummary,TASK_STATUSES,assignmentForOwner} from './workflow.mjs';
@@ -292,7 +292,7 @@ function renderOcorrencias(d){
  return (d.sources?.ocorrencias===false?'<p class="help" role="status">As ocorrências não estão disponíveis nesta consulta. Uma lista vazia não confirma ausência de ocorrências.</p>':'')+renderGrid('Ocorrências internas DSS',rows,cols,state,'ocorrencias','Registros identificados para a empresa selecionada, com 25 itens por página.');
 }
 function renderView(d,s){
- if(!['viagens','painel','comparativos'].includes(state.view)){const staged=filterRvStage(d,state.rvStage);return renderRelatedRvStages(d,state.rvStage)+renderLocalView(staged,s);}
+ if(!['viagens','painel','comparativos'].includes(state.view)){const staged=filterRvStage(d,state.rvStage);return renderRelatedRvStages(state.view==='programacao'?dayStageData(d,state):d,state.rvStage)+renderLocalView(staged,s);}
  return renderLocalView(d,s);
 }
 function renderLocalView(d,s){

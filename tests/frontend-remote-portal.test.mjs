@@ -35,7 +35,10 @@ test('frontend uses remote pages and metrics, swaps companies without sync and s
  click('[data-nav]',{nav:'viagens'});await tick();assert(root.innerHTML.includes('costalog viagens página 1'));
  const before=calls.filter(c=>c.path==='/api/portal/view').length;await tick();assert.equal(calls.filter(c=>c.path==='/api/portal/view').length,before,'no future page prefetch');
  click('[data-action]',{action:'next'});await tick();assert(root.innerHTML.includes('costalog viagens página 2'));
- defer=true;click('[data-action]',{action:'next'});await tick();assert(!root.innerHTML.includes('costalog viagens página 2'),'old page must not be shown for a new query');
+ defer=true;click('[data-action]',{action:'next'});await tick();
+ assert(root.innerHTML.includes('Atualizando…'),'a discreet loading bar is shown');
+ assert(/<div class="stale-view" inert aria-busy="true"><section>costalog viagens página 2<\/section>/.test(root.innerHTML),'previous page stays visible only as inert, dimmed content');
+ assert(!/costalog viagens página 2/.test(root.innerHTML.replace(/<div class="stale-view"[\s\S]*?<\/section><\/div>/,'')),'old page is never shown as current');
  click('[data-action]',{action:'switch-company'});await tick();assert(root.innerHTML.includes('ideallog viagens página 1'));finish();await tick();assert(!root.innerHTML.includes('costalog viagens página 3'));
  assert.equal(calls.filter(c=>c.path==='/api/portal/sync').length,1,'company change reuses server snapshot');
  events.change({target:{id:'reportFormat',value:'csv',dataset:{}}});await new Promise(resolve=>setTimeout(resolve,680));assert.equal(saved.ideallog.values.reportFormat,'csv');assert.equal(saved.costalog.values.reportFormat,undefined);

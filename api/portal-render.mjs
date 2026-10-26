@@ -10,7 +10,7 @@ import {searchRecords} from '../src/operational.mjs';
 import {renderGrid,renderAdvanced,renderReportHub,operationalFilters} from '../src/advanced-ui.mjs';
 import {renderGlobalSearch,renderCustomDashboard,renderMyTasksSummary,renderAlertsHub,renderDriverRouteDetails,renderComparison} from '../src/intelligence-ui.mjs';
 import {renderHero,renderSummary,renderTripsHeader,renderReportsHeader} from '../src/visual-dashboard.mjs';
-import {renderDayProgramming} from '../src/programming.mjs';
+import {renderDayProgramming,dayStageData} from '../src/programming.mjs';
 import {renderTripChecklist} from '../src/rv-checklist.mjs';
 import {createTripTimeline} from '../src/trip-timeline.mjs';
 import {renderDataQuality} from '../src/data-quality.mjs';
@@ -31,6 +31,17 @@ function companyData(snapshot,company,role){
  if(!snapshot.normalized.has(key))snapshot.normalized.set(key,operationalDataset(normalizeOverview(projectOverview(snapshot.payload,'operacional',company))));
  return snapshot.normalized.get(key);
 }
+// Separação por empresa/pessoa jurídica + período é a etapa mais cara de cada clique e só depende da consulta carregada.
+// Memorizada por conjunto normalizado (descartado junto com o snapshot); listas derivadas são sempre novas.
+const periodCache=new WeakMap(),PERIOD_CACHE_MAX=8;
+function periodData(full,company,entity,from,to){
+ let saved=periodCache.get(full);if(!saved)periodCache.set(full,saved=new Map());
+ const k=[company,entity||'',from,to].join('|');
+ if(saved.has(k)){const v=saved.get(k);saved.delete(k);saved.set(k,v);return v;}
+ const v=filterOperationalData(scopeCompanyData(full,company,entity),{from,to});
+ saved.set(k,v);while(saved.size>PERIOD_CACHE_MAX)saved.delete(saved.keys().next().value);
+ return v;
+}
 export async function portalResponse({action,input,snapshot,user,company,workflowStore,portalSessions}){
  const state=cleanState(input.state||{});
  const full=companyData(snapshot,company,user.role);
@@ -41,7 +52,7 @@ export async function portalResponse({action,input,snapshot,user,company,workflo
  }
  // No await while rendering: shared memo consumers are cleared between user requests.
  clearViewCache();
- const period=filterOperationalData(scopeCompanyData(full,company,state.legalEntity),{from:state.from,to:state.to});
+ const period=periodData(full,company,state.legalEntity,state.from,state.to);
  const stageBase=filterOperationalData(period,{...state,status:state.view==='viagens'?'':state.status});
  const staged=filterRvStage(period,state.rvStage||'');
  const d=filterOperationalData(staged,state);
@@ -144,7 +155,7 @@ function mdfeSituation(m,d){const tripIds=memoView('mdfe-trip-ids',[d.allViagens
  const workflowWarning=snapshot.payload.workflowUnavailable?'<p class="ins-inline-error" role="status">Os dados DSS foram carregados, mas o acompanhamento das pendências não pôde ser atualizado. Atualize os dados novamente para repetir.</p>':'';
  if(action==='metrics')return {html:workflowWarning+state.listFilters+renderCustomDashboard(searched,state)+renderMyTasksSummary(searched,state)+renderSummary(searched,{...state,financeiro:false,showCards:false}),hero:renderHero(state.view,d,state),search:renderGlobalSearch(state,d),technical:renderDataQuality(state,period)};
  let html='';
- const stages=state.view==='viagens'?'':renderRelatedRvStages(stageBase,state.rvStage||'');
+ const stages=state.view==='viagens'?'':renderRelatedRvStages(state.view==='programacao'?dayStageData(stageBase,state):stageBase,state.rvStage||'');
  if(state.view==='viagens')html=renderTripsHeader(d)+renderRvStatusStages(rvStatusCounts(searchRows(stageBase.viagens)),state.status)+renderViagens(d);
  else if(state.view==='ctes')html=stages+renderCtes(d);
  else if(state.view==='mdfes')html=stages+renderMdfes(d);

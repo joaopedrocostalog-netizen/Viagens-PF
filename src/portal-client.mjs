@@ -1,14 +1,29 @@
 import {renderComparison} from './intelligence-ui.mjs';
 const fields=['alertArchive','alertUnassigned','alertRecurrent','preferenceStorage','view','from','to','legalEntity','customer','vehicle','serviceType','status','rvStage','search','filter','sortKey','sortDir','page','detailPage','timelinePage','routeSelected','driverSelected','reportSelected','reportMulti','hiddenColumns','reportColumnOrder','reportTemplates','templateSelected','reportFormat','presets','metricLayout','showMetricOptions','tableSort','alertPriority','alertKind','alertStatus','alertOwner','alertScope','alertDue','alertGrouping','alertGroup','tripFocus','dayDate','dayProgramsOpen','programPage','filtersOpen','technicalOpen','drilldown','selected','compareCurrentFrom','compareCurrentTo','comparePreviousFrom','comparePreviousTo'];
+// Ficha/linha do tempo têm consulta própria (/detail): abrir um registro não recarrega a lista.
+const detailOnly=new Set(['selected','timelinePage']);
+const viewFields=fields.filter(k=>!detailOnly.has(k));
+// Páginas já vistas voltam na hora. Painel e Pendências dependem de tratamentos e sempre consultam.
+const CACHE_MAX=30,CACHE_TTL=5*60000;
 const prefFields=['metricLayout','hiddenColumns','presets','reportTemplates','tableSort','reportColumnOrder','reportFormat'];
 const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function createPortalClient(state,render){
  let view=null,viewKey='',pendingKey='',seq=0,controller,detail=null,detailKey='',detailPending='',detailController,jobId='',syncGeneration=0,syncToken='',syncCompany='';
  let prefGeneration=0,prefRevision=0,prefReady=false,prefJSON='',prefTimer,prefWriting=false,prefBlocked=false,prefPromise=null;
  let comparison=null;
+ const cache=new Map();let lastGood=null;
+ const cacheable=()=>!['painel','pendencias'].includes(state.view)&&!(state.view==='relatorios'&&state.reportSelected==='pendencias');
+ const remember=(k,result)=>{if(!cacheable())return;cache.delete(k);cache.set(k,{result,at:Date.now()});while(cache.size>CACHE_MAX)cache.delete(cache.keys().next().value);};
+ const recall=k=>{const e=cache.get(k);if(!e)return null;if(Date.now()-e.at>CACHE_TTL||!cacheable()){cache.delete(k);return null;}cache.delete(k);cache.set(k,e);return e.result;};
+ const scope=()=>({view:state.view,company:state.company,snapshot:state.remoteSnapshot,report:state.reportSelected});
+ const sameScope=a=>!!a&&Object.entries(scope()).every(([k,v])=>a[k]===v);
+ function apply(result){
+  view=result;if(result.page)state.page=result.page;if(result.detailPage)state.detailPage=result.detailPage;if(result.programPage)state.programPage=result.programPage;
+  state.visibleAlerts=result.visibleAlerts||[];state.remoteColumns=result.reportColumns||[];viewKey=key();lastGood={scope:scope(),html:result.html||''};
+ }
  const queryState=()=>Object.fromEntries(fields.filter(k=>state[k]!==undefined).map(k=>[k,state[k]]));
  const identity=()=>state.token+'|'+state.company;
- const key=()=>JSON.stringify({snapshot:state.remoteSnapshot,company:state.company,state:queryState(),comparison});
+ const key=()=>JSON.stringify({snapshot:state.remoteSnapshot,company:state.company,state:Object.fromEntries(viewFields.filter(k=>state[k]!==undefined).map(k=>[k,state[k]])),comparison});
  const active=()=>state.serverMode&&!!state.token;
  async function request(path,{body,method='POST',signal,token=state.token,company=state.company}={}){
   const response=await fetch(state.apiUrl.replace(/\/$/,'')+path+(path.includes('?')?'&':'?')+'company='+company,{method,credentials:'omit',headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(120000)]):AbortSignal.timeout(120000)});
@@ -22,7 +37,9 @@ export function createPortalClient(state,render){
   if((!state.remoteSnapshot||!inRange())&&!(state.view==='comparativos'&&comparison))return;
   if(state.pendingRecord){state.selected=state.pendingRecord;state.pendingRecord='';}
   const k=key();
-  if(viewKey!==k&&pendingKey!==k){
+  const hit=viewKey!==k&&recall(k);
+  if(hit){controller?.abort();seq++;pendingKey='';state.remoteError='';apply(hit);remember(viewKey,hit);}
+  else if(viewKey!==k&&pendingKey!==k){
    controller?.abort();controller=new AbortController();const signal=controller.signal,id=++seq;pendingKey=k;state.remoteError='';
    Promise.resolve().then(async()=>{
     try{
@@ -30,8 +47,7 @@ export function createPortalClient(state,render){
      const body={snapshot:state.remoteSnapshot||comparison?.current,state:queryState(),...(cmp?{currentSnapshot:comparison.current,previousSnapshot:comparison.previous}:{})};
      const result=await request('/api/portal/'+(state.view==='painel'?'metrics':cmp?'compare':'view'),{body,signal});
      if(id!==seq||signal.aborted||k!==key())return;
-     view=result;if(result.page)state.page=result.page;if(result.detailPage)state.detailPage=result.detailPage;if(result.programPage)state.programPage=result.programPage;
-     state.visibleAlerts=result.visibleAlerts||[];state.remoteColumns=result.reportColumns||[];viewKey=key();
+     remember(k,result);apply(result);remember(viewKey,result);
     }catch(error){if(id===seq&&!signal.aborted){state.remoteError=error.message;view=null;viewKey=k;}}
     finally{if(id===seq){pendingKey='';if(!state.taskSelected)render();}}
    });
@@ -48,7 +64,12 @@ export function createPortalClient(state,render){
   if(state.remoteError)return '<p class="ins-inline-error" role="alert">'+h(state.remoteError)+'</p><button class="btn" data-action="retry-page">Tentar novamente</button>';
   if(state.view==='comparativos'&&!state.remoteSnapshot&&!comparison)return renderComparison({viagens:[],pedidos:[],ctes:[],mdfes:[],sources:{}},state);
   if((!state.remoteSnapshot||!inRange())&&!(state.view==='comparativos'&&comparison))return '<div class="info-strip">Atualize os dados da DSS para consultar este período.</div>';
-  if(viewKey!==key())return '<div class="info-strip" role="status">Carregando a página solicitada…</div><button class="btn btn-sm" data-action="cancel-page">Cancelar consulta</button>';
+  if(viewKey!==key()){
+   const bar='<div class="page-loading" role="status"><span class="page-loading-dot" aria-hidden="true"></span>Atualizando…<button class="btn btn-sm" data-action="cancel-page">Cancelar</button></div>';
+   // Mesma área/empresa/consulta: mantém a página anterior esmaecida e inativa até a nova chegar, sem a tela piscar.
+   if(sameScope(lastGood?.scope))return bar+'<div class="stale-view" inert aria-busy="true">'+lastGood.html+'</div>';
+   return bar.replace('Atualizando…','Carregando a página solicitada…');
+  }
   return view?.html||'';
  }
  function progress(){
@@ -76,7 +97,7 @@ export function createPortalClient(state,render){
  async function synchronize(){
   const generation=++syncGeneration,token=state.token,company=state.company,range={from:state.from,to:state.to};
   state.loading=true;state.loadingProgress='Preparando consulta…';state.error='';state.queryNotice='';render();
-  try{const snapshot=await runJob(range,{generation,token,company});if(generation!==syncGeneration||token!==state.token)return;state.workflowRefresh=(state.workflowRefresh||0)+1;state.remoteSnapshot=snapshot;state.loadedRange=range;state.lastSync=new Date().toISOString();state.page=1;state.selected=null;state.dataset={viagens:[],pedidos:[],ctes:[],mdfes:[],ocorrencias:[],sources:{}};viewKey='';comparison=null;}
+  try{const snapshot=await runJob(range,{generation,token,company});if(generation!==syncGeneration||token!==state.token)return;state.workflowRefresh=(state.workflowRefresh||0)+1;state.remoteSnapshot=snapshot;state.loadedRange=range;state.lastSync=new Date().toISOString();state.page=1;state.selected=null;state.dataset={viagens:[],pedidos:[],ctes:[],mdfes:[],ocorrencias:[],sources:{}};viewKey='';comparison=null;cache.clear();}
   catch(error){if(generation===syncGeneration){state.error=error.name==='AbortError'?'':error.message;state.queryNotice=error.name==='AbortError'?'Consulta cancelada. A última consulta completa foi mantida.':'';}}
   finally{if(generation===syncGeneration){state.loading=false;state.loadingProgress='';state.syncProgress=null;render();}}
  }
@@ -88,7 +109,7 @@ export function createPortalClient(state,render){
    const get=range=>state.loadedRange&&range.from>=state.loadedRange.from&&range.to<=state.loadedRange.to?Promise.resolve(state.remoteSnapshot):runJob(range,{cached:true,generation,token,company});
    const a=await get(ranges.current),b=await get(ranges.previous);
    if(generation!==syncGeneration||token!==state.token||company!==state.company)return;
-   comparison={current:a,previous:b,currentRange:ranges.current,previousRange:ranges.previous};viewKey='';
+   comparison={current:a,previous:b,currentRange:ranges.current,previousRange:ranges.previous};viewKey='';cache.clear();
   }catch(error){if(generation===syncGeneration){state.comparisonError=error.message;state.queryNotice=error.name==='AbortError'?'Consulta cancelada.':error.message;}}
   finally{if(generation===syncGeneration){state.comparisonLoading=false;state.loadingProgress='';state.syncProgress=null;render();}}
  }
@@ -134,10 +155,10 @@ export function createPortalClient(state,render){
 
  return {active,observe,contents,progress,synchronize,compare,cancel,loadPreferences,flushPreferences,
   response:()=>viewKey===key()?view:null,drawer:()=>detail||'<div class="overlay"><aside class="drawer"><p>Carregando registro…</p><button class="btn" data-action="close">Fechar</button></aside></div>',
-  invalidate(){viewKey='';pendingKey='';controller?.abort();seq++;},
+  invalidate(){viewKey='';pendingKey='';controller?.abort();seq++;cache.clear();},
   cancelPage(){controller?.abort();seq++;pendingKey='';viewKey=key();view={html:'<p class="help">Consulta da página cancelada.</p><button class="btn" data-action="retry-page">Carregar página</button>'};render();},
-  reset(){controller?.abort();detailController?.abort();seq++;++prefGeneration;prefReady=false;prefBlocked=false;clearTimeout(prefTimer);view=null;viewKey='';pendingKey='';detail=null;detailKey='';comparison=null;const id=jobId,token=syncToken,company=syncCompany;++syncGeneration;jobId='';if(id)request('/api/portal/sync',{method:'PATCH',body:{id},token,company}).catch(()=>{});},
-  async importMdfes(rows){const result=await request('/api/portal/import',{body:{snapshot:state.remoteSnapshot,rows,state:queryState()}});viewKey='';render();return result.count;},
+  reset(){cache.clear();lastGood=null;controller?.abort();detailController?.abort();seq++;++prefGeneration;prefReady=false;prefBlocked=false;clearTimeout(prefTimer);view=null;viewKey='';pendingKey='';detail=null;detailKey='';comparison=null;const id=jobId,token=syncToken,company=syncCompany;++syncGeneration;jobId='';if(id)request('/api/portal/sync',{method:'PATCH',body:{id},token,company}).catch(()=>{});},
+  async importMdfes(rows){const result=await request('/api/portal/import',{body:{snapshot:state.remoteSnapshot,rows,state:queryState()}});viewKey='';cache.clear();render();return result.count;},
   async export(type,multi=false){return (await request('/api/portal/export',{body:{snapshot:state.remoteSnapshot,type,multi,state:queryState()}})).models;}
  };
 }

@@ -4,11 +4,17 @@ import {memoView} from './view-cache.mjs';
 import {searchOperationalData} from './filtering.mjs';
 import {renderGrid} from './advanced-ui.mjs';
 const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dayOutside=state=>{const date=state.dayDate;return state.mode==='live'&&(!state.loadedRange||date<state.loadedRange.from||date>state.loadedRange.to||date<state.from||date>state.to);};
+/** RVs da data da programação (mesma regra da tabela "Viagens do dia"), para as contagens da barra de etapas. */
+export function dayStageData(data,state){
+ if(dayOutside(state))return {viagens:[]};
+ return {viagens:dayTrips(searchOperationalData(data,state.search),state.dayDate)};
+}
 export function renderDayProgramming(data,state){
  const date=state.dayDate,source=memoView('day-search',[data,state.search],()=>searchOperationalData(data,state.search));
  const rows=memoView('day-trips',[source,date],()=>dayTrips(source,date));
  const counts=rows.reduce((acc,row)=>{const label=dailyStatus(row);acc[label]=(acc[label]||0)+1;return acc;},{});
- const outside=state.mode==='live'&&(!state.loadedRange||date<state.loadedRange.from||date>state.loadedRange.to||date<state.from||date>state.to);
+ const outside=dayOutside(state);
  const controls='<div class="day-toolbar"><div class="filter"><label for="dayDate">Data da programação</label>'+renderDateControl('dayDate',date,{label:'Data da programação'})+'</div><button class="btn btn-sm" data-action="day-today">Hoje</button></div>';
  const note=outside?'<p class="ins-inline-error" role="status">Esta data está fora do período carregado ou selecionado. Ajuste o período e atualize os dados para consultar.</p>':'';
  const cards='<div class="ins-kpi-row">'+['Planejadas','Em andamento','Concluídas','Situação não informada','Outras situações'].map(label=>'<div class="ins-kpi"><div>'+label+'</div><strong>'+(outside?'—':counts[label]||0)+'</strong></div>').join('')+'</div>';
