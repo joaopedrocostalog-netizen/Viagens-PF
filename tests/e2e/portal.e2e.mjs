@@ -65,12 +65,12 @@ test('viagens: etapas e ficha da RV vêm do renderizador único', async t => {
 test('filtros avançados abrem e fecham sem reabrir sozinhos', async t => {
   const { page } = await portal(t);
   await go(page, 'viagens');
-  await page.click('#advancedFilters summary');
-  await page.waitForTimeout(300);
-  assert.equal(await page.locator('#advancedFilters').evaluate(el => el.open), true);
-  await page.click('#advancedFilters summary');
-  await page.waitForTimeout(600);
-  assert.equal(await page.locator('#advancedFilters').evaluate(el => el.open), false);
+  await page.click('[data-action="toggle-advanced-filters"]');
+  await page.waitForSelector('.v-extra-filters');
+  assert.equal(await page.locator('.v-extra-filters').isVisible(), true);
+  await page.click('[data-action="toggle-advanced-filters"]');
+  await page.waitForSelector('.v-extra-filters', { state: 'detached' });
+  assert.equal(await page.locator('.v-extra-filters').count(), 0);
 });
 
 test('programação do dia: barra de etapas soma o mesmo que a tabela', async t => {
