@@ -139,3 +139,37 @@ test('modo TV esconde menus e filtros e volta pelo botão', async t => {
   assert.equal(await page.locator('.v-main-nav').isVisible(), true);
   assert.deepEqual(errors, []);
 });
+
+test('etiquetas de filtros ativos explicam a lista e removem o filtro', async t => {
+  const { page, errors } = await portal(t);
+  await go(page, 'viagens');
+  const total = await tableCount(page);
+  await page.click('#advancedFilters summary');
+  await page.waitForSelector('#filterClient');
+  const client = await page.locator('#filterClient option').nth(1).getAttribute('value');
+  await page.selectOption('#filterClient', client);
+  await page.waitForTimeout(200);
+  await page.click('[data-rv-status="Encerrado"]');
+  await page.waitForTimeout(200);
+  const filtered = await tableCount(page);
+  assert(filtered < total);
+  assert.equal(await page.locator('.filter-chip').count(), 2, 'Cliente e Situação');
+  assert.match(await page.locator('.active-filters').innerText(), new RegExp('Cliente: ' + client));
+  await page.click('[data-clear-filter="*"]');
+  await page.waitForTimeout(200);
+  assert.equal(await tableCount(page), total);
+  assert.equal(await page.locator('.filter-chip').count(), 0);
+  assert.deepEqual(errors, []);
+});
+
+test('linhas por página: 50 mostra mais linhas e fica salvo', async t => {
+  const { page } = await portal(t);
+  await go(page, 'viagens');
+  const visible = () => page.locator('.table-wrap tbody tr').count();
+  assert.equal(await visible(), 25);
+  await page.selectOption('[data-page-size]', '50');
+  await page.waitForTimeout(200);
+  assert(Number(await visible()) > 25);
+  await go(page, 'ctes');
+  assert.equal(await page.inputValue('[data-page-size]'), '50');
+});

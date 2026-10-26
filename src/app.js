@@ -86,6 +86,7 @@ const state = {
   dayDate: localToday(),
   dayCategory: '',
   tvMode: false,
+  pageSize: [25, 50, 100].includes(readPrefs('viagens_pf_page_size', 25)) ? readPrefs('viagens_pf_page_size', 25) : 25,
   tripFocus: '',
   alertScope: 'todos',
   alertDue: 'todos',
@@ -2499,6 +2500,15 @@ root.addEventListener('submit', e => {
   }
 });
 root.addEventListener('change', e => {
+  if (e.target?.dataset && 'pageSize' in e.target.dataset) {
+    state.pageSize = Number(e.target.value) || 25;
+    state.page = 1;
+    try {
+      localStorage.setItem('viagens_pf_page_size', JSON.stringify(state.pageSize));
+    } catch {}
+    render();
+    return;
+  }
   if (pendingClient.handleChange(e.target)) return;
   if (e.target.id === 'taskStatus') {
     const reason = document.getElementById('taskResolutionReason');

@@ -70,6 +70,20 @@ export const EXPORT_LABELS = {
   mensal: 'Resumo mensal',
   programacao: 'Programação do dia'
 };
+export const PAGE_SIZES = Object.freeze([25, 50, 100]);
+/** Linhas por página escolhidas pelo usuário (25, 50 ou 100). */
+export const pageSizeOf = s => (PAGE_SIZES.includes(Number(s?.pageSize)) ? Number(s.pageSize) : 25);
+/** Seletor "Linhas por página", usado no rodapé de todas as tabelas paginadas. */
+export function renderPageSize(s) {
+  const size = pageSizeOf(s);
+  return (
+    '<label class="page-size">Linhas por página <select class="control" data-page-size aria-label="Linhas por página">' +
+    PAGE_SIZES.map(n => '<option value="' + n + '"' + (n === size ? ' selected' : '') + '>' + n + '</option>').join(
+      ''
+    ) +
+    '</select></label>'
+  );
+}
 const LINK_LABELS = { vinculado: 'Vinculados', pendente: 'Sem vínculo' };
 /** Filtros que podem ser removidos individualmente pelas etiquetas acima da tabela. */
 export const CLEARABLE_FILTERS = Object.freeze({
@@ -234,7 +248,7 @@ export function tableAdvanced(rows, columns, s, view) {
     ? rows
     : memoView('sort-grid-' + view, [rows, key, direction], () => sortRecords(rows, key, direction));
   const total = sorted.length;
-  const limit = 25,
+  const limit = pageSizeOf(s),
     pageCount = Math.max(1, Math.ceil(total / limit)),
     page = Math.min(Math.max(1, s.page || 1), pageCount);
   s.page = page;
@@ -269,7 +283,9 @@ export function tableAdvanced(rows, columns, s, view) {
     page +
     ' de ' +
     pageCount +
-    '</span><div class="pagination-actions"><button class="btn btn-sm" data-action="prev" ' +
+    '</span><div class="pagination-actions">' +
+    renderPageSize(s) +
+    '<button class="btn btn-sm" data-action="prev" ' +
     (page <= 1 ? 'disabled' : '') +
     '>Anterior</button><button class="btn btn-sm" data-action="next" ' +
     (page >= pageCount ? 'disabled' : '') +

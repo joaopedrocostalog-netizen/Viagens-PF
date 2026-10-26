@@ -18,6 +18,7 @@ const fields = [
   'sortKey',
   'sortDir',
   'page',
+  'pageSize',
   'detailPage',
   'timelinePage',
   'routeSelected',

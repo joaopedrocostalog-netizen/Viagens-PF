@@ -216,3 +216,11 @@ test('server detail renderer opens an authorized RV without exposing another com
   assert(result.html.includes('RV-001'));
   assert(!result.html.includes('CLIENTE-150'));
 });
+
+test('linhas por página: 25, 50 ou 100; qualquer outro valor volta a 25', async () => {
+  const rows = html => (html.split('<tbody>')[1].split('</tbody>')[0].match(/<tr>/g) || []).length;
+  assert.equal(rows((await response('viagens', { pageSize: 50 })).html), 50);
+  assert.equal(rows((await response('viagens', { pageSize: 100 })).html), 100);
+  assert.equal(rows((await response('viagens', { pageSize: 5000 })).html), 25);
+  assert.match((await response('viagens', { pageSize: 50 })).html, /<option value="50" selected>/);
+});

@@ -1,3 +1,4 @@
+import { pageSizeOf, renderPageSize } from './advanced-ui.mjs';
 import { KM_FROM_API, availableColumns } from './data-availability.mjs';
 import { renderPendingToolbar, renderPendingSelection, renderPendingLifecycle } from './pending-ui.mjs';
 import { renderDateControl, hasDateErrors } from './date-controls.mjs';
@@ -77,12 +78,13 @@ const sortTableHeader = (label, key, state, kind) => {
 const badge = (value, cl = 'red') => '<span class="ins-badge ' + cl + '">' + esc(value) + '</span>';
 const empty = message => '<div class="ins-empty"><span>◇</span><p>' + esc(message) + '</p></div>';
 function metricPage(rows, state, pageKey = 'page') {
-  const pages = Math.max(1, Math.ceil(rows.length / 25));
+  const size = pageSizeOf(state),
+    pages = Math.max(1, Math.ceil(rows.length / size));
   const current = Math.min(pages, Math.max(1, state[pageKey] || 1));
   state[pageKey] = current;
   const prefix = pageKey === 'page' ? '' : 'detail-';
   return {
-    rows: rows.slice((current - 1) * 25, current * 25),
+    rows: rows.slice((current - 1) * size, current * size),
     html:
       '<div class="pagination"><span>' +
       n(rows.length) +
@@ -90,7 +92,9 @@ function metricPage(rows, state, pageKey = 'page') {
       current +
       ' de ' +
       pages +
-      '</span><div class="pagination-actions"><button class="btn btn-sm" data-action="' +
+      '</span><div class="pagination-actions">' +
+      (pageKey === 'page' ? renderPageSize(state) : '') +
+      '<button class="btn btn-sm" data-action="' +
       prefix +
       'prev" ' +
       (current === 1 ? 'disabled' : '') +

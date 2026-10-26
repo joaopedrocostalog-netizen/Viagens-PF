@@ -27,6 +27,7 @@ const stateFields = [
   'sortKey',
   'sortDir',
   'page',
+  'pageSize',
   'detailPage',
   'timelinePage',
   'routeSelected',
@@ -70,6 +71,7 @@ function cleanState(input) {
   for (const key of ['page', 'detailPage', 'timelinePage', 'programPage'])
     state[key] = Math.max(1, Math.min(1000000, Math.floor(Number(state[key]) || 1)));
   for (const [k, v] of Object.entries(state)) if (typeof v === 'string' && v.length > 500) state[k] = v.slice(0, 500);
+  state.pageSize = [25, 50, 100].includes(Number(state.pageSize)) ? Number(state.pageSize) : 25;
   if (!OP_VIEWS.includes(state.view)) throw Object.assign(Error('Área não permitida.'), { status: 400 });
   return state;
 }
