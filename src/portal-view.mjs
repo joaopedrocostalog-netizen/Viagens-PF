@@ -165,9 +165,7 @@ export function periodData(full, company, entity, from, to) {
 /** Filtros avançados controlados pelo botão único da barra superior. */
 export function renderListFilters(period, state) {
   return (
-    (state.filtersOpen
-      ? '<div class="v-extra-filters">' + operationalFilters(period, state) + '</div>'
-      : '') +
+    (state.filtersOpen ? '<div class="v-extra-filters">' + operationalFilters(period, state) + '</div>' : '') +
     renderActiveFilters(state)
   );
 }
