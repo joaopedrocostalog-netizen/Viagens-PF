@@ -7,6 +7,12 @@ import { operationalDataset } from '../src/access-ui.mjs';
 import { projectOverview } from './access.mjs';
 import { renderPendingArchive } from '../src/pending-ui.mjs';
 const fail = (message, status = 400) => Object.assign(Error(message), { status });
+/** Meses (contados do fim do período) cujos alertas ganham registro automático de primeira detecção. */
+const OBSERVE_MONTHS = Math.max(1, Math.min(24, Number(process.env.PENDING_OBSERVE_MONTHS) || 3));
+const monthsBefore = (iso, months) => {
+  const [y, m] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1 - months, 1)).toISOString().slice(0, 10);
+};
 export function createPendingService({ store, sessions }) {
   const previews = new Map();
   const normalized = (payload, company) => {
@@ -34,11 +40,12 @@ export function createPendingService({ store, sessions }) {
     };
   }
   return {
-    async observed(payload, { from, to, signal }) {
+    normalized,
+    async observed(payload, { from, to, signal, prepared }) {
       const freshPeriods = (payload.quality?.periods || []).filter(p => !p.reused);
       for (const company of ['costalog', 'ideallog']) {
         signal?.throwIfAborted();
-        const data = normalized(payload, company);
+        const data = prepared?.get(company) || normalized(payload, company);
         try {
           const stall = (await store.policy(company)).stall;
           await store.observe(company, {
@@ -47,7 +54,8 @@ export function createPendingService({ store, sessions }) {
             freshPeriods,
             coverage: { from, to },
             at: payload.updatedAt,
-            signal
+            signal,
+            observeFrom: monthsBefore(to, OBSERVE_MONTHS - 1)
           });
         } catch (error) {
           signal?.throwIfAborted();
@@ -59,7 +67,7 @@ export function createPendingService({ store, sessions }) {
     async context(company, input, user) {
       if (!input.snapshot) return undefined;
       const snapshot = sessions.get(input.snapshot, user),
-        data = normalized(snapshot.payload, company);
+        data = snapshot.normalized?.get(company) || normalized(snapshot.payload, company);
       const stall = (await store.policy(company).catch(() => null))?.stall || null;
       for (const ref of alertReferences(data, { stall }))
         if ([ref.type, ref.view, ref.record.id].join(':') === input.key) return source(ref, data);

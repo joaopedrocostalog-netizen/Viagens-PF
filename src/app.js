@@ -334,7 +334,13 @@ function render() {
     state.mode === 'demo'
       ? '<div class="demo-label" role="status">Demonstração · registros fictícios</div>'
       : state.error
-        ? '<p class="ins-inline-error" role="alert">Não foi possível atualizar. Os dados anteriores foram mantidos. Tente atualizar novamente.</p>'
+        ? '<p class="ins-inline-error" role="alert">' +
+          esc(
+            /^Não foi possível/.test(state.error)
+              ? state.error
+              : 'Não foi possível atualizar: ' + state.error + '. Os dados anteriores foram mantidos.'
+          ) +
+          '</p>'
         : '';
   const needsUpdate =
     !state.alertArchive &&
@@ -651,6 +657,11 @@ function renderFilters() {
         '>' +
         (state.loading ? state.loadingProgress || 'Consultando DSS...' : 'Atualizar dados da DSS') +
         '</button>' +
+        (remoteClient.active()
+          ? '<button type="button" class="btn btn-sm btn-ghost history-btn" data-action="refresh-all" ' +
+            (state.loading ? 'disabled' : '') +
+            ' title="Busca da data Até para trás, mês a mês, até onde a DSS tiver dados">Desde o início</button>'
+          : '') +
         renderUpdatedAt() +
         '</div>'
       : '') +
@@ -2370,6 +2381,16 @@ root.addEventListener('click', e => {
     render();
   }
   if (action === 'refresh' && !PUBLIC_DEMO) loadData();
+  if (action === 'refresh-all' && !PUBLIC_DEMO && remoteClient.active() && !state.loading) {
+    if (
+      confirm(
+        'Buscar todo o histórico da DSS, mês a mês, da data "Até" para trás, até onde houver registros?\n\n' +
+          'Pode levar vários minutos (cada mês é uma consulta). Se o histórico não couber na memória do servidor, ' +
+          'serão carregados os meses mais recentes e o portal avisa a partir de quando. Você pode cancelar a qualquer momento.'
+      )
+    )
+      remoteClient.synchronize({ history: true });
+  }
   if (action === 'reload-users') loadAdminUsers();
   if (action === 'close-admin-reset') {
     state.adminResetUser = '';

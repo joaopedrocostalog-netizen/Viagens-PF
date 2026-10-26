@@ -7,6 +7,8 @@ export function createPortalSessions({
   synchronize,
   afterSync = async () => {},
   onFailure = () => {},
+  // Prepara as bases por empresa a partir da resposta bruta, que é descartada em seguida (memória).
+  prepare = null,
   maxSnapshots = 6,
   maxJobs = 20,
   ttlMs = 2 * 3600000
@@ -30,6 +32,8 @@ export function createPortalSessions({
     completed: j.steps.filter(s => ['done', 'unavailable', 'reused', 'disabled', 'skipped'].includes(s.status)).length,
     total: j.steps.length,
     snapshot: j.snapshot || null,
+    range: j.range || null,
+    notice: j.notice || '',
     error: j.error || ''
   });
   const prune = () => {
@@ -39,16 +43,19 @@ export function createPortalSessions({
   return {
     start(input, user) {
       prune();
-      const { from, to } = input;
+      const fullHistory = input.history === 'all';
+      const to = input.to,
+        from = fullHistory ? input.to : input.from;
       if (
         !from ||
         !to ||
         parseEditableDate(from) !== from ||
         parseEditableDate(to) !== to ||
         from > to ||
-        monthWindows(from, to).length > 12
+        from < '2000-01-01'
       )
-        throw fail('Período inválido. Selecione até 12 meses.', 400);
+        throw fail('Período inválido. Confira as datas.', 400);
+      monthWindows(from, to);
       if (
         [...jobs.values()].filter(j => j.status === 'running' && j.username === user.username).length >= 2 ||
         [...jobs.values()].filter(j => j.status === 'running').length >= 4
@@ -83,19 +90,56 @@ export function createPortalSessions({
             signal: j.controller.signal,
             onProgress: progress,
             refreshMode: input.refresh === 'cached' ? '' : 'recent',
-            syncTo: to
+            syncTo: to,
+            fullHistory,
+            remember: false
           })
         )
         .then(async payload => {
           if (j.status !== 'running' || j.controller.signal.aborted) return;
-          if (input.refresh !== 'cached') await afterSync(payload, { from, to, signal: j.controller.signal });
+          // Período efetivamente carregado: início real do histórico ou o que coube na memória.
+          const range = payload.range || { from, to };
+          const prepared = prepare ? prepare(payload) : null;
+          if (input.refresh !== 'cached')
+            await afterSync(payload, { from: range.from, to: range.to, signal: j.controller.signal, prepared });
           if (j.status !== 'running' || j.controller.signal.aborted) return;
+          const meta = prepared
+            ? {
+                updatedAt: payload.updatedAt,
+                quality: payload.quality,
+                workflowUnavailable: payload.workflowUnavailable,
+                range,
+                limited: payload.limited,
+                history: payload.history
+              }
+            : payload;
+          if (prepared) payload.data = null; // libera a resposta bruta
+          j.range = range;
+          j.notice = payload.limited
+            ? 'O período inteiro não cabe na memória deste servidor. Foram carregados os meses mais recentes, de ' +
+              range.from.split('-').reverse().join('/') +
+              ' até ' +
+              range.to.split('-').reverse().join('/') +
+              '.'
+            : payload.history
+              ? payload.history.start
+                ? 'Histórico completo da DSS: dados desde ' + range.from.split('-').reverse().join('/') + '.'
+                : 'A DSS não devolveu registros no histórico consultado.'
+              : '';
           const id = randomUUID();
           for (const old of snapshots.keys()) {
             if (snapshots.size < maxSnapshots) break;
             if (old !== latestId) snapshots.delete(old);
           }
-          snapshots.set(id, { id, username: j.username, from, to, payload, touched: Date.now() });
+          snapshots.set(id, {
+            id,
+            username: j.username,
+            from: range.from,
+            to: range.to,
+            payload: meta,
+            normalized: prepared || undefined,
+            touched: Date.now()
+          });
           if (input.refresh !== 'cached') latestId = id;
           j.snapshot = id;
           j.status = 'complete';
@@ -105,7 +149,11 @@ export function createPortalSessions({
           if (j.status === 'cancelled') return;
           j.controller.abort();
           j.status = 'failed';
-          j.error = 'Não foi possível concluir a consulta. Os dados anteriores foram mantidos.';
+          // Motivo curto e sem dados sensíveis (ex.: "Mês 03/2026: Serviço viagens: tempo limite após 60s").
+          j.error =
+            'Não foi possível concluir a consulta' +
+            (error?.message ? ': ' + String(error.message).slice(0, 240) : '') +
+            '. Os dados anteriores foram mantidos.';
           j.touched = Date.now();
           console.warn('[SYNC] consulta interrompida', error.code || error.name);
           onFailure(error);

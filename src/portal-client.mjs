@@ -1,3 +1,4 @@
+import { resetDateControls } from './date-controls.mjs';
 import { renderComparison } from './intelligence-ui.mjs';
 const fields = [
   'alertArchive',
@@ -332,7 +333,12 @@ export function createPortalClient(state, render) {
           '" max="' +
           Math.max(1, j.total) +
           '" aria-label="Etapas concluídas"></progress><ul>' +
+          (j.steps.length > 10
+            ? '<li class="more"><span>…</span><b>' + (j.steps.length - 10) + ' etapas anteriores</b></li>'
+            : '') +
           j.steps
+            .filter(s => s.status !== 'pending' || j.steps.length <= 10)
+            .slice(-10)
             .map(
               s =>
                 '<li><span>' +
@@ -357,11 +363,11 @@ export function createPortalClient(state, render) {
   }
   async function runJob(
     range,
-    { cached = false, generation = syncGeneration, token = state.token, company = state.company } = {}
+    { cached = false, history = false, generation = syncGeneration, token = state.token, company = state.company } = {}
   ) {
     const current = () => generation === syncGeneration && state.token === token;
     const job = await request('/api/portal/sync', {
-      body: { ...range, refresh: cached ? 'cached' : 'recent' },
+      body: { ...range, refresh: cached ? 'cached' : 'recent', ...(history ? { history: 'all' } : {}) },
       token,
       company
     });
@@ -372,42 +378,67 @@ export function createPortalClient(state, render) {
     jobId = job.id;
     syncToken = token;
     syncCompany = company;
-    const started = Date.now();
-    let value = job;
+    let value = job,
+      misses = 0;
+    // Sem prazo máximo: períodos longos podem levar muito tempo. O usuário pode cancelar a qualquer momento.
     while (current() && value.status === 'running') {
       state.syncProgress = value;
-      state.loadingProgress = 'Consulta: ' + value.completed + ' de ' + value.total + ' etapas concluídas';
+      state.loadingProgress = progressText(value);
       paintProgress();
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
       if (!current()) throw new DOMException('Cancelado', 'AbortError');
-      value = await request('/api/portal/sync?id=' + encodeURIComponent(job.id), { method: 'GET', token, company });
-      if (Date.now() - started > 12 * 60000) {
-        await request('/api/portal/sync', { method: 'PATCH', body: { id: job.id }, token, company });
-        throw Error('A consulta excedeu o tempo limite e foi cancelada.');
+      try {
+        value = await request('/api/portal/sync?id=' + encodeURIComponent(job.id), { method: 'GET', token, company });
+        misses = 0;
+      } catch (error) {
+        // Uma falha passageira de rede não derruba uma consulta longa; várias seguidas, sim.
+        if (error.status === 404 || ++misses >= 5) throw error;
       }
     }
     jobId = '';
     if (!current() || value.status === 'cancelled') throw new DOMException('Cancelado', 'AbortError');
     if (value.status !== 'complete') throw Error(value.error || 'Consulta incompleta.');
-    return value.snapshot;
+    return value;
   }
-  async function synchronize() {
+  function progressText(job) {
+    const months = job.steps.filter(s => String(s.key).startsWith('mes:'));
+    const done = months.filter(s => ['done', 'reused'].includes(s.status)).length;
+    const running = months.find(s => s.status === 'running');
+    return (
+      'Consultando DSS' +
+      (running ? ' · ' + running.period : '') +
+      ' · ' +
+      done +
+      (state.historyQuery ? '' : ' de ' + months.length) +
+      ' meses prontos'
+    );
+  }
+  async function synchronize({ history = false } = {}) {
     const generation = ++syncGeneration,
       token = state.token,
       company = state.company,
       range = { from: state.from, to: state.to };
+    state.historyQuery = history;
     state.loading = true;
     state.loadingProgress = 'Preparando consulta…';
     state.error = '';
     state.queryNotice = '';
     render();
     try {
-      const snapshot = await runJob(range, { generation, token, company });
+      const job = await runJob(range, { generation, token, company, history });
       if (generation !== syncGeneration || token !== state.token) return;
+      // Período efetivo: início real do histórico ou os meses mais recentes que couberam na memória do servidor.
+      const loaded = job.range || range;
       state.workflowRefresh = (state.workflowRefresh || 0) + 1;
-      state.remoteSnapshot = snapshot;
+      state.remoteSnapshot = job.snapshot;
       state.reusedLatest = false;
-      state.loadedRange = range;
+      state.loadedRange = loaded;
+      if (loaded.from !== range.from || loaded.to !== range.to) {
+        resetDateControls?.(['from', 'to']);
+        state.from = loaded.from;
+        state.to = loaded.to;
+      }
+      state.queryNotice = job.notice || '';
       state.lastSync = new Date().toISOString();
       state.page = 1;
       state.selected = null;
@@ -424,6 +455,7 @@ export function createPortalClient(state, render) {
     } finally {
       if (generation === syncGeneration) {
         state.loading = false;
+        state.historyQuery = false;
         state.loadingProgress = '';
         state.syncProgress = null;
         render();
@@ -445,7 +477,7 @@ export function createPortalClient(state, render) {
       const get = range =>
         state.loadedRange && range.from >= state.loadedRange.from && range.to <= state.loadedRange.to
           ? Promise.resolve(state.remoteSnapshot)
-          : runJob(range, { cached: true, generation, token, company });
+          : runJob(range, { cached: true, generation, token, company }).then(job => job.snapshot);
       const a = await get(ranges.current),
         b = await get(ranges.previous);
       if (generation !== syncGeneration || token !== state.token || company !== state.company) return;

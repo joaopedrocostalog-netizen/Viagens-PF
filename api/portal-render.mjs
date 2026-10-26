@@ -78,6 +78,8 @@ function cleanState(input) {
 function companyData(snapshot, company, role) {
   const key = company;
   snapshot.normalized ||= new Map();
+  if (!snapshot.normalized.has(key) && !snapshot.payload?.data)
+    throw Object.assign(Error('Consulta não encontrada ou expirada. Atualize os dados.'), { status: 404 });
   if (!snapshot.normalized.has(key))
     snapshot.normalized.set(
       key,

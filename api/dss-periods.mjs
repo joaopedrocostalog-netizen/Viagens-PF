@@ -10,7 +10,7 @@ export function monthWindows(from, to) {
     const start = String(year).padStart(4, '0') + '-' + String(month).padStart(2, '0') + '-01';
     const end = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
     windows.push({ from: windows.length === 0 ? from : start, to: end < to ? end : to });
-    if (windows.length > 24) throw Error('Consulte no máximo 24 meses por vez');
+    if (windows.length > 400) throw Error('Intervalo longo demais');
     month++;
     if (month === 13) {
       month = 1;

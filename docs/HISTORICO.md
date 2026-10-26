@@ -168,3 +168,9 @@
 - Comparativo de etapas da RV entre períodos.
 - Registro de erros (navegador, servidor, DSS) com aviso opcional por webhook.
 - Testes de navegador (Chromium) no GitHub Actions, inclusive contra o servidor real com DSS simulada.
+
+## Consulta de períodos longos e "Desde o início" — 26/10/2026
+
+- Causa da falha ao consultar desde 01/01/2026: com ~5 mil RVs e ~8 mil pedidos por mês, o servidor do Render Free (512 MB) estourava a memória depois de receber os dados (linhas com todos os campos da DSS, duas a três cópias em memória e um registro de tratamento para cada um dos ~150 mil alertas, regravando o arquivo inteiro). Reproduzido em simulação com o mesmo volume.
+- Correções: linhas reduzidas aos campos operacionais (~33 MB para 130 mil linhas), base preparada uma vez e resposta bruta descartada, CT-e reaproveitando o objeto do pedido, observação de alertas limitada aos últimos 3 meses, teto de memória do Node ajustado ao contêiner. Simulação: 10 meses passam a completar com pico de ~485 MB em 512 MB.
+- Removido o limite de 12 meses; consultas longas vão do mês mais recente para o mais antigo, dividem meses pesados e param com aviso quando a memória não comporta mais meses. Novo botão "Desde o início". Mensagem de erro mostra o mês e o motivo.

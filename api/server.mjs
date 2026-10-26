@@ -1,3 +1,6 @@
+// Primeiro import: ajusta o teto de memória do Node ao contêiner (Render Free) antes de qualquer outra coisa.
+import { containerMemoryMB } from './memory-launch.mjs';
+import { readFileSync } from 'node:fs';
 /**
  * Proxy privado DSS -> Portal COSTALOG.
  * Node.js >=20. Nunca guardar credenciais DSS no frontend.
@@ -27,7 +30,8 @@ import {
   changeOwnPassword,
   AccountError
 } from './auth.mjs';
-import { projectOverview, projectPortalOverview, permissionsFor } from './access.mjs';
+import { projectOverview, projectPortalOverview, permissionsFor, OP_TRIPS, OP_ORDERS } from './access.mjs';
+import { getHeapStatistics } from 'node:v8';
 import { monthWindows, mergeDssRows } from './dss-periods.mjs';
 import { createPeriodStore } from './period-store.mjs';
 import { createMariaDbPeriodStore } from './mariadb-store.mjs';
@@ -61,6 +65,9 @@ const workflowStore = createWorkflowStore(privateState.enabled ? { documents: pr
 const workflowStorage = { kind: privateState.enabled ? privateState.driver : 'file', durable: privateState.durable };
 const portalSessions = createPortalSessions({
   synchronize,
+  // Bases por empresa preparadas uma vez; a resposta bruta da DSS é descartada em seguida.
+  prepare: payload =>
+    new Map(['costalog', 'ideallog'].map(company => [company, pendingService.normalized(payload, company)])),
   onFailure: error =>
     errorLog.record('dss', 'Atualização da DSS não concluída: ' + (error?.code || error?.name || 'Error'), {
       detail: error?.message
@@ -109,6 +116,91 @@ function cacheGet(key) {
     return null;
   }
   return entry.data;
+}
+/** Campos da DSS realmente usados pelo portal (os mesmos da projeção operacional de todos os perfis).
+ * Guardar só eles corta a memória por linha; strings repetidas (cliente, cidade, empresa...) são compartilhadas. */
+const SLIM_FIELDS = { viagens: OP_TRIPS, pedidos: OP_ORDERS, ctes: OP_ORDERS };
+function createSlimmer() {
+  const strings = new Map();
+  const intern = value => {
+    if (typeof value !== 'string') return value;
+    const saved = strings.get(value);
+    if (saved !== undefined) return saved;
+    if (strings.size < 400000) strings.set(value, value);
+    return value;
+  };
+  return (name, rows) => {
+    const fields = SLIM_FIELDS[name];
+    if (!fields || !Array.isArray(rows)) return rows;
+    return rows.map(row => {
+      const slim = {};
+      for (const field of fields) if (row && Object.hasOwn(row, field)) slim[field] = intern(row[field]);
+      return slim;
+    });
+  };
+}
+/**
+ * Quantas linhas (RVs + pedidos) cabem com folga na memória deste servidor. Medido: ~670 bytes por linha
+ * preparada e ~1 MB a cada 1.000 linhas no pico do preparo. Usa o menor entre o limite do Node e metade da
+ * memória do contêiner (Render Free: 512 MB). PORTAL_MAX_ROWS substitui o cálculo.
+ */
+const heapLimitMB = Math.round(getHeapStatistics().heap_size_limit / 1048576);
+const memoryForDataMB = Math.min(heapLimitMB, containerMemoryMB() ? containerMemoryMB() / 2 : heapLimitMB) - 60;
+const ROW_BUDGET =
+  Number(env.PORTAL_MAX_ROWS) > 0 ? Number(env.PORTAL_MAX_ROWS) : Math.max(20000, Math.round(memoryForDataMB * 650));
+console.info(
+  '[MEMÓRIA] limite do Node',
+  heapLimitMB,
+  'MB · contêiner',
+  containerMemoryMB() || 'n/d',
+  'MB · até',
+  ROW_BUDGET,
+  'linhas por consulta'
+);
+/** Data mais antiga que "Desde o início" tenta alcançar. */
+const HISTORY_FLOOR = /^\d{4}-\d{2}-\d{2}$/.test(env.DSS_HISTORY_FLOOR || '') ? env.DSS_HISTORY_FLOOR : '2000-01-01';
+const brMonth = iso => iso.slice(5, 7) + '/' + iso.slice(0, 4);
+const isoAdd = (iso, days) => new Date(Date.parse(iso + 'T12:00:00Z') + days * 86400000).toISOString().slice(0, 10);
+const transientDss = error =>
+  /não é JSON|conteúdo inválido|tempo limite|falha de conexão|HTTP 50[0234]/i.test(String(error?.message || ''));
+function waitFor(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(done, ms);
+    function done() {
+      signal?.removeEventListener('abort', abort);
+      resolve();
+    }
+    function abort() {
+      clearTimeout(timer);
+      reject(signal.reason);
+    }
+    signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+/**
+ * Busca um período na DSS sem desistir à toa: até 2 tentativas no período inteiro e, se ainda falhar por
+ * tempo/instabilidade, divide ao meio (e assim por diante, até 1 dia). Meses pesados passam em pedaços.
+ */
+async function fetchDssRange(name, from, to, signal, onSplit = () => {}) {
+  let last;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      return await queryDss(name, from, to, signal);
+    } catch (error) {
+      signal?.throwIfAborted();
+      if (!transientDss(error)) throw error;
+      last = error;
+      console.warn('[DSS] repetindo serviço', name, 'período', from, to, 'causa', String(error.message).slice(0, 130));
+      if (attempt < 2) await waitFor(2000, signal);
+    }
+  }
+  if (from >= to) throw last;
+  const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
+  const middle = isoAdd(from, Math.floor(days / 2));
+  onSplit(from, to);
+  const first = await fetchDssRange(name, from, middle, signal, onSplit);
+  const second = await fetchDssRange(name, isoAdd(middle, 1), to, signal, onSplit);
+  return [...(first || []), ...(second || [])];
 }
 function cachePut(key, data) {
   if (!cacheMaxAge) return;
@@ -509,32 +601,6 @@ async function queryDss(name, from, to, signal) {
     );
   return list;
 }
-// Repetir apenas falhas transitórias de transporte ou resposta inválida; não repetir 401/403.
-async function queryDssResilient(name, from, to, signal) {
-  try {
-    return await queryDss(name, from, to, signal);
-  } catch (error) {
-    signal?.throwIfAborted();
-    const message = String(error?.message || '');
-    const retry = /não é JSON|conteúdo inválido|tempo limite|falha de conexão|HTTP 50[0234]/i.test(message);
-    if (!retry) throw error;
-    console.warn('[DSS] repetindo serviço', name, 'período', from, to, 'causa', message.slice(0, 130));
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(done, 800);
-      function done() {
-        signal?.removeEventListener('abort', abort);
-        resolve();
-      }
-      function abort() {
-        clearTimeout(timer);
-        reject(signal.reason);
-      }
-      signal?.addEventListener('abort', abort, { once: true });
-    });
-    signal?.throwIfAborted();
-    return queryDss(name, from, to, signal);
-  }
-}
 /** Frontend local no MESMO servidor e origem da API.
  * Lista explícita: nunca servir .env, private/, api/ ou outros arquivos do disco.
  */
@@ -616,20 +682,34 @@ async function serveLocalFrontend(req, res, url) {
   }
   return true;
 }
-async function synchronize(from, to, { refreshMode = 'recent', syncTo = to, signal, onProgress = () => {} } = {}) {
+async function synchronize(
+  from,
+  to,
+  {
+    refreshMode = 'recent',
+    syncTo = to,
+    signal,
+    onProgress = () => {},
+    fullHistory = false,
+    rowBudget = ROW_BUDGET,
+    remember = true
+  } = {}
+) {
   const started = Date.now();
-  const windows = monthWindows(from, to);
-  if (windows.length > 12) throw Error('Período muito longo: selecione até 12 meses.');
+  const services = Object.keys(cfg).filter(name => cfg[name].path);
+  const slim = createSlimmer();
   const combined = Object.fromEntries(Object.keys(cfg).map(k => [k, []]));
   const quality = { periods: [], sources: [] };
-  for (const window of windows)
-    for (const name of Object.keys(cfg).filter(name => cfg[name].path))
-      onProgress({
-        key: window.from + ':' + name,
-        label: { viagens: 'Viagens / RV', pedidos: 'Pedidos de frete', ctes: 'CT-e', mdfes: 'MDF-e' }[name],
-        period: window.from.slice(0, 7),
-        status: 'pending'
-      });
+  // Do mês mais recente para o mais antigo: se a memória acabar, o que fica de fora é o mais antigo.
+  const planned = fullHistory ? null : monthWindows(from, to).reverse();
+  const monthOf = iso => ({
+    from: iso.slice(0, 8) + '01',
+    to: new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7), 0)).toISOString().slice(0, 10)
+  });
+  const step = window => 'mes:' + window.from.slice(0, 7);
+  if (planned)
+    for (const window of planned)
+      onProgress({ key: step(window), label: 'Viagens e pedidos', period: brMonth(window.from), status: 'pending' });
   for (const name of [...optionalCatalogs.map(c => c.name), 'motoristas'])
     onProgress({
       key: name,
@@ -638,60 +718,88 @@ async function synchronize(from, to, { refreshMode = 'recent', syncTo = to, sign
       ],
       status: 'pending'
     });
-  // Lotes de até 2 meses: impede que dez meses sejam processados em serie
-  // sem disparar dezenas de chamadas simultaneas ao DSS.
-  for (let offset = 0; offset < windows.length; offset += 2) {
-    const batch = windows.slice(offset, offset + 2);
-    const results = await Promise.all(
-      batch.map(async window => {
-        // Modo incremental: períodos encerrados anteriores aos dois meses mais recentes usam cache,
-        // quando disponível. Meses recentes sempre buscam a DSS.
+  const anchor = /^\d{4}-\d{2}-\d{2}$/.test(syncTo) && syncTo >= to ? syncTo : to;
+  const recentBoundary = new Date(Date.UTC(Number(anchor.slice(0, 4)), Number(anchor.slice(5, 7)) - 2, 1))
+    .toISOString()
+    .slice(0, 10);
+  let totalRows = 0,
+    emptyRun = 0,
+    oldestIncluded = null,
+    oldestWithData = null,
+    limited = null,
+    cursor = { from: monthOf(to).from < from && !fullHistory ? from : monthOf(to).from, to };
+  for (let index = 0; ; index++) {
+    signal?.throwIfAborted();
+    const window = planned ? planned[index] : cursor;
+    if (!window) break;
+    if (fullHistory && window.to < HISTORY_FLOOR) break;
+    const key = step(window);
+    onProgress({ key, label: 'Viagens e pedidos', period: brMonth(window.from), status: 'running' });
+    // Modo incremental: meses anteriores aos dois mais recentes usam o cache privado, quando houver.
+    const refreshWindow = refreshMode === '1' || (refreshMode === 'recent' && window.to >= recentBoundary);
+    let result = refreshWindow ? null : await periodStore.read(window.from, window.to);
+    const reused = !!result;
+    if (result) {
+      for (const name of services) result[name] = slim(name, result[name] || []);
+      console.info('[DSS] mês reutilizado do cache privado', window.from, window.to);
+    } else {
+      try {
+        const pairs = await Promise.all(
+          services.map(async name => [
+            name,
+            slim(
+              name,
+              await fetchDssRange(name, window.from, window.to, signal, () =>
+                onProgress({ key, detail: 'dividindo o período em partes menores' })
+              )
+            )
+          ])
+        );
+        result = { ...Object.fromEntries(pairs), _syncedAt: new Date().toISOString() };
+      } catch (error) {
         signal?.throwIfAborted();
-        const anchor = /^\d{4}-\d{2}-\d{2}$/.test(syncTo) && syncTo >= to ? syncTo : to;
-        const recentBoundary = new Date(Date.UTC(Number(anchor.slice(0, 4)), Number(anchor.slice(5, 7)) - 2, 1))
-          .toISOString()
-          .slice(0, 10);
-        const refreshWindow = refreshMode === '1' || (refreshMode === 'recent' && window.to >= recentBoundary);
-        let result = refreshWindow ? null : await periodStore.read(window.from, window.to);
-        const reused = !!result;
-        if (result) {
-          console.info('[DSS] mês reutilizado do cache privado', window.from, window.to);
-        } else {
-          const pairs = await Promise.all(
-            Object.keys(cfg)
-              .filter(name => cfg[name].path)
-              .map(async name => {
-                const key = window.from + ':' + name;
-                onProgress({
-                  key,
-                  label: { viagens: 'Viagens / RV', pedidos: 'Pedidos de frete', ctes: 'CT-e', mdfes: 'MDF-e' }[name],
-                  period: window.from.slice(0, 7),
-                  status: 'running'
-                });
-                const rows = await queryDssResilient(name, window.from, window.to, signal);
-                onProgress({ key, status: 'done' });
-                return [name, rows];
-              })
-          );
-          result = { ...Object.fromEntries(pairs), _syncedAt: new Date().toISOString() };
-          // Só guardar o mês se todos os serviços principais terminaram com sucesso.
-          await periodStore.write(window.from, window.to, result);
-          console.info('[DSS] mês consultado', window.from, window.to);
-        }
-        if (reused)
-          for (const name of Object.keys(cfg).filter(name => cfg[name].path))
-            onProgress({
-              key: window.from + ':' + name,
-              label: { viagens: 'Viagens / RV', pedidos: 'Pedidos de frete', ctes: 'CT-e', mdfes: 'MDF-e' }[name],
-              period: window.from.slice(0, 7),
-              status: 'reused'
-            });
-        quality.periods.push({ from: window.from, to: window.to, syncedAt: result._syncedAt || null, reused });
-        return Object.entries(result).filter(([name]) => Object.hasOwn(combined, name));
-      })
-    );
-    for (const result of results) for (const [name, rows] of result) combined[name].push(rows || []);
+        // Mensagem com o mês que falhou, para o usuário saber onde parou.
+        throw Object.assign(
+          Error('Mês ' + brMonth(window.from) + ': ' + String(error.message || error).slice(0, 220)),
+          {
+            code: error.code
+          }
+        );
+      }
+      // Só guardar o mês se todos os serviços principais terminaram com sucesso.
+      await periodStore.write(window.from, window.to, result);
+      console.info('[DSS] mês consultado', window.from, window.to);
+    }
+    const rows = services.reduce((sum, name) => sum + (result[name]?.length || 0), 0);
+    if (totalRows > 0 && totalRows + rows > rowBudget) {
+      // Não cabe na memória deste servidor: publica o que já foi carregado (os meses mais recentes).
+      limited = { from: oldestIncluded, reason: 'memoria', rows: totalRows, budget: rowBudget };
+      onProgress({ key, status: 'skipped', detail: 'limite de memória do servidor' });
+      for (const rest of planned ? planned.slice(index + 1) : [])
+        onProgress({ key: step(rest), status: 'skipped', detail: 'limite de memória do servidor' });
+      break;
+    }
+    if (fullHistory && rows === 0) {
+      emptyRun++;
+      onProgress({ key, status: 'done', detail: 'sem registros' });
+      // Seis meses seguidos sem nada: chegou ao início dos dados da DSS.
+      if (emptyRun >= 6 || (oldestWithData === null && emptyRun >= 3)) break;
+    } else {
+      emptyRun = 0;
+      for (const [name, list] of Object.entries(result))
+        if (Object.hasOwn(combined, name)) combined[name].push(list || []);
+      totalRows += rows;
+      oldestIncluded = window.from;
+      if (rows > 0) oldestWithData = window.from;
+      quality.periods.push({ from: window.from, to: window.to, syncedAt: result._syncedAt || null, reused });
+      onProgress({ key, status: reused ? 'reused' : 'done', detail: rows.toLocaleString('pt-BR') + ' registros' });
+    }
+    if (fullHistory) cursor = monthOf(isoAdd(window.from, -1));
   }
+  // Período efetivamente carregado (pode ser menor que o pedido, por memória, ou o início real do histórico).
+  const effectiveFrom = fullHistory ? oldestWithData || to : limited ? limited.from : from;
+  from = effectiveFrom > to ? to : effectiveFrom;
+  quality.periods.sort((a, b) => a.from.localeCompare(b.from));
   const data = Object.fromEntries(Object.entries(combined).map(([name, groups]) => [name, mergeDssRows(groups, name)]));
   for (const catalog of optionalCatalogs) {
     signal?.throwIfAborted();
@@ -803,8 +911,11 @@ async function synchronize(from, to, { refreshMode = 'recent', syncTo = to, sign
       }
     }
   };
+  payload.range = { from, to };
+  if (limited) payload.limited = limited;
+  if (fullHistory) payload.history = { start: oldestWithData, floor: HISTORY_FLOOR };
   signal?.throwIfAborted();
-  cachePut(from + '|' + to, payload);
+  if (remember) cachePut(from + '|' + to, payload);
   apiStats.success++;
   apiStats.lastSuccess = payload.updatedAt;
   console.info(

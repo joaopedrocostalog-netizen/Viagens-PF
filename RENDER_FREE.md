@@ -147,3 +147,9 @@ O workflow **Manter Render acordado** (`.github/workflows/manter-render-acordado
 O servidor registra erros do navegador, do próprio servidor e das consultas à DSS (inclusive fontes opcionais indisponíveis, como Programações). Administradores veem a lista em **Informações técnicas** (seta no rodapé) → **Erros recentes do portal**. A lista fica na memória do servidor e some em reinícios; os mesmos registros aparecem nos **Logs** do Render, com o prefixo `[ERRO ...]`.
 
 Para receber aviso num canal da equipe, crie um "Incoming Webhook" no Slack, Teams ou Discord e configure `ERROR_WEBHOOK_URL` nas variáveis de ambiente do Render. O portal envia no máximo 1 aviso por hora para o mesmo erro e 20 por hora no total, sem tokens, senhas ou dados da DSS.
+
+## Períodos longos e "Desde o início"
+
+Não há mais limite de 12 meses. Cada mês é consultado separadamente (do mais recente para o mais antigo) e meses pesados são divididos em partes menores automaticamente. O botão **Desde o início** volta mês a mês até a DSS não ter mais registros.
+
+O Render Free tem 512 MB. O servidor ajusta sozinho o teto de memória do Node (50% do contêiner) e calcula quantas linhas cabem; no volume atual (~13 mil RVs + pedidos por mês) isso dá cerca de 9 a 10 meses por consulta. Quando o período pedido não cabe, o portal carrega os meses mais recentes e avisa a partir de quando. Para guardar mais histórico, é preciso mais memória (plano pago do Render ou o servidor Plesk); `PORTAL_MAX_ROWS` permite ajustar o limite manualmente e `PORTAL_AUTO_HEAP=0` desliga o ajuste automático.

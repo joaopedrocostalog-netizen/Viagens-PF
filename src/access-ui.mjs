@@ -224,11 +224,18 @@ function operationalRow(row, keys) {
   return Object.fromEntries(keys.filter(key => Object.hasOwn(row, key)).map(key => [key, row[key]]));
 }
 export function operationalDataset(data) {
+  // CT-e que também é pedido usa o MESMO objeto (antes era uma cópia completa: o dobro de memória).
+  const orders = new Map();
+  const order = row => {
+    let projected = orders.get(row);
+    if (!projected) orders.set(row, (projected = operationalRow(row, ORDER_DETAILS)));
+    return projected;
+  };
   return {
     ...data,
     viagens: (data.viagens || []).map(row => operationalRow(row, TRIP_DETAILS)),
-    pedidos: (data.pedidos || []).map(row => operationalRow(row, ORDER_DETAILS)),
-    ctes: (data.ctes || []).map(row => operationalRow(row, ORDER_DETAILS)),
+    pedidos: (data.pedidos || []).map(order),
+    ctes: (data.ctes || []).map(order),
     programacoes: (data.programacoes || []).map(row =>
       operationalRow(row, ['id', 'empresa', 'numero', 'data', 'viagemId', 'rvReferencia', 'motoristaId', 'veiculoId'])
     )

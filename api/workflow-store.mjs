@@ -185,7 +185,19 @@ export function createWorkflowStore({ file = '', documents } = {}) {
       });
       return items.map(({ key }) => ({ key, task: taskSummary(next.tasks[key]) }));
     },
-    async observe(company, { references, data, freshPeriods, coverage, at = new Date().toISOString(), signal } = {}) {
+    async observe(
+      company,
+      {
+        references,
+        data,
+        freshPeriods,
+        coverage,
+        at = new Date().toISOString(),
+        signal,
+        observeFrom = '',
+        maxNew = 20000
+      } = {}
+    ) {
       return transact(company, b => {
         signal?.throwIfAborted();
         const present = new Set(),
@@ -198,10 +210,15 @@ export function createWorkflowStore({ file = '', documents } = {}) {
             ctes: new Map((data.pedidos || []).map(r => [r.id, r]))
           };
         const fresh = date => !!date && freshPeriods.some(p => date >= p.from && date <= p.to);
+        let created = 0;
         for (const ref of references) {
           const key = [ref.type, ref.view, ref.record.id].join(':');
           validate(company, key);
           present.add(key);
+          // Histórico longo: só alertas recentes (ou já tratados) viram registro; os demais seguem na central,
+          // calculados na hora. Evita um arquivo de tratamentos com centenas de milhares de entradas.
+          if (!b.tasks[key] && ((observeFrom && (ref.record.data || '') < observeFrom) || created >= maxNew)) continue;
+          if (!b.tasks[key]) created++;
           const source = {
             entity: String(ref.record.id).split('~')[0],
             number: String(ref.record.pedidoNumero || ref.record.numero || ref.record.id).slice(0, 150),
