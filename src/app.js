@@ -405,7 +405,7 @@ function render() {
     '<div class="v-tools-row">' +
     dateFilters +
     tools +
-    button('share-query', 'Copiar link', 'btn-sm') +
+    button('toggle-advanced-filters', (state.filtersOpen ? 'Ocultar filtros avançados' : 'Filtros avançados'), 'btn-sm') +
     '</div>' +
     globalSearch +
     (state.linkMessage ? '<p class="help" role="status">' + esc(state.linkMessage) + '</p>' : '') +
@@ -2261,6 +2261,11 @@ root.addEventListener('click', e => {
       const account = document.getElementById('taskOwnerAccount');
       if (account) account.textContent = 'Conta: ' + state.user.username + ' · confirme em Salvar tratamento';
     }
+    return;
+  }
+  if (action === 'toggle-advanced-filters') {
+    state.filtersOpen = !state.filtersOpen;
+    render();
     return;
   }
   if (action === 'share-query' || action === 'share-record') {
