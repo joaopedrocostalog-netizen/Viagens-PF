@@ -160,7 +160,10 @@ test('Painel, buscas, filtros salvos e relatório CSV usam a empresa e os filtro
   click('[data-action]', { action: 'toggle-advanced-filters' });
   change('filterClient', 'Alfa');
   assert(root.innerHTML.includes('<div class="v-extra-filters">'));
-  assert(!root.innerHTML.includes('<details id="advancedFilters"'), 'Não deve existir um segundo controle de filtros avançados');
+  assert(
+    !root.innerHTML.includes('<details id="advancedFilters"'),
+    'Não deve existir um segundo controle de filtros avançados'
+  );
   assert(root.innerHTML.includes('value="Beta"'), 'Outra opção de cliente precisa continuar disponível');
   click('[data-nav]', { nav: 'ctes' });
   assert(table().includes('PF-ALFA'));
