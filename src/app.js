@@ -432,6 +432,7 @@ function render() {
         : local.html
     ) +
     (remote ? remoteResponse?.technical || '' : local.technical || '') +
+    renderErrorLog() +
     '<footer class="v-footer">' +
     brand.name +
     ' • Portal de inteligência operacional • ' +
@@ -463,6 +464,101 @@ function render() {
     !state.taskIndexError
   )
     loadTaskIndex();
+}
+// Monitoramento: erros do navegador vão para o servidor (sem dados pessoais nem parâmetros), no máximo 10 por página.
+const reportedErrors = new Set();
+function reportClientError(message, source = '', line = 0, stack = '') {
+  if (PUBLIC_DEMO || !state.apiUrl || reportedErrors.size >= 10) return;
+  const key = message + '|' + source + '|' + line;
+  if (reportedErrors.has(key)) return;
+  reportedErrors.add(key);
+  try {
+    fetch(state.apiUrl.replace(/\/$/, '') + '/api/client-error', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'omit',
+      keepalive: true,
+      body: JSON.stringify({
+        message: String(message || '').slice(0, 300),
+        source: String(source || '').slice(0, 200),
+        line: Number(line) || 0,
+        stack: String(stack || '').slice(0, 400),
+        view: state.view
+      })
+    }).catch(() => {});
+  } catch {}
+}
+window.addEventListener?.('error', e => reportClientError(e.message, e.filename, e.lineno, e.error?.stack));
+window.addEventListener?.('unhandledrejection', e =>
+  reportClientError(e.reason?.message || String(e.reason || 'Promessa rejeitada'), '', 0, e.reason?.stack)
+);
+async function loadErrorLog() {
+  if (!state.permissions.admin || !state.token || PUBLIC_DEMO) return;
+  state.errorLogLoading = true;
+  render();
+  try {
+    const response = await fetch(state.apiUrl.replace(/\/$/, '') + '/api/errors', {
+      headers: { Authorization: 'Bearer ' + state.token },
+      credentials: 'omit'
+    });
+    const data = await response.json();
+    if (!response.ok) throw Error(data.error || 'Não foi possível carregar os erros.');
+    state.errorLog = data.errors || [];
+    state.errorLogError = '';
+  } catch (error) {
+    state.errorLogError = error.message;
+  } finally {
+    state.errorLogLoading = false;
+    render();
+  }
+}
+function renderErrorLog() {
+  if (!state.permissions.admin || !state.technicalOpen || state.mode !== 'live' || PUBLIC_DEMO) return '';
+  const rows = state.errorLog || [];
+  const when = iso => {
+    const t = Date.parse(iso || '');
+    return Number.isFinite(t)
+      ? new Intl.DateTimeFormat('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+          dateStyle: 'short',
+          timeStyle: 'short'
+        }).format(t)
+      : '—';
+  };
+  return (
+    '<section class="error-log" aria-label="Erros recentes"><div class="error-log-head"><h3>Erros recentes do portal</h3>' +
+    button('reload-errors', state.errorLogLoading ? 'Carregando…' : 'Atualizar', 'btn-sm') +
+    '</div><p class="help">Navegador, servidor e DSS. Guardados na memória do servidor (somem em reinícios); também ficam nos logs do Render.</p>' +
+    (state.errorLogError ? '<p class="ins-inline-error" role="alert">' + esc(state.errorLogError) + '</p>' : '') +
+    (rows.length
+      ? '<div class="table-wrap"><table><thead><tr><th>Quando</th><th>Origem</th><th>Erro</th><th>Onde</th><th>Vezes</th></tr></thead><tbody>' +
+        rows
+          .slice(0, 50)
+          .map(
+            r =>
+              '<tr class="' +
+              (r.level === 'aviso' ? 'is-warning' : 'is-error') +
+              '"><td>' +
+              esc(when(r.lastAt)) +
+              '</td><td>' +
+              esc(r.kind) +
+              '</td><td title="' +
+              attr(r.detail || '') +
+              '">' +
+              esc(r.message) +
+              '</td><td>' +
+              esc(r.where || '—') +
+              '</td><td>' +
+              r.count +
+              '</td></tr>'
+          )
+          .join('') +
+        '</tbody></table></div>'
+      : state.errorLog
+        ? '<p class="help">Nenhum erro registrado desde o último reinício do servidor.</p>'
+        : '') +
+    '</section>'
+  );
 }
 function setTvMode(on) {
   state.tvMode = !!on && state.view === 'programacao';
@@ -2185,6 +2281,10 @@ root.addEventListener('click', e => {
     render();
     return;
   }
+  if (action === 'reload-errors') {
+    loadErrorLog();
+    return;
+  }
   if (action === 'tv-mode') {
     setTvMode(!state.tvMode);
     return;
@@ -2899,6 +2999,7 @@ root.addEventListener(
     if (key && state[key] !== e.target.open) {
       state[key] = e.target.open;
       render();
+      if (key === 'technicalOpen' && state.technicalOpen) loadErrorLog();
     }
   },
   true

@@ -31,6 +31,7 @@ import { projectOverview, projectPortalOverview, permissionsFor } from './access
 import { monthWindows, mergeDssRows } from './dss-periods.mjs';
 import { createPeriodStore } from './period-store.mjs';
 import { createMariaDbPeriodStore } from './mariadb-store.mjs';
+import { createErrorLog, clientErrorInput } from './error-log.mjs';
 const env = process.env;
 const useAccounts = configuredUsers();
 const allowLegacy = env.PORTAL_ALLOW_LEGACY_TOKEN === 'true';
@@ -60,10 +61,31 @@ const workflowStore = createWorkflowStore(privateState.enabled ? { documents: pr
 const workflowStorage = { kind: privateState.enabled ? privateState.driver : 'file', durable: privateState.durable };
 const portalSessions = createPortalSessions({
   synchronize,
+  onFailure: error =>
+    errorLog.record('dss', 'Atualização da DSS não concluída: ' + (error?.code || error?.name || 'Error'), {
+      detail: error?.message
+    }),
   afterSync: (payload, context) => pendingService.observed(payload, context)
 });
 const pendingService = createPendingService({ store: workflowStore, sessions: portalSessions });
 const INFLIGHT = new Map(); // Reutilizar consultas idênticas que chegam ao mesmo tempo.
+// Erros do navegador, do servidor e da DSS, visíveis ao administrador; aviso opcional por ERROR_WEBHOOK_URL.
+const errorLog = createErrorLog({ webhook: env.ERROR_WEBHOOK_URL || '' });
+process.on('uncaughtExceptionMonitor', error =>
+  errorLog.record('servidor', 'Erro não tratado: ' + (error?.name || 'Error'), { detail: error?.message })
+);
+const clientErrorRate = new Map();
+function allowedClientError(req) {
+  const remote = req.socket.remoteAddress || 'unknown',
+    now = Date.now(),
+    row = clientErrorRate.get(remote);
+  if (clientErrorRate.size > 5000) clientErrorRate.clear();
+  if (!row || now - row.start >= 600000) {
+    clientErrorRate.set(remote, { start: now, count: 1 });
+    return true;
+  }
+  return ++row.count <= 20;
+}
 const rateTable = new Map();
 const rateLimit = Math.max(10, Number(env.PORTAL_REQUESTS_PER_MINUTE || 120));
 let apiStats = { success: 0, failed: 0, cached: 0, lastSuccess: null, lastFailure: null };
@@ -719,7 +741,10 @@ async function synchronize(from, to, { refreshMode = 'recent', syncTo = to, sign
       const reason = unavailableReason(err);
       onProgress({ key: catalog.name, status: 'unavailable', detail: reason });
       quality.sources.push({ name: catalog.name, status: 'unavailable', detail: reason });
-      console.warn('[DSS] catálogo opcional', catalog.name, 'indisponível:', String(err.message).slice(0, 110));
+      errorLog.record('dss', 'Fonte opcional indisponível: ' + catalog.name, {
+        level: 'aviso',
+        detail: reason + ' · ' + String(err.message).slice(0, 110)
+      });
     }
   }
   signal?.throwIfAborted();
@@ -732,7 +757,10 @@ async function synchronize(from, to, { refreshMode = 'recent', syncTo = to, sign
     } catch (err) {
       quality.sources.push({ name: 'motoristas', status: 'unavailable' });
       driverCatalog.expires = Date.now() + 60_000;
-      console.warn('[DSS] listarMotoristas indisponível:', err.name || 'Error', String(err.message).slice(0, 120));
+      errorLog.record('dss', 'Fonte opcional indisponível: motoristas', {
+        level: 'aviso',
+        detail: (err.name || 'Error') + ' · ' + String(err.message).slice(0, 120)
+      });
       attachDriverNames(data, driverCatalog.items);
     }
   }
@@ -821,6 +849,24 @@ const server = http.createServer(async (req, res) => {
   const company = url.searchParams.get('company') || 'costalog';
   if (['/api/overview', '/api/records'].includes(url.pathname) && !validCompany(company))
     return reply(res, 400, { error: 'Empresa inválida.' }, origin);
+  if (url.pathname === '/api/client-error') {
+    if (req.method !== 'POST') return reply(res, 405, { error: 'Método não permitido' }, origin);
+    if (origin && !origins.includes(origin)) return reply(res, 403, { error: 'Origem não permitida' });
+    if (!allowedClientError(req)) return reply(res, 429, { error: 'Muitos registros de erro.' }, origin);
+    try {
+      const input = clientErrorInput(await bodyJSON(req, 4096));
+      if (input) errorLog.record('navegador', input.message, { where: input.where, detail: input.detail });
+    } catch {}
+    return reply(res, 202, { ok: true }, origin);
+  }
+  if (url.pathname === '/api/errors') {
+    const user = identify(req);
+    if (!user) return reply(res, 401, { error: 'Sessão inválida ou expirada.' }, origin);
+    if (!user.permissions.admin || user.mustChangePassword)
+      return reply(res, 403, { error: 'Somente administradores.' }, origin);
+    if (req.method === 'GET') return reply(res, 200, { errors: errorLog.list() }, origin);
+    return reply(res, 405, { error: 'Método não permitido' }, origin);
+  }
   if (url.pathname === '/api/login') {
     if (req.method !== 'POST') return reply(res, 405, { error: 'Método não permitido' }, origin);
     if (!useAccounts)
@@ -1023,7 +1069,12 @@ const server = http.createServer(async (req, res) => {
       }
       return reply(res, 405, { error: 'Método não permitido.' }, origin);
     } catch (error) {
-      console.warn('[PORTAL] falha', error.code || error.name);
+      if (!(error.status && error.status < 500))
+        errorLog.record('servidor', 'Falha ao montar página: ' + (error.code || error.name || 'Error'), {
+          where: url.pathname,
+          detail: error.message
+        });
+      else console.warn('[PORTAL] falha', error.code || error.name);
       return reply(
         res,
         error.status || 503,
@@ -1252,7 +1303,10 @@ const server = http.createServer(async (req, res) => {
   } catch (err) {
     apiStats.failed++;
     apiStats.lastFailure = new Date().toISOString();
-    console.error('[DSS]', err.name, err.message);
+    errorLog.record('dss', 'Falha na consulta ao DSS', {
+      where: '/api/overview',
+      detail: err.name + ' ' + err.message
+    });
     return reply(res, 502, { error: 'Falha na consulta ao DSS: ' + err.message }, origin);
   }
 });

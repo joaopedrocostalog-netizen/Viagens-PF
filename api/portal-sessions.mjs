@@ -6,6 +6,7 @@ const fail = (message, status) => Object.assign(Error(message), { status });
 export function createPortalSessions({
   synchronize,
   afterSync = async () => {},
+  onFailure = () => {},
   maxSnapshots = 6,
   maxJobs = 20,
   ttlMs = 2 * 3600000
@@ -107,6 +108,7 @@ export function createPortalSessions({
           j.error = 'Não foi possível concluir a consulta. Os dados anteriores foram mantidos.';
           j.touched = Date.now();
           console.warn('[SYNC] consulta interrompida', error.code || error.name);
+          onFailure(error);
         });
       return publicJob(j);
     },

@@ -4383,3 +4383,27 @@ body {
   letter-spacing: 0.2px;
   margin: 22px 0 6px;
 }
+/* Erros recentes (rodapé técnico, só administrador) */
+.error-log {
+  margin: 14px 0 0;
+  padding: 14px;
+  border: 1px solid #3a2a2d;
+  border-radius: 12px;
+  background: #17131a;
+}
+.error-log-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.error-log h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.error-log tr.is-error td:nth-child(2) {
+  color: #ff8a98;
+}
+.error-log tr.is-warning td:nth-child(2) {
+  color: #ffcf7a;
+}

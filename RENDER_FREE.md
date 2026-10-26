@@ -141,3 +141,9 @@ A aplicação exige Node.js 20+ e instalação de dependências com `npm install
 ## Evitar que o serviço durma
 
 O workflow **Manter Render acordado** (`.github/workflows/manter-render-acordado.yml`) acessa `/api/health` a cada 10 minutos. Para conferir: GitHub → Actions → "Manter Render acordado" → execuções com "HTTP 200". Também é possível executar manualmente em **Run workflow**. Se o endereço do Render mudar, atualize `HEALTH_URL` no arquivo.
+
+## Erros do portal
+
+O servidor registra erros do navegador, do próprio servidor e das consultas à DSS (inclusive fontes opcionais indisponíveis, como Programações). Administradores veem a lista em **Informações técnicas** (seta no rodapé) → **Erros recentes do portal**. A lista fica na memória do servidor e some em reinícios; os mesmos registros aparecem nos **Logs** do Render, com o prefixo `[ERRO ...]`.
+
+Para receber aviso num canal da equipe, crie um "Incoming Webhook" no Slack, Teams ou Discord e configure `ERROR_WEBHOOK_URL` nas variáveis de ambiente do Render. O portal envia no máximo 1 aviso por hora para o mesmo erro e 20 por hora no total, sem tokens, senhas ou dados da DSS.
