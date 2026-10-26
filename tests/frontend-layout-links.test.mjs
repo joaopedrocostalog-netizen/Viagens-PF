@@ -121,7 +121,11 @@ test('Link passa pelo login e consulta manual; todas as abas têm uma busca e ro
   for (const view of OP_VIEWS) {
     click('[data-nav]', { nav: view });
     assert.equal((root.innerHTML.match(/type="search"/g) || []).length, 1, view);
-    assert.equal((root.innerHTML.match(/data-action="toggle-advanced-filters"/g) || []).length, 1, view);
+    assert.equal(
+      (root.innerHTML.match(/data-action="toggle-advanced-filters"/g) || []).length,
+      view === 'painel' ? 0 : 1,
+      view
+    );
     assert.equal((root.innerHTML.match(/id="technicalInfo"/g) || []).length, 1, view);
     assert(!root.innerHTML.includes('data-quality-summary'), view + ' deve iniciar com os diagnósticos fechados');
     assert(root.innerHTML.indexOf('id="technicalInfo"') < root.innerHTML.indexOf('<footer'));
@@ -132,10 +136,10 @@ test('Link passa pelo login e consulta manual; todas as abas têm uma busca e ro
   assert(root.innerHTML.indexOf('id="technicalInfo"') > root.innerHTML.lastIndexOf('</table>'));
   events.toggle({ target: { id: 'technicalInfo', open: false } });
   assert(!root.innerHTML.includes('data-quality-summary'));
-  events.toggle({ target: { id: 'advancedFilters', open: true } });
+  click('[data-action]', { action: 'toggle-advanced-filters' });
   assert(root.innerHTML.includes('recordStatusFilter'));
   change('filterClient', 'IDEAL AUTORIZADO');
-  assert(root.innerHTML.includes('id="advancedFilters" class="v-extra-filters" open'));
+  assert(root.innerHTML.includes('<div class="v-extra-filters">'));
   click('[data-nav]', { nav: 'comparativos' });
   change('compareCurrentFrom', '2026-10-01');
   change('compareCurrentTo', '2026-10-23');
